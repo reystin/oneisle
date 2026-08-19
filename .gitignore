@@ -1,0 +1,11 @@
+.gradle/
+build/
+run/
+run-client/
+out/
+.idea/
+.vscode/
+*.iml
+*.log
+hs_err_pid*
+

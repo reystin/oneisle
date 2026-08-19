@@ -1,0 +1,88 @@
+plugins {
+    id "net.fabricmc.fabric-loom" version "${loom_version}"
+}
+
+version = "${mod_version}+mc${minecraft_version}"
+group = "com.hack337"
+
+base {
+    archivesName = "OmniIsle-${minecraft_version}-Fabric"
+}
+
+repositories { mavenCentral() }
+
+dependencies {
+    minecraft "com.mojang:minecraft:${minecraft_version}"
+    implementation "net.fabricmc:fabric-loader:${loader_version}"
+    implementation "net.fabricmc.fabric-api:fabric-api:${fabric_version}"
+}
+
+def generatedTargetSources = layout.buildDirectory.dir("generated/sources/omniisleTarget")
+
+tasks.register("generateTargetPlatform") {
+    outputs.dir(generatedTargetSources)
+    doLast {
+        def output = generatedTargetSources.get().file(
+            "com/hack337/omniisle/platform/TargetPlatform.java").asFile
+        output.parentFile.mkdirs()
+        output.text = """package com.hack337.omniisle.platform;
+public final class TargetPlatform {
+    public static final String MINECRAFT_VERSION = \"${minecraft_version}\";
+    public static final int PACK_FORMAT = ${(project.findProperty('pack_format') ?: '101') as int};
+    public static final int PACK_FORMAT_MINOR = ${(project.findProperty('pack_format_minor') ?: '0') as int};
+    public static final boolean HAS_PALE_GARDEN = true;
+    public static final boolean HAS_TRIAL_CHAMBERS = true;
+    private TargetPlatform() {}
+}
+"""
+    }
+}
+
+sourceSets {
+    main {
+        java.srcDirs = ["src/main/java", generatedTargetSources]
+        resources.srcDirs = ["src/main/resources"]
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.release = 25
+    dependsOn(tasks.named("generateTargetPlatform"))
+}
+
+tasks.matching { it.name == "sourcesJar" }.configureEach {
+    dependsOn(tasks.named("generateTargetPlatform"))
+}
+
+processResources {
+    inputs.properties(
+        version: project.version,
+        minecraft_version: minecraft_version,
+        loader_version: loader_version,
+        fabric_version: fabric_version
+    )
+    filesMatching("fabric.mod.json") {
+        expand(
+            version: project.version,
+            minecraft_range: "=${minecraft_version}",
+            loader_min: loader_version,
+            fabric_api_min: fabric_version.toString().split('\\+')[0],
+            java_version: 25
+        )
+    }
+    filesMatching("omniisle.client.mixins.json") {
+        filter { line -> line.replace("JAVA_21", "JAVA_25") }
+    }
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_25
+    targetCompatibility = JavaVersion.VERSION_25
+    withSourcesJar()
+}
+
+jar {
+    from("LICENSE") {
+        rename { "LICENSE_OmniIsle_OmniIsle" }
+    }
+}

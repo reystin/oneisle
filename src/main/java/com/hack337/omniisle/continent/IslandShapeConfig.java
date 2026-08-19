@@ -1,0 +1,105 @@
+package com.hack337.omniisle.continent;
+
+import com.mojang.serialization.Codec;
+import com.mojang.serialization.codecs.RecordCodecBuilder;
+import java.util.ArrayList;
+import java.util.List;
+import net.minecraft.util.RandomSource;
+import net.minecraft.world.level.levelgen.WorldOptions;
+
+public class IslandShapeConfig {
+    public static final Codec<IslandShapeConfig> CODEC = RecordCodecBuilder.create(
+        instance -> instance.group(
+            IslandShapeConfig.Entry.CODEC.listOf().fieldOf("entries").orElseGet(ArrayList::new).forGetter(d -> d.entries),
+            IslandMask.CODEC.optionalFieldOf("mask").forGetter(d -> java.util.Optional.ofNullable(d.mask)),
+            Codec.LONG.optionalFieldOf("biome_seed", 0L).forGetter(d -> d.biomeSeed)
+        ).apply(instance, IslandShapeConfig::new)
+    );
+
+    public ArrayList<IslandShapeConfig.Entry> entries;
+    public IslandMask mask;
+    public long biomeSeed;
+
+    public IslandShapeConfig(List<IslandShapeConfig.Entry> entries, java.util.Optional<IslandMask> mask, long biomeSeed) {
+        this.entries = new ArrayList<>(entries);
+        this.mask = mask.orElse(null);
+        this.biomeSeed = biomeSeed;
+    }
+
+    public List<ShapeLayerSettings> createSettings() {
+        return this.entries.stream().map(ShapeLayerSettings::new).toList();
+    }
+
+    public static class Entry {
+        public static final Codec<IslandShapeConfig.Entry> CODEC = RecordCodecBuilder.create(
+            instance -> instance.group(
+                Codec.DOUBLE.fieldOf("center_x").forGetter(e -> e.center_x),
+                Codec.DOUBLE.fieldOf("center_z").forGetter(e -> e.center_z),
+                Codec.DOUBLE.fieldOf("x_divisor").forGetter(e -> e.x_divisor),
+                Codec.DOUBLE.fieldOf("z_divisor").forGetter(e -> e.z_divisor),
+                Codec.FLOAT.fieldOf("rotation_degrees").forGetter(e -> e.rotation_degrees),
+                Codec.FLOAT.fieldOf("multiplier").orElse(1.0F).forGetter(e -> e.multiplier),
+                Codec.BOOL.fieldOf("overlap").forGetter(e -> e.overlap),
+                IslandShapeConfig.Entry.Noise.CODEC.fieldOf("noise").forGetter(e -> e.noise)
+            ).apply(instance, IslandShapeConfig.Entry::new)
+        );
+
+        public double center_x;
+        public double center_z;
+        public double x_divisor;
+        public double z_divisor;
+        public float rotation_degrees;
+        public float multiplier;
+        public boolean overlap;
+        public IslandShapeConfig.Entry.Noise noise;
+
+        public Entry(
+            double center_x,
+            double center_z,
+            double x_divisor,
+            double z_divisor,
+            float rotation_degrees,
+            float multiplier,
+            boolean overlap,
+            IslandShapeConfig.Entry.Noise noise
+        ) {
+            this.center_x = center_x;
+            this.center_z = center_z;
+            this.x_divisor = x_divisor;
+            this.z_divisor = z_divisor;
+            this.rotation_degrees = rotation_degrees;
+            this.multiplier = multiplier;
+            this.overlap = overlap;
+            this.noise = noise;
+        }
+
+        public static class Noise {
+            private static final Codec<IslandShapeConfig.Entry.Noise> CODEC = RecordCodecBuilder.create(
+                instance -> instance.group(
+                    Codec.STRING.fieldOf("seed").forGetter(d -> d.seed),
+                    Codec.INT.fieldOf("first_octave").forGetter(d -> d.first_octave),
+                    Codec.DOUBLE.listOf().fieldOf("amplitudes").forGetter(d -> d.amplitudes),
+                    Codec.DOUBLE.fieldOf("scale").forGetter(d -> d.scale)
+                ).apply(instance, IslandShapeConfig.Entry.Noise::new)
+            );
+
+            private static final RandomSource SEED_RANDOM = RandomSource.create();
+
+            public String seed;
+            public int first_octave;
+            public List<Double> amplitudes;
+            public double scale;
+
+            public Noise(String seed, int amplitudes_first_octave, List<Double> amplitudes, double scale) {
+                this.seed = seed;
+                this.first_octave = amplitudes_first_octave;
+                this.amplitudes = amplitudes;
+                this.scale = scale;
+            }
+
+            public long getSeed() {
+                return WorldOptions.parseSeed(this.seed).orElse(SEED_RANDOM.nextLong());
+            }
+        }
+    }
+}

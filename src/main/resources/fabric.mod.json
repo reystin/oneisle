@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "id": "omniisle",
+  "version": "${version}",
+  "name": "OmniIsle — All Biomes & Structures on One Island",
+  "description": "Build a configurable island with every Overworld biome, selectable structures, living rivers and a deep surrounding ocean.",
+  "authors": [
+    "Hack337"
+  ],
+  "contact": {
+    "homepage": "https://hack337.com",
+    "sources": "https://github.com/y9hack337/OmniIsle"
+  },
+  "license": "GPL-3.0-only",
+  "icon": "assets/omniisle/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "com.hack337.omniisle.OmniIsleMod"
+    ]
+  },
+  "mixins": [
+    {
+      "config": "omniisle.client.mixins.json",
+      "environment": "client"
+    }
+  ],
+  "depends": {
+    "fabricloader": ">=${loader_min}",
+    "fabric-api": ">=${fabric_api_min}",
+    "minecraft": "${minecraft_range}",
+    "java": ">=${java_version}"
+  }
+}
