@@ -267,9 +267,9 @@ public final class OmniIsleEditorScreen extends Screen {
         context.fill(showStructures ? middle : biomeListX + 1, biomeListY + 1,
             showStructures ? biomeListX + biomeListWidth - 1 : middle, biomeListY + 19, 0xFF435A47);
         context.centeredText(font, Component.translatable("omniisle.editor.biomes"),
-            biomeListX + biomeListWidth / 4, biomeListY + 6, showStructures ? 0xFFAAAAAA : 0xFFFFFF);
+            biomeListX + biomeListWidth / 4, biomeListY + 6, showStructures ? 0xFFAAAAAA : 0xFFFFFFFF);
         context.centeredText(font, Component.translatable("omniisle.editor.structures"),
-            biomeListX + biomeListWidth * 3 / 4, biomeListY + 6, showStructures ? 0xFFFFFF : 0xFFAAAAAA);
+            biomeListX + biomeListWidth * 3 / 4, biomeListY + 6, showStructures ? 0xFFFFFFFF : 0xFFAAAAAA);
         int rowHeight = 15;
         int firstY = biomeListY + 20;
         int visibleRows = Math.max(1, (biomeListHeight - 22) / rowHeight);
@@ -304,7 +304,7 @@ public final class OmniIsleEditorScreen extends Screen {
                 context.fill(boxX + 2, y + 5, boxX + 7, y + 10, 0xFF55FF55);
             }
             context.text(font, shortened(label, biomeListWidth - 40), biomeListX + 30, y + 3,
-                checked ? 0xFFFFFF : 0xFF777777, false);
+                checked ? 0xFFFFFFFF : 0xFF777777, false);
         }
         if (maxScroll > 0) {
             int trackY = biomeListY + 20;

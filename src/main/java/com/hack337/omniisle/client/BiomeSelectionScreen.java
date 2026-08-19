@@ -53,9 +53,9 @@ final class BiomeSelectionScreen extends Screen {
         context.fill(showStructures ? middle : listX + 1, listY + 1,
             showStructures ? listX + listWidth - 1 : middle, listY + 19, 0xFF435A47);
         context.centeredText(font, Component.translatable("omniisle.editor.biomes"),
-            listX + listWidth / 4, listY + 6, showStructures ? 0xFFAAAAAA : 0xFFFFFF);
+            listX + listWidth / 4, listY + 6, showStructures ? 0xFFAAAAAA : 0xFFFFFFFF);
         context.centeredText(font, Component.translatable("omniisle.editor.structures"),
-            listX + listWidth * 3 / 4, listY + 6, showStructures ? 0xFFFFFF : 0xFFAAAAAA);
+            listX + listWidth * 3 / 4, listY + 6, showStructures ? 0xFFFFFFFF : 0xFFAAAAAA);
 
         int rowHeight = 15;
         int firstY = listY + 20;
@@ -90,7 +90,7 @@ final class BiomeSelectionScreen extends Screen {
             context.outline(boxX, y + 3, 9, 9, 0xFFD0D0D0);
             if (checked) context.fill(boxX + 2, y + 5, boxX + 7, y + 10, 0xFF55FF55);
             context.text(font, shortened(label, listWidth - 40), listX + 30, y + 3,
-                checked ? 0xFFFFFF : 0xFF777777, false);
+                checked ? 0xFFFFFFFF : 0xFF777777, false);
         }
         if (maxScroll > 0) {
             int trackY = listY + 20;
