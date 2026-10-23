@@ -81,11 +81,6 @@ public final class WorldPackBuilder {
     }
 
     private static String packMetadata() {
-        if (TargetPlatform.PACK_FORMAT_MINOR >= 0) {
-            return "{\n  \"pack\": {\n    \"min_format\": [" + TargetPlatform.PACK_FORMAT + ", "
-                + TargetPlatform.PACK_FORMAT_MINOR + "],\n    \"max_format\": " + TargetPlatform.PACK_FORMAT
-                + ",\n    \"description\": \"OmniIsle generated island\"\n  }\n}\n";
-        }
         return "{\n  \"pack\": {\n    \"pack_format\": " + TargetPlatform.PACK_FORMAT
             + ",\n    \"description\": \"OmniIsle generated island\"\n  }\n}\n";
     }
@@ -105,12 +100,12 @@ public final class WorldPackBuilder {
         config.add("entries", new JsonArray());
         config.add("mask", mask);
         config.addProperty("biome_seed", state.biomeSeed());
-        JsonObject argument = new JsonObject();
-        argument.addProperty("type", "omniisle:island_continents");
-        argument.add("config", config);
+        JsonObject input = new JsonObject();
+        input.addProperty("type", "omniisle:island_continents");
+        input.add("config", config);
         JsonObject root = new JsonObject();
-        root.addProperty("type", "minecraft:flat_cache");
-        root.add("argument", argument);
+        root.addProperty("type", "minecraft:cache");
+        root.add("input", input);
         return GSON.toJson(root) + "\n";
     }
 
