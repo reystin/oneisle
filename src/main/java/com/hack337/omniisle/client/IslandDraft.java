@@ -327,7 +327,13 @@ public final class IslandDraft {
         rebuildShape();
     }
 
+    public void setShapeSeed(long seed) {
+        this.shapeSeed = seed;
+        rebuildShape();
+    }
+
     public void rerollBiomes() { biomeSeed = new Random().nextLong(); }
+    public void setBiomeSeed(long seed) { this.biomeSeed = seed; }
 
     public boolean hasLand() {
         for (boolean pixel : land) if (pixel) return true;
