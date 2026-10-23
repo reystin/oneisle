@@ -89,6 +89,8 @@ public final class WorldPackBuilder {
 
     private static String createDensityJson(IslandDraft state, double halfSpan) {
         JsonObject mask = new JsonObject();
+        mask.addProperty("version", 1);
+        mask.addProperty("resolution", IslandDraft.RESOLUTION);
         mask.addProperty("width", IslandDraft.RESOLUTION);
         mask.addProperty("height", IslandDraft.RESOLUTION);
         mask.addProperty("min_x", -halfSpan);
@@ -99,6 +101,7 @@ public final class WorldPackBuilder {
         mask.addProperty("ocean_transition_width", OCEAN_TRANSITION_WIDTH);
         mask.addProperty("data", state.packedMask());
         JsonObject config = new JsonObject();
+        config.addProperty("generation_version", state.generationVersionNumber());
         config.add("entries", new JsonArray());
         config.add("mask", mask);
         config.addProperty("biome_seed", state.biomeSeed());

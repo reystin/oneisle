@@ -75,5 +75,13 @@
   "omniisle.editor.error.one_biome": "Keep at least one biome in each environment",
   "omniisle.editor.saving": "Preparing island...",
   "omniisle.editor.error.empty": "Draw at least some land",
-  "omniisle.editor.error.datapack": "Could not attach the generated datapack"
+  "omniisle.editor.error.datapack": "Could not attach the generated datapack",
+  "omniisle.editor.advanced": "Advanced...",
+  "omniisle.editor.advanced.tooltip": "Configure advanced world generation settings",
+  "omniisle.editor.advanced.title": "Advanced Settings",
+  "omniisle.editor.generation": "Generation",
+  "omniisle.editor.generation.tooltip": "v2 uses improved coastlines and relief; v1 preserves legacy 0.5.0 generation",
+  "omniisle.generation.v2": "v2 (recommended)",
+  "omniisle.generation.v1": "v1 (legacy)",
+  "omniisle.warning.unsupported_version": "World uses generation_version %s which is newer than supported (%s). Falling back to v%s."
 }

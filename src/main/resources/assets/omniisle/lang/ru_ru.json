@@ -75,5 +75,13 @@
   "omniisle.editor.error.one_biome": "В каждой среде нужен хотя бы один биом",
   "omniisle.editor.saving": "Подготавливаю остров...",
   "omniisle.editor.error.empty": "Нарисуйте хотя бы немного суши",
-  "omniisle.editor.error.datapack": "Не удалось подключить сгенерированный датапак"
+  "omniisle.editor.error.datapack": "Не удалось подключить сгенерированный датапак",
+  "omniisle.editor.advanced": "Расширенные...",
+  "omniisle.editor.advanced.tooltip": "Настройка расширенных параметров генерации мира",
+  "omniisle.editor.advanced.title": "Расширенные настройки",
+  "omniisle.editor.generation": "Генерация",
+  "omniisle.editor.generation.tooltip": "v2 использует улучшенные берега и рельеф; v1 сохраняет генерацию 0.5.0",
+  "omniisle.generation.v2": "v2 (рекомендуется)",
+  "omniisle.generation.v1": "v1 (классическая)",
+  "omniisle.warning.unsupported_version": "В мире указана версия генерации %s, которая новее поддерживаемой (%s). Используется v%s."
 }

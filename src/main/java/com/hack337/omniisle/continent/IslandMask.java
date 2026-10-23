@@ -2,24 +2,31 @@ package com.hack337.omniisle.continent;
 
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import java.util.Base64;
 
 /** A compact bitmap that both the editor and the server interpret identically. */
 public final class IslandMask {
+    private static final Logger LOGGER = LoggerFactory.getLogger(IslandMask.class);
     private static final double INF = 1.0e20;
 
     public static final Codec<IslandMask> CODEC = RecordCodecBuilder.create(instance -> instance.group(
-        Codec.intRange(2, 4096).fieldOf("width").forGetter(m -> m.width),
-        Codec.intRange(2, 4096).fieldOf("height").forGetter(m -> m.height),
+        Codec.INT.optionalFieldOf("version", 1).forGetter(m -> m.version),
+        Codec.INT.optionalFieldOf("resolution", 192).forGetter(m -> m.resolution),
+        Codec.intRange(2, 4096).optionalFieldOf("width", 192).forGetter(m -> m.width),
+        Codec.intRange(2, 4096).optionalFieldOf("height", 192).forGetter(m -> m.height),
         Codec.DOUBLE.fieldOf("min_x").forGetter(m -> m.minX),
         Codec.DOUBLE.fieldOf("max_x").forGetter(m -> m.maxX),
         Codec.DOUBLE.fieldOf("min_z").forGetter(m -> m.minZ),
         Codec.DOUBLE.fieldOf("max_z").forGetter(m -> m.maxZ),
         Codec.DOUBLE.optionalFieldOf("coast_width", 192.0).forGetter(m -> m.coastWidth),
         Codec.DOUBLE.optionalFieldOf("ocean_transition_width", 400.0).forGetter(m -> m.oceanTransitionWidth),
-        Codec.STRING.fieldOf("data").forGetter(m -> m.data)
+        Codec.STRING.optionalFieldOf("data", "").forGetter(m -> m.data)
     ).apply(instance, IslandMask::new));
 
+    public final int version;
+    public final int resolution;
     public final int width;
     public final int height;
     public final double minX;
@@ -35,37 +42,78 @@ public final class IslandMask {
 
     public IslandMask(int width, int height, double minX, double maxX, double minZ, double maxZ,
                       double coastWidth, double oceanTransitionWidth, String data) {
-        if (!(maxX > minX) || !(maxZ > minZ) || !(coastWidth > 0.0) || !(oceanTransitionWidth > 0.0)) {
-            throw new IllegalArgumentException("Invalid raster mask bounds, coast_width, or ocean_transition_width");
-        }
-        this.width = width;
-        this.height = height;
-        this.minX = minX;
-        this.maxX = maxX;
-        this.minZ = minZ;
-        this.maxZ = maxZ;
-        this.coastWidth = coastWidth;
-        this.oceanTransitionWidth = oceanTransitionWidth;
-        this.data = data;
+        this(1, width, width, height, minX, maxX, minZ, maxZ, coastWidth, oceanTransitionWidth, data);
+    }
 
-        byte[] packed = Base64.getDecoder().decode(data);
-        int pixelCount = Math.multiplyExact(width, height);
-        if (packed.length != (pixelCount + 7) / 8) {
-            throw new IllegalArgumentException("Raster mask byte count does not match width and height");
+    public IslandMask(int version, int resolution, int width, int height, double minX, double maxX,
+                      double minZ, double maxZ, double coastWidth, double oceanTransitionWidth, String data) {
+        this.version = version;
+        this.resolution = resolution > 0 ? resolution : width;
+        this.width = width > 0 ? width : 192;
+        this.height = height > 0 ? height : 192;
+        this.minX = minX;
+        this.maxX = maxX > minX ? maxX : minX + 4000.0;
+        this.minZ = minZ;
+        this.maxZ = maxZ > minZ ? maxZ : minZ + 4000.0;
+        this.coastWidth = coastWidth > 0.0 ? coastWidth : 192.0;
+        this.oceanTransitionWidth = oceanTransitionWidth > 0.0 ? oceanTransitionWidth : 400.0;
+        this.data = data != null ? data : "";
+
+        int pixelCount = Math.multiplyExact(this.width, this.height);
+        int expectedBytes = (pixelCount + 7) / 8;
+        boolean[] parsedLand = null;
+
+        if (!this.data.isEmpty()) {
+            try {
+                byte[] packed = Base64.getDecoder().decode(this.data);
+                if (packed.length == expectedBytes) {
+                    parsedLand = new boolean[pixelCount];
+                    int landCount = 0;
+                    for (int i = 0; i < pixelCount; i++) {
+                        parsedLand[i] = (packed[i >>> 3] & (1 << (i & 7))) != 0;
+                        if (parsedLand[i]) landCount++;
+                    }
+                    if (landCount == 0) {
+                        LOGGER.warn("OmniIsle: Raster mask contains no land pixels. Falling back to default circular island (I5).");
+                        parsedLand = null;
+                    }
+                } else {
+                    LOGGER.warn("OmniIsle: Mask byte count mismatch (got {}, expected {}). Falling back to default circular island (I5).",
+                        packed.length, expectedBytes);
+                }
+            } catch (Exception e) {
+                LOGGER.warn("OmniIsle: Corrupt mask Base64 data: {}. Falling back to default circular island (I5).", e.getMessage());
+            }
         }
-        this.land = new boolean[pixelCount];
-        int landCount = 0;
-        for (int i = 0; i < pixelCount; i++) {
-            this.land[i] = (packed[i >>> 3] & (1 << (i & 7))) != 0;
-            if (this.land[i]) landCount++;
+
+        if (parsedLand == null) {
+            // I5 graceful fallback: circular island filling ~40% radius
+            parsedLand = new boolean[pixelCount];
+            int cx = this.width / 2;
+            int cz = this.height / 2;
+            double r = Math.min(this.width, this.height) * 0.38;
+            double r2 = r * r;
+            for (int z = 0; z < this.height; z++) {
+                for (int x = 0; x < this.width; x++) {
+                    double dx = x - cx;
+                    double dz = z - cz;
+                    if (dx * dx + dz * dz <= r2) {
+                        parsedLand[z * this.width + x] = true;
+                    }
+                }
+            }
         }
-        if (landCount == 0) {
-            throw new IllegalArgumentException("Raster mask contains no land pixels");
-        }
+
+        this.land = parsedLand;
         this.signedDistance = buildSignedDistance();
     }
 
-    public double sampleTerrainValue(double worldX, double worldZ) {
+    public boolean isLand(int x, int z) {
+        if (x < 0 || x >= width || z < 0 || z >= height) return false;
+        return land[z * width + x];
+    }
+
+    public double sampleSignedDistance(double worldX, double worldZ) {
         double sampledWorldX = Math.max(minX, Math.min(maxX, worldX));
         double sampledWorldZ = Math.max(minZ, Math.min(maxZ, worldZ));
         double px = (sampledWorldX - minX) / (maxX - minX) * width - 0.5;
@@ -90,6 +138,11 @@ public final class IslandMask {
             worldDistance = -Math.sqrt(existingOceanDistance * existingOceanDistance
                 + outsideX * outsideX + outsideZ * outsideZ);
         }
+        return worldDistance;
+    }
+
+    public double sampleTerrainValue(double worldX, double worldZ) {
+        double worldDistance = sampleSignedDistance(worldX, worldZ);
         double continentalness = worldDistance >= 0.0
             ? -0.08 + worldDistance * 0.70 / coastWidth
             : -0.08 + worldDistance * 0.92 / oceanTransitionWidth;

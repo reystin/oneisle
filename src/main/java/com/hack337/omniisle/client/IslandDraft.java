@@ -35,6 +35,23 @@ public final class IslandDraft {
         BiomePreview.Type.DRIPSTONE_CAVES, BiomePreview.Type.DEEP_DARK,
         BiomePreview.Type.SULFUR_CAVES);
 
+    public enum GenerationVersion {
+        V2("omniisle.generation.v2", 2),
+        V1("omniisle.generation.v1", 1);
+
+        public final String translationKey;
+        public final int version;
+
+        GenerationVersion(String translationKey, int version) {
+            this.translationKey = translationKey;
+            this.version = version;
+        }
+
+        public static GenerationVersion fromInt(int v) {
+            return v <= 1 ? V1 : V2;
+        }
+    }
+
     public enum Preset {
         NATURAL("omniisle.preset.natural"),
         ROUND("omniisle.preset.round"),
@@ -99,6 +116,7 @@ public final class IslandDraft {
     private Preset preset;
     private Relief relief = Relief.BALANCED;
     private BiomeTheme theme = BiomeTheme.STANDARD;
+    private GenerationVersion generationVersion = GenerationVersion.V2;
     private EnumSet<BiomePreview.Type> enabledBiomes;
     private EnumSet<StructureOption> enabledStructures;
 
@@ -146,6 +164,7 @@ public final class IslandDraft {
             EnumSet.copyOf(enabledBiomes), EnumSet.copyOf(enabledStructures));
         draft.relief = this.relief;
         draft.theme = this.theme;
+        draft.generationVersion = this.generationVersion;
         return draft;
     }
 
@@ -474,6 +493,9 @@ public final class IslandDraft {
     public Relief relief() { return relief; }
     public void setRelief(Relief relief) { this.relief = relief; }
     public BiomeTheme theme() { return theme; }
+    public GenerationVersion generationVersion() { return generationVersion; }
+    public void setGenerationVersion(GenerationVersion generationVersion) { this.generationVersion = generationVersion; }
+    public int generationVersionNumber() { return generationVersion.version; }
 
     private static double fbm(double x, double z, long seed) {
         double total = 0.0;

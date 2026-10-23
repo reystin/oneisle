@@ -11,8 +11,8 @@ import net.minecraft.world.level.levelgen.densityfunction.DensitySampler;
 import net.minecraft.world.level.levelgen.densityfunction.DensityVolume;
 import net.minecraft.world.level.levelgen.densityfunction.DfRewriteRule;
 import net.minecraft.world.level.levelgen.densityfunction.SamplerContext;
-import com.hack337.omniisle.continent.LandmassSampler;
 import com.hack337.omniisle.continent.IslandShapeConfig;
+import com.hack337.omniisle.continent.IslandTerrain;
 import com.hack337.omniisle.OmniIsleIds;
 
 public class IslandDensityFunction implements DensityFunction {
@@ -21,22 +21,38 @@ public class IslandDensityFunction implements DensityFunction {
             IslandShapeConfig.CODEC.fieldOf("config").forGetter(c -> c.config)
         ).apply(instance, IslandDensityFunction::new)
     );
-    
+
+    private static volatile IslandDensityFunction activeInstance;
+
     private final IslandShapeConfig config;
-    private final LandmassSampler landmass;
+    private final IslandTerrain terrain;
 
     public IslandDensityFunction(IslandShapeConfig config) {
         this.config = config;
-        this.landmass = new LandmassSampler(config);
+        this.terrain = IslandTerrain.create(config);
+        activeInstance = this;
+    }
+
+    public static IslandDensityFunction getActive() {
+        return activeInstance;
+    }
+
+    public static void setActive(IslandDensityFunction instance) {
+        activeInstance = instance;
     }
 
     public IslandShapeConfig shapeConfig() {
         return this.config;
     }
 
+    public IslandTerrain terrain() {
+        return this.terrain;
+    }
+
     @Override
     public DensitySampler compileSampler(CompileContext context) {
-        return new Sampler(this.landmass);
+        activeInstance = this;
+        return new Sampler(this.terrain);
     }
 
     @Override
@@ -64,7 +80,7 @@ public class IslandDensityFunction implements DensityFunction {
         Registry.register(BuiltInRegistries.DENSITY_FUNCTION_TYPE, OmniIsleIds.id("island_continents"), (MapCodec<? extends DensityFunction>) (MapCodec<?>) CODEC);
     }
 
-    private record Sampler(LandmassSampler landmass) implements DensitySampler {
+    private record Sampler(IslandTerrain terrain) implements DensitySampler {
         @Override
         public void sampleVolume(SamplerContext context, DensityBuffer buffer, DensityVolume volume) {
             for (int zIdx = 0; zIdx < volume.sizeZ(); zIdx++) {
@@ -80,7 +96,7 @@ public class IslandDensityFunction implements DensityFunction {
 
         @Override
         public float sampleValue(SamplerContext context, int x, int y, int z) {
-            return (float) this.landmass.sample(x, z);
+            return (float) this.terrain.continentalness(x, z);
         }
     }
 }

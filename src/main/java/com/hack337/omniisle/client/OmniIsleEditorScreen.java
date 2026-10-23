@@ -40,7 +40,7 @@ public final class OmniIsleEditorScreen extends Screen {
     private int controlsX;
     private int controlsY;
     private int controlsWidth = 230;
-    private int controlsHeight = 168;
+    private int controlsHeight = 192;
     private int biomeListX;
     private int biomeListY;
     private int biomeListWidth = 186;
@@ -151,6 +151,11 @@ public final class OmniIsleEditorScreen extends Screen {
             state.clearLand();
             invalidatePreview();
         }).bounds(controlsX + 156, y, 74, 20).tooltip(Tooltip.create(Component.translatable("omniisle.editor.clear.tooltip"))).build());
+        y += 24;
+
+        addRenderableWidget(Button.builder(Component.translatable("omniisle.editor.advanced"), button -> {
+            ClientScreenNavigator.open(minecraft, new AdvancedSettingsScreen(this, state));
+        }).bounds(controlsX, y, controlsWidth, 20).tooltip(Tooltip.create(Component.translatable("omniisle.editor.advanced.tooltip"))).build());
 
         int bottomY = Math.min(height - 29, Math.max(previewY + previewSize, controlsY + controlsHeight) + 14);
         doneButton = addRenderableWidget(Button.builder(Component.translatable("gui.done"), button -> commitDesign())

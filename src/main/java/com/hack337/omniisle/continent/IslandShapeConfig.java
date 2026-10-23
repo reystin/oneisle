@@ -2,28 +2,53 @@ package com.hack337.omniisle.continent;
 
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import java.util.ArrayList;
 import java.util.List;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.levelgen.WorldOptions;
 
 public class IslandShapeConfig {
+    private static final Logger LOGGER = LoggerFactory.getLogger(IslandShapeConfig.class);
+
+    public static final int CURRENT_GENERATION_VERSION = 2;
+    public static final int LEGACY_GENERATION_VERSION = 1;
+    public static final int MAX_SUPPORTED_GENERATION_VERSION = 2;
+
+    public static volatile boolean unknownGenerationVersionDetected = false;
+    public static volatile int lastUnknownGenerationVersion = 0;
+
     public static final Codec<IslandShapeConfig> CODEC = RecordCodecBuilder.create(
         instance -> instance.group(
+            Codec.INT.optionalFieldOf("generation_version", 1).forGetter(d -> d.generationVersion),
             IslandShapeConfig.Entry.CODEC.listOf().fieldOf("entries").orElseGet(ArrayList::new).forGetter(d -> d.entries),
             IslandMask.CODEC.optionalFieldOf("mask").forGetter(d -> java.util.Optional.ofNullable(d.mask)),
             Codec.LONG.optionalFieldOf("biome_seed", 0L).forGetter(d -> d.biomeSeed)
         ).apply(instance, IslandShapeConfig::new)
     );
 
+    public int generationVersion;
     public ArrayList<IslandShapeConfig.Entry> entries;
     public IslandMask mask;
     public long biomeSeed;
 
-    public IslandShapeConfig(List<IslandShapeConfig.Entry> entries, java.util.Optional<IslandMask> mask, long biomeSeed) {
+    public IslandShapeConfig(int generationVersion, List<IslandShapeConfig.Entry> entries, java.util.Optional<IslandMask> mask, long biomeSeed) {
+        if (generationVersion > MAX_SUPPORTED_GENERATION_VERSION) {
+            LOGGER.error("OmniIsle: Unknown generation_version {}, capping to {}", generationVersion, MAX_SUPPORTED_GENERATION_VERSION);
+            this.generationVersion = MAX_SUPPORTED_GENERATION_VERSION;
+            unknownGenerationVersionDetected = true;
+            lastUnknownGenerationVersion = generationVersion;
+        } else {
+            this.generationVersion = Math.max(1, generationVersion);
+        }
         this.entries = new ArrayList<>(entries);
         this.mask = mask.orElse(null);
         this.biomeSeed = biomeSeed;
+    }
+
+    public IslandShapeConfig(List<IslandShapeConfig.Entry> entries, java.util.Optional<IslandMask> mask, long biomeSeed) {
+        this(1, entries, mask, biomeSeed);
     }
 
     public List<ShapeLayerSettings> createSettings() {
@@ -98,7 +123,12 @@ public class IslandShapeConfig {
             }
 
             public long getSeed() {
-                return WorldOptions.parseSeed(this.seed).orElse(SEED_RANDOM.nextLong());
+                try {
+                    return Long.parseLong(this.seed);
+                } catch (NumberFormatException ignored) {
+                    SEED_RANDOM.setSeed(this.seed.hashCode());
+                    return SEED_RANDOM.nextLong();
+                }
             }
         }
     }

@@ -19,12 +19,12 @@
 - [x] **0.4** Implement `GoldenV1Test` passing against unmodified code
 
 ### Phase 1 — Versioning & Compatibility
-- [ ] **1.1** `generation_version` in `continents.json` (v1 legacy vs v2 modern)
-- [ ] **1.2** `resolution` and `version` fields in `IslandMask.CODEC` with optional fallback
-- [ ] **1.3** `IslandTerrain` interface in side-neutral package (`com.hack337.omniisle.continent`)
-- [ ] **1.4** Frozen `LegacyTerrainV1` preserving 0.5.0 math bit-for-bit
-- [ ] **1.5** Editor advanced toggle: Generation v2 / v1
-- [ ] **1.6** `/omniisle info` command
+- [x] **1.1** `generation_version` in `continents.json` (v1 legacy vs v2 modern)
+- [x] **1.2** `resolution` and `version` fields in `IslandMask.CODEC` with optional fallback
+- [x] **1.3** `IslandTerrain` interface in side-neutral package (`com.hack337.omniisle.continent`)
+- [x] **1.4** Frozen `LegacyTerrainV1` preserving 0.5.0 math bit-for-bit
+- [x] **1.5** Editor advanced toggle: Generation v2 / v1
+- [x] **1.6** `/omniisle info` command
 
 ### Phase 2 — SDF Quality (Coast & Slopes) [v2]
 - [ ] **2.1** Sub-pixel distance convention (`dIn - 0.5`, `-(dOut - 0.5)`)
