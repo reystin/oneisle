@@ -40,9 +40,9 @@
 - [x] **3.4** Satellite islets generator with `islet_density` slider
 
 ### Phase 4 — Inland Relief (Stop the Cone) [v2]
-- [ ] **4.1** Procedural ridged mountain spines with tanh soft saturation
-- [ ] **4.2** 4-tier height layer with blurred sampling and Base64 packing
-- [ ] **4.3** Hillshade lighting in preview (NW light 315°, 45° altitude)
+- [x] **4.1** Procedural ridged mountain spines with tanh soft saturation
+- [x] **4.2** 4-tier height layer with blurred sampling and Base64 packing
+- [x] **4.3** Hillshade lighting in preview (NW light 315°, 45° altitude)
 
 ### Phase 5 — Structures & Spawn
 - [ ] **5.1** Automated structure placement verification harness

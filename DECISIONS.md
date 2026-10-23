@@ -27,3 +27,20 @@ This log records every design choice, trade-off, and architectural resolution ma
   2. Implement an automated golden regression oracle (`GoldenV1Test`) with frozen inputs and outputs.
 * **Choice:** Option 2.
 * **Reason:** Invariant I1 requires that old worlds keep generating identical terrain. Storing binary golden samples for all 5 presets × 3 reliefs × 2 sizes before making any algorithmic changes provides an unbreakable verification safety net.
+
+### Decision 004: 4-Tier Height Layer Storage Representation
+* **Question:** How should the 4-tier height layer be stored and serialized?
+* **Options:**
+  1. A separate `.bin` file in the datapack.
+  2. 2-bit packed Base64 string inside `continents.json` as `height_layer: { "bits_per_pixel": 2, "data": "..." }`.
+* **Choice:** Option 2.
+* **Reason:** Minecraft density functions do not support loading arbitrary raw binary files from datapacks without native code. A 2-bit packed Base64 representation takes only 9 216 bytes for a 192×192 grid, integrates naturally with `IslandShapeConfig.CODEC`, and preserves side-neutral portability.
+
+### Decision 005: Compressed Coastal Rise for Mountain Ridge Headroom
+* **Question:** How to prevent the continentalness field from flattening into a single cone or saturated plateau?
+* **Options:**
+  1. Hard clamp base at 0.70 and add ridges on top (creates plateau at 0.70).
+  2. Keep unbounded linear base rise $d \times 0.70 / coastWidth$ and apply tanh saturation (saturates to 0.95 across entire island).
+  3. Compress coastal rise using `base = -0.08 + 0.48 * tanh(d * 1.25 / coastWidth)` so base levels off at ~0.40 inland.
+* **Choice:** Option 3.
+* **Reason:** Leaves sufficient dynamic range (0.40 to 0.95) for procedural ridged mountain spines and painted height tiers to form multiple distinct peaks, mountain ranges, and valleys without saturating.

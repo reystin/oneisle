@@ -24,6 +24,24 @@ public interface IslandTerrain {
     double signedDistance(double x, double z);
 
     /**
+     * Estimated surface elevation in Minecraft Y coordinates corresponding to the given
+     * continentalness value. Calibrated against vanilla 1.18+ / 26.3 overworld surface generation.
+     */
+    static double continentalnessToElevation(double c) {
+        if (c < -0.15) {
+            return Math.max(20.0, 62.0 + (c + 0.15) * 50.0);
+        } else if (c <= 0.0) {
+            return 62.0 + (c + 0.15) / 0.15 * 2.0;
+        } else if (c <= 0.45) {
+            double t = c / 0.45;
+            return 64.0 + t * 40.0;
+        } else {
+            double t = (c - 0.45) / 0.40;
+            return 104.0 + t * 140.0;
+        }
+    }
+
+    /**
      * Factory method creating the appropriate terrain sampler for the given config.
      * Picks LegacyTerrainV1 for generation_version <= 1, ModernTerrainV2 for >= 2.
      */

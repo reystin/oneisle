@@ -24,6 +24,14 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.server.packs.repository.PackRepository;
 
 public final class OmniIsleEditorScreen extends Screen {
+    public enum Layer {
+        LAND("omniisle.editor.layer.land"),
+        HEIGHT("omniisle.editor.layer.height");
+
+        public final String translationKey;
+        Layer(String key) { this.translationKey = key; }
+    }
+
     private enum Tool { LAND, ERASER, SMOOTH }
 
     private final CreateWorldScreen parent;
@@ -32,7 +40,13 @@ public final class OmniIsleEditorScreen extends Screen {
     private DynamicTexture previewTexture;
     private boolean previewDirty = true;
     private long lastPreviewUpload;
+    private Layer layer = Layer.LAND;
     private Tool tool = Tool.LAND;
+    private int activeTier = 2;
+    private boolean heightSmooth = false;
+    private boolean reliefShading = true;
+    private com.hack337.omniisle.continent.IslandTerrain currentTerrain;
+
     private int brushRadius = 7;
     private int previewX;
     private int previewY;
@@ -40,7 +54,7 @@ public final class OmniIsleEditorScreen extends Screen {
     private int controlsX;
     private int controlsY;
     private int controlsWidth = 230;
-    private int controlsHeight = 192;
+    private int controlsHeight = 216;
     private int biomeListX;
     private int biomeListY;
     private int biomeListWidth = 186;
@@ -56,6 +70,11 @@ public final class OmniIsleEditorScreen extends Screen {
     private Button landButton;
     private Button eraserButton;
     private Button smoothButton;
+    private Button tier0Button;
+    private Button tier1Button;
+    private Button tier2Button;
+    private Button tier3Button;
+    private Button heightSmoothButton;
     private Button newShapeButton;
     private Button newBiomesButton;
     private Button clearButton;
@@ -100,12 +119,42 @@ public final class OmniIsleEditorScreen extends Screen {
         addRenderableWidget(new IslandSizeSlider(controlsX, y, controlsWidth, 20));
         y += 24;
 
+        CycleButton<Layer> layerToggle = CycleButton
+            .<Layer>builder(value -> Component.translatable(value.translationKey), layer)
+            .withValues(List.of(Layer.values()))
+            .create(controlsX, y, 113, 20, Component.translatable("omniisle.editor.layer"), (button, value) -> {
+                layer = value;
+                updateToolButtons();
+            });
+        addRenderableWidget(layerToggle);
+
+        CycleButton<Boolean> shadingToggle = CycleButton
+            .onOffBuilder(reliefShading)
+            .create(controlsX + 117, y, 113, 20, Component.translatable("omniisle.editor.shading"), (button, value) -> {
+                reliefShading = value;
+                invalidatePreview();
+            });
+        addRenderableWidget(shadingToggle);
+        y += 24;
+
         landButton = addRenderableWidget(Button.builder(Component.translatable("omniisle.editor.land.short"), button -> selectTool(Tool.LAND))
             .bounds(controlsX, y, 74, 20).tooltip(Tooltip.create(Component.translatable("omniisle.editor.land.tooltip"))).build());
         eraserButton = addRenderableWidget(Button.builder(Component.translatable("omniisle.editor.eraser.short"), button -> selectTool(Tool.ERASER))
             .bounds(controlsX + 78, y, 74, 20).tooltip(Tooltip.create(Component.translatable("omniisle.editor.eraser.tooltip"))).build());
         smoothButton = addRenderableWidget(Button.builder(Component.translatable("omniisle.editor.smooth.short"), button -> selectTool(Tool.SMOOTH))
             .bounds(controlsX + 156, y, 74, 20).tooltip(Tooltip.create(Component.translatable("omniisle.editor.smooth.tooltip"))).build());
+
+        tier0Button = addRenderableWidget(Button.builder(Component.translatable("omniisle.editor.tier0"), button -> selectTier(0))
+            .bounds(controlsX, y, 43, 20).tooltip(Tooltip.create(Component.translatable("omniisle.editor.tier0.tooltip"))).build());
+        tier1Button = addRenderableWidget(Button.builder(Component.translatable("omniisle.editor.tier1"), button -> selectTier(1))
+            .bounds(controlsX + 46, y, 43, 20).tooltip(Tooltip.create(Component.translatable("omniisle.editor.tier1.tooltip"))).build());
+        tier2Button = addRenderableWidget(Button.builder(Component.translatable("omniisle.editor.tier2"), button -> selectTier(2))
+            .bounds(controlsX + 92, y, 43, 20).tooltip(Tooltip.create(Component.translatable("omniisle.editor.tier2.tooltip"))).build());
+        tier3Button = addRenderableWidget(Button.builder(Component.translatable("omniisle.editor.tier3"), button -> selectTier(3))
+            .bounds(controlsX + 138, y, 43, 20).tooltip(Tooltip.create(Component.translatable("omniisle.editor.tier3.tooltip"))).build());
+        heightSmoothButton = addRenderableWidget(Button.builder(Component.translatable("omniisle.editor.smooth.short"), button -> selectHeightSmooth())
+            .bounds(controlsX + 184, y, 46, 20).tooltip(Tooltip.create(Component.translatable("omniisle.editor.smooth.tooltip"))).build());
+
         updateToolButtons();
         y += 24;
 
@@ -148,7 +197,11 @@ public final class OmniIsleEditorScreen extends Screen {
             compactLayout ? "omniisle.editor.biomes.tooltip" : "omniisle.editor.new_biomes.tooltip"))).build());
 
         clearButton = addRenderableWidget(Button.builder(Component.translatable("omniisle.editor.clear"), button -> {
-            state.clearLand();
+            if (layer == Layer.LAND) {
+                state.clearLand();
+            } else {
+                state.clearHeight();
+            }
             invalidatePreview();
         }).bounds(controlsX + 156, y, 74, 20).tooltip(Tooltip.create(Component.translatable("omniisle.editor.clear.tooltip"))).build());
         y += 24;
@@ -195,14 +248,48 @@ public final class OmniIsleEditorScreen extends Screen {
         updateToolButtons();
     }
 
+    private void selectTier(int tier) {
+        activeTier = tier;
+        heightSmooth = false;
+        updateToolButtons();
+    }
+
+    private void selectHeightSmooth() {
+        heightSmooth = true;
+        updateToolButtons();
+    }
+
     private void updateToolButtons() {
-        if (landButton == null || eraserButton == null || smoothButton == null) return;
-        landButton.setMessage(Component.translatable("omniisle.editor.land.short")
-            .withStyle(tool == Tool.LAND ? ChatFormatting.GREEN : ChatFormatting.WHITE));
-        eraserButton.setMessage(Component.translatable("omniisle.editor.eraser.short")
-            .withStyle(tool == Tool.ERASER ? ChatFormatting.GREEN : ChatFormatting.WHITE));
-        smoothButton.setMessage(Component.translatable("omniisle.editor.smooth.short")
-            .withStyle(tool == Tool.SMOOTH ? ChatFormatting.GREEN : ChatFormatting.WHITE));
+        boolean isLand = layer == Layer.LAND;
+        if (landButton != null) landButton.visible = isLand;
+        if (eraserButton != null) eraserButton.visible = isLand;
+        if (smoothButton != null) smoothButton.visible = isLand;
+
+        if (tier0Button != null) tier0Button.visible = !isLand;
+        if (tier1Button != null) tier1Button.visible = !isLand;
+        if (tier2Button != null) tier2Button.visible = !isLand;
+        if (tier3Button != null) tier3Button.visible = !isLand;
+        if (heightSmoothButton != null) heightSmoothButton.visible = !isLand;
+
+        if (isLand) {
+            if (landButton != null) landButton.setMessage(Component.translatable("omniisle.editor.land.short")
+                .withStyle(tool == Tool.LAND ? ChatFormatting.GREEN : ChatFormatting.WHITE));
+            if (eraserButton != null) eraserButton.setMessage(Component.translatable("omniisle.editor.eraser.short")
+                .withStyle(tool == Tool.ERASER ? ChatFormatting.GREEN : ChatFormatting.WHITE));
+            if (smoothButton != null) smoothButton.setMessage(Component.translatable("omniisle.editor.smooth.short")
+                .withStyle(tool == Tool.SMOOTH ? ChatFormatting.GREEN : ChatFormatting.WHITE));
+        } else {
+            if (tier0Button != null) tier0Button.setMessage(Component.literal("T0")
+                .withStyle(!heightSmooth && activeTier == 0 ? ChatFormatting.GREEN : ChatFormatting.DARK_GREEN));
+            if (tier1Button != null) tier1Button.setMessage(Component.literal("T1")
+                .withStyle(!heightSmooth && activeTier == 1 ? ChatFormatting.GREEN : ChatFormatting.WHITE));
+            if (tier2Button != null) tier2Button.setMessage(Component.literal("T2")
+                .withStyle(!heightSmooth && activeTier == 2 ? ChatFormatting.GREEN : ChatFormatting.GOLD));
+            if (tier3Button != null) tier3Button.setMessage(Component.literal("T3")
+                .withStyle(!heightSmooth && activeTier == 3 ? ChatFormatting.GREEN : ChatFormatting.AQUA));
+            if (heightSmoothButton != null) heightSmoothButton.setMessage(Component.translatable("omniisle.editor.smooth.short")
+                .withStyle(heightSmooth ? ChatFormatting.GREEN : ChatFormatting.WHITE));
+        }
     }
 
     private void invalidatePreview() { previewDirty = true; }
@@ -212,33 +299,74 @@ public final class OmniIsleEditorScreen extends Screen {
         if (!previewDirty || now - lastPreviewUpload < 16_000_000L || previewTexture == null) return;
         NativeImage image = previewTexture.getPixels();
         int resolution = IslandDraft.RESOLUTION;
+
+        double halfSpan = state.worldSpan() / 2.0;
+        com.hack337.omniisle.continent.IslandShapeConfig cfg = new com.hack337.omniisle.continent.IslandShapeConfig(
+            state.generationVersionNumber(),
+            state.isletDensity(),
+            state.hasCustomHeight()
+                ? java.util.Optional.of(new com.hack337.omniisle.continent.IslandShapeConfig.HeightLayer(2, state.packedHeight()))
+                : java.util.Optional.empty(),
+            java.util.Collections.emptyList(),
+            java.util.Optional.of(new com.hack337.omniisle.continent.IslandMask(
+                resolution, resolution,
+                -halfSpan, halfSpan, -halfSpan, halfSpan,
+                state.relief().coastWidth, 400.0,
+                state.packedMask()
+            )),
+            state.biomeSeed()
+        );
+        this.currentTerrain = com.hack337.omniisle.continent.IslandTerrain.create(cfg);
+
+        float[] elevations = new float[resolution * resolution];
+        int[] baseColors = new int[resolution * resolution];
+
         for (int z = 0; z < resolution; z++) {
             for (int x = 0; x < resolution; x++) {
-                boolean land = state.isLand(x, z);
-                double continentalness;
-                if (land) {
-                    continentalness = hasOppositeNearby(x, z, true, 2) ? 0.0 : 0.30;
-                } else {
-                    continentalness = hasOppositeNearby(x, z, false, 7) ? -0.32 : -0.68;
+                double wx = state.worldX(x);
+                double wz = state.worldZ(z);
+                double c = currentTerrain.continentalness(wx, wz);
+                elevations[z * resolution + x] = (float) com.hack337.omniisle.continent.IslandTerrain.continentalnessToElevation(c);
+                BiomePreview.Type preferred = BiomePreview.surface(c, wx, wz, state.biomeSeed());
+                baseColors[z * resolution + x] = state.selectBiome(preferred, wx, wz).color;
+            }
+        }
+
+        double blockSize = state.worldSpan() / (double) resolution;
+
+        for (int z = 0; z < resolution; z++) {
+            for (int x = 0; x < resolution; x++) {
+                int color = baseColors[z * resolution + x];
+                if (reliefShading) {
+                    int xPrev = Math.max(0, x - 1);
+                    int xNext = Math.min(resolution - 1, x + 1);
+                    int zPrev = Math.max(0, z - 1);
+                    int zNext = Math.min(resolution - 1, z + 1);
+                    double dx = (elevations[z * resolution + xNext] - elevations[z * resolution + xPrev]) / ((xNext - xPrev) * blockSize);
+                    double dz = (elevations[zNext * resolution + x] - elevations[zPrev * resolution + x]) / ((zNext - zPrev) * blockSize);
+
+                    // Light vector from NW (azimuth 315, altitude 45): L = (-0.5, 0.7071, -0.5)
+                    // Normal N = (-dx, 1, -dz) / sqrt(dx^2 + dz^2 + 1)
+                    double norm = Math.sqrt(dx * dx + dz * dz + 1.0);
+                    double dot = (0.5 * dx + 0.70710678 + 0.5 * dz) / norm;
+                    double diff = (dot - 0.70710678) / 0.70710678;
+
+                    // 35% blend over biome colors
+                    double factor = 1.0 + 0.35 * Math.max(-1.0, Math.min(1.0, diff * 1.8));
+
+                    int a = (color >>> 24) & 0xFF;
+                    int r = Math.max(0, Math.min(255, (int) Math.round(((color >>> 16) & 0xFF) * factor)));
+                    int g = Math.max(0, Math.min(255, (int) Math.round(((color >>> 8) & 0xFF) * factor)));
+                    int b = Math.max(0, Math.min(255, (int) Math.round((color & 0xFF) * factor)));
+                    color = (a << 24) | (r << 16) | (g << 8) | b;
                 }
-                BiomePreview.Type preferred = BiomePreview.surface(
-                    continentalness, state.worldX(x), state.worldZ(z), state.biomeSeed());
-                int color = state.selectBiome(preferred, state.worldX(x), state.worldZ(z)).color;
                 image.setPixel(x, z, color);
             }
         }
+
         previewTexture.upload();
         previewDirty = false;
         lastPreviewUpload = now;
-    }
-
-    private boolean hasOppositeNearby(int centerX, int centerZ, boolean currentLand, int radius) {
-        for (int z = Math.max(0, centerZ - radius); z <= Math.min(IslandDraft.RESOLUTION - 1, centerZ + radius); z += 2) {
-            for (int x = Math.max(0, centerX - radius); x <= Math.min(IslandDraft.RESOLUTION - 1, centerX + radius); x += 2) {
-                if (state.isLand(x, z) != currentLand) return true;
-            }
-        }
-        return false;
     }
 
     @Override
@@ -296,11 +424,22 @@ public final class OmniIsleEditorScreen extends Screen {
 
     private void drawBrushCursor(GuiGraphicsExtractor context, int mouseX, int mouseY) {
         int radius = Math.max(2, (int)Math.round(brushRadius * previewSize / (double)IslandDraft.RESOLUTION));
-        int color = switch (tool) {
-            case LAND -> 0xD0FFFFFF;
-            case ERASER -> 0xD0FF6666;
-            case SMOOTH -> 0xD066CCFF;
-        };
+        int color;
+        if (layer == Layer.LAND) {
+            color = switch (tool) {
+                case LAND -> 0xD0FFFFFF;
+                case ERASER -> 0xD0FF6666;
+                case SMOOTH -> 0xD066CCFF;
+            };
+        } else {
+            color = heightSmooth ? 0xD066CCFF : switch (activeTier) {
+                case 0 -> 0xD07FA974;
+                case 1 -> 0xD05B8C5A;
+                case 2 -> 0xD0D4A359;
+                case 3 -> 0xD0FFFFFF;
+                default -> 0xD0FFFFFF;
+            };
+        }
         context.horizontalLine(mouseX - radius, mouseX + radius, mouseY - radius, color);
         context.horizontalLine(mouseX - radius, mouseX + radius, mouseY + radius, color);
         context.verticalLine(mouseX - radius, mouseY - radius, mouseY + radius, color);
@@ -315,19 +454,28 @@ public final class OmniIsleEditorScreen extends Screen {
         int worldX = (int)Math.round(state.worldX(px));
         int worldZ = (int)Math.round(state.worldZ(pz));
         boolean isLand = state.isLand(px, pz);
-        double continentalness = isLand
-            ? (hasOppositeNearby(px, pz, true, 2) ? 0.0 : 0.30)
-            : (hasOppositeNearby(px, pz, false, 7) ? -0.32 : -0.68);
+        double continentalness = currentTerrain != null
+            ? currentTerrain.continentalness(worldX, worldZ)
+            : (isLand ? 0.30 : -0.50);
+        double dist = currentTerrain != null
+            ? currentTerrain.signedDistance(worldX, worldZ)
+            : (isLand ? 100.0 : -100.0);
+        int elev = (int) Math.round(com.hack337.omniisle.continent.IslandTerrain.continentalnessToElevation(continentalness));
+        byte tier = state.tier(px, pz);
+
         BiomePreview.Type preferred = BiomePreview.surface(
             continentalness, worldX, worldZ, state.biomeSeed());
         BiomePreview.Type biome = state.selectBiome(preferred, worldX, worldZ);
 
         Component biomeName = Component.translatable(biome.translationKey());
-        Component coords = Component.literal("X: " + worldX + "  Z: " + worldZ);
-        Component typeTag = Component.translatable(isLand ? "omniisle.editor.inspector.land" : "omniisle.editor.inspector.water");
+        Component coords = Component.literal("X: " + worldX + "  Z: " + worldZ + "  ~" + elev + "Y");
+        String coastStr = (dist >= 0 ? "+" : "") + (int)Math.round(dist) + "m";
+        Component statusTag = Component.literal(isLand ? "Land (" + coastStr + ")" : "Water (" + coastStr + ")");
+        Component tierTag = Component.translatable("omniisle.editor.tier_name." + (tier & 3));
 
-        int tipW = Math.max(font.width(biomeName) + 18, Math.max(font.width(coords), font.width(typeTag)) + 12);
-        int tipH = 34;
+        int tipW = Math.max(font.width(biomeName) + 18,
+            Math.max(font.width(coords), Math.max(font.width(statusTag), font.width(tierTag))) + 12);
+        int tipH = 44;
         int tipX = mouseX + 12;
         int tipY = mouseY + 12;
         if (tipX + tipW > width - 4) tipX = mouseX - tipW - 12;
@@ -338,7 +486,8 @@ public final class OmniIsleEditorScreen extends Screen {
         drawColorCircle(context, tipX + 7, tipY + 7, biome.color);
         context.text(font, biomeName, tipX + 16, tipY + 4, 0xFFFFFFFF, false);
         context.text(font, coords, tipX + 6, tipY + 14, 0xFFAAAAAA, false);
-        context.text(font, typeTag, tipX + 6, tipY + 24, isLand ? 0xFF88FF88 : 0xFF88CCFF, false);
+        context.text(font, statusTag, tipX + 6, tipY + 24, isLand ? 0xFF88FF88 : 0xFF88CCFF, false);
+        context.text(font, tierTag, tipX + 6, tipY + 34, 0xFFE0D080, false);
     }
 
     private List<BiomePreview.Type> getFilteredBiomes() {
@@ -614,22 +763,31 @@ public final class OmniIsleEditorScreen extends Screen {
             for (int i = 1; i <= steps; i++) {
                 int curX = lastPaintX + dx * i / steps;
                 int curZ = lastPaintZ + dz * i / steps;
-                if (selectedTool == Tool.SMOOTH) {
-                    state.smooth(curX, curZ, brushRadius);
-                } else {
-                    state.paint(curX, curZ, brushRadius, selectedTool == Tool.LAND);
-                }
+                applyAt(curX, curZ, selectedTool);
             }
         } else {
-            if (selectedTool == Tool.SMOOTH) {
-                state.smooth(px, pz, brushRadius);
-            } else {
-                state.paint(px, pz, brushRadius, selectedTool == Tool.LAND);
-            }
+            applyAt(px, pz, selectedTool);
         }
         lastPaintX = px;
         lastPaintZ = pz;
         invalidatePreview();
+    }
+
+    private void applyAt(int curX, int curZ, Tool selectedTool) {
+        if (layer == Layer.LAND) {
+            if (selectedTool == Tool.SMOOTH) {
+                state.smooth(curX, curZ, brushRadius);
+            } else {
+                state.paint(curX, curZ, brushRadius, selectedTool == Tool.LAND);
+            }
+        } else {
+            if (heightSmooth) {
+                state.smoothHeight(curX, curZ, brushRadius);
+            } else {
+                int tierToPaint = (selectedTool == Tool.ERASER) ? 1 : activeTier;
+                state.paintHeight(curX, curZ, brushRadius, tierToPaint);
+            }
+        }
     }
 
     private boolean isInsidePreview(double x, double y) {

@@ -103,6 +103,12 @@ public final class WorldPackBuilder {
         JsonObject config = new JsonObject();
         config.addProperty("generation_version", state.generationVersionNumber());
         config.addProperty("islet_density", state.isletDensity());
+        if (state.hasCustomHeight()) {
+            JsonObject heightObj = new JsonObject();
+            heightObj.addProperty("bits_per_pixel", 2);
+            heightObj.addProperty("data", state.packedHeight());
+            config.add("height_layer", heightObj);
+        }
         config.add("entries", new JsonArray());
         config.add("mask", mask);
         config.addProperty("biome_seed", state.biomeSeed());

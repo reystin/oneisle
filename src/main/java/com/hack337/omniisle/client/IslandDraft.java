@@ -109,7 +109,10 @@ public final class IslandDraft {
         .filter(option -> TargetPlatform.HAS_ABANDONED_CAMP || option != StructureOption.ABANDONED_CAMP)
         .toList();
 
+    public record DraftSnapshot(boolean[] land, byte[] height) {}
+
     private boolean[] land;
+    private byte[] height;
     private int islandSize;
     private long shapeSeed;
     private long biomeSeed;
@@ -121,26 +124,33 @@ public final class IslandDraft {
     private EnumSet<BiomePreview.Type> enabledBiomes;
     private EnumSet<StructureOption> enabledStructures;
 
-    private final ArrayDeque<boolean[]> undoStack = new ArrayDeque<>();
-    private final ArrayDeque<boolean[]> redoStack = new ArrayDeque<>();
+    private final ArrayDeque<DraftSnapshot> undoStack = new ArrayDeque<>();
+    private final ArrayDeque<DraftSnapshot> redoStack = new ArrayDeque<>();
     private static final int MAX_UNDO_STEPS = 32;
 
     public IslandDraft() {
-        this(new boolean[RESOLUTION * RESOLUTION], DEFAULT_ISLAND_SIZE,
+        this(new boolean[RESOLUTION * RESOLUTION], defaultHeight(), DEFAULT_ISLAND_SIZE,
             new Random().nextLong(), new Random().nextLong(), Preset.NATURAL, defaultBiomes(),
             defaultStructures());
         rebuildShape();
     }
 
-    private IslandDraft(boolean[] land, int islandSize, long shapeSeed, long biomeSeed, Preset preset,
-                              EnumSet<BiomePreview.Type> enabledBiomes) {
-        this(land, islandSize, shapeSeed, biomeSeed, preset, enabledBiomes, defaultStructures());
+    private static byte[] defaultHeight() {
+        byte[] h = new byte[RESOLUTION * RESOLUTION];
+        Arrays.fill(h, (byte) 1);
+        return h;
     }
 
-    private IslandDraft(boolean[] land, int islandSize, long shapeSeed, long biomeSeed, Preset preset,
+    private IslandDraft(boolean[] land, byte[] height, int islandSize, long shapeSeed, long biomeSeed, Preset preset,
+                              EnumSet<BiomePreview.Type> enabledBiomes) {
+        this(land, height, islandSize, shapeSeed, biomeSeed, preset, enabledBiomes, defaultStructures());
+    }
+
+    private IslandDraft(boolean[] land, byte[] height, int islandSize, long shapeSeed, long biomeSeed, Preset preset,
                               EnumSet<BiomePreview.Type> enabledBiomes,
                               EnumSet<StructureOption> enabledStructures) {
         this.land = land;
+        this.height = height != null ? height : defaultHeight();
         this.islandSize = islandSize;
         this.shapeSeed = shapeSeed;
         this.biomeSeed = biomeSeed;
@@ -161,7 +171,7 @@ public final class IslandDraft {
     }
 
     public IslandDraft copy() {
-        IslandDraft draft = new IslandDraft(Arrays.copyOf(land, land.length), islandSize, shapeSeed, biomeSeed, preset,
+        IslandDraft draft = new IslandDraft(Arrays.copyOf(land, land.length), Arrays.copyOf(height, height.length), islandSize, shapeSeed, biomeSeed, preset,
             EnumSet.copyOf(enabledBiomes), EnumSet.copyOf(enabledStructures));
         draft.relief = this.relief;
         draft.theme = this.theme;
@@ -174,11 +184,26 @@ public final class IslandDraft {
         return x >= 0 && z >= 0 && x < RESOLUTION && z < RESOLUTION && land[z * RESOLUTION + x];
     }
 
+    public byte tier(int x, int z) {
+        if (x < 0 || z < 0 || x >= RESOLUTION || z >= RESOLUTION) return 1;
+        return height[z * RESOLUTION + x];
+    }
+
+    public void setTier(int x, int z, int tier) {
+        if (x >= 0 && z >= 0 && x < RESOLUTION && z < RESOLUTION) {
+            height[z * RESOLUTION + x] = (byte) Math.max(0, Math.min(3, tier));
+        }
+    }
+
+    public byte[] heightLayer() {
+        return height;
+    }
+
     public void pushUndo() {
         if (undoStack.size() >= MAX_UNDO_STEPS) {
             undoStack.removeLast();
         }
-        undoStack.push(Arrays.copyOf(land, land.length));
+        undoStack.push(new DraftSnapshot(Arrays.copyOf(land, land.length), Arrays.copyOf(height, height.length)));
         redoStack.clear();
     }
 
@@ -187,21 +212,30 @@ public final class IslandDraft {
 
     public boolean undo() {
         if (undoStack.isEmpty()) return false;
-        redoStack.push(Arrays.copyOf(land, land.length));
-        land = undoStack.pop();
+        redoStack.push(new DraftSnapshot(Arrays.copyOf(land, land.length), Arrays.copyOf(height, height.length)));
+        DraftSnapshot snap = undoStack.pop();
+        land = snap.land;
+        height = snap.height;
         return true;
     }
 
     public boolean redo() {
         if (redoStack.isEmpty()) return false;
-        undoStack.push(Arrays.copyOf(land, land.length));
-        land = redoStack.pop();
+        undoStack.push(new DraftSnapshot(Arrays.copyOf(land, land.length), Arrays.copyOf(height, height.length)));
+        DraftSnapshot snap = redoStack.pop();
+        land = snap.land;
+        height = snap.height;
         return true;
     }
 
     public void clearLand() {
         pushUndo();
         Arrays.fill(land, false);
+    }
+
+    public void clearHeight() {
+        pushUndo();
+        Arrays.fill(height, (byte) 1);
     }
 
     public void paint(int centerX, int centerZ, int radius, boolean value) {
@@ -211,6 +245,39 @@ public final class IslandDraft {
                 int dx = x - centerX;
                 int dz = z - centerZ;
                 if (dx * dx + dz * dz <= r2) land[z * RESOLUTION + x] = value;
+            }
+        }
+    }
+
+    public void paintHeight(int centerX, int centerZ, int radius, int tier) {
+        int r2 = radius * radius;
+        byte bTier = (byte) Math.max(0, Math.min(3, tier));
+        for (int z = Math.max(0, centerZ - radius); z <= Math.min(RESOLUTION - 1, centerZ + radius); z++) {
+            for (int x = Math.max(0, centerX - radius); x <= Math.min(RESOLUTION - 1, centerX + radius); x++) {
+                int dx = x - centerX;
+                int dz = z - centerZ;
+                if (dx * dx + dz * dz <= r2) height[z * RESOLUTION + x] = bTier;
+            }
+        }
+    }
+
+    public void smoothHeight(int centerX, int centerZ, int radius) {
+        int r2 = radius * radius;
+        byte[] snapshot = Arrays.copyOf(height, height.length);
+        for (int z = Math.max(0, centerZ - radius); z <= Math.min(RESOLUTION - 1, centerZ + radius); z++) {
+            for (int x = Math.max(0, centerX - radius); x <= Math.min(RESOLUTION - 1, centerX + radius); x++) {
+                int dx = x - centerX;
+                int dz = z - centerZ;
+                if (dx * dx + dz * dz > r2) continue;
+                int sum = 0;
+                int count = 0;
+                for (int nz = Math.max(0, z - 1); nz <= Math.min(RESOLUTION - 1, z + 1); nz++) {
+                    for (int nx = Math.max(0, x - 1); nx <= Math.min(RESOLUTION - 1, x + 1); nx++) {
+                        sum += snapshot[nz * RESOLUTION + nx];
+                        count++;
+                    }
+                }
+                height[z * RESOLUTION + x] = (byte) Math.round((double) sum / count);
             }
         }
     }
@@ -367,6 +434,34 @@ public final class IslandDraft {
             if (land[i]) packed[i >>> 3] |= (byte)(1 << (i & 7));
         }
         return Base64.getEncoder().encodeToString(packed);
+    }
+
+    public String packedHeight() {
+        byte[] packed = new byte[(height.length + 3) / 4];
+        for (int i = 0; i < height.length; i++) {
+            int val = height[i] & 3;
+            packed[i >>> 2] |= (byte) (val << ((i & 3) * 2));
+        }
+        return Base64.getEncoder().encodeToString(packed);
+    }
+
+    public boolean hasCustomHeight() {
+        for (byte b : height) if (b != 1) return true;
+        return false;
+    }
+
+    public static byte[] unpackHeight(String base64, int totalPixels) {
+        byte[] result = new byte[totalPixels];
+        Arrays.fill(result, (byte) 1);
+        if (base64 == null || base64.isEmpty()) return result;
+        try {
+            byte[] packed = Base64.getDecoder().decode(base64);
+            for (int i = 0; i < totalPixels && (i >>> 2) < packed.length; i++) {
+                int shift = (i & 3) * 2;
+                result[i] = (byte) (((packed[i >>> 2] & 0xFF) >>> shift) & 3);
+            }
+        } catch (Exception ignored) {}
+        return result;
     }
 
     public double worldSpan() { return islandSize * 1.36; }

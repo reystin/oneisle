@@ -100,9 +100,11 @@ This document records the empirical verification of Minecraft 26.3 worldgen inte
 
 ---
 
-## 7. [VERIFY] Extent Beyond Mask Bounding Box
+## 8. [VERIFY] Inland Relief & Mountain Headroom
 * **Finding:**
-  - In `IslandMask.java` (lines 86–97):
-    When $(X, Z)$ falls outside $[minX, maxX] \times [minZ, maxZ]$, Euclidean distance to the bounding box is accumulated onto `worldDistance`.
-    Once $\text{worldDistance} < -400.0$ blocks from coast, continentalness hits $-1.0$ and is clamped.
-    Beyond the transition margin, the ocean floor is a completely flat plane at $-1.0$.
+  - In 0.5.0, `base = -0.08 + d * 0.70 / coastWidth` was hard-clamped at `0.70`. Because $d / coastWidth$ exceeded $1.11$ within ~210 blocks of the shore, all island centers were flat cones clamped at `0.70`.
+  - Adding a linear ridge term without compressing the base caused `tanh` soft saturation to stick at 0.95 across thousands of blocks.
+  - Compressing the coastal rise via `base = -0.08 + 0.48 * tanh(x * 1.25)` ensures the base levels off at ~0.40 inland, providing ample headroom for both mountain ridge spines (±0.22) and user-painted height tiers (-0.15 to +0.40).
+  - Multi-octave ridged noise generates multiple winding mountain spines and peaks across the island with zero flat plateaus.
+  - A 7-tap binomial filter ([1, 6, 15, 20, 15, 6, 1] / 64) across the 4-tier height layer guarantees $C^1$ smooth transitions with max slopes well below the vanilla mountain limit.
+

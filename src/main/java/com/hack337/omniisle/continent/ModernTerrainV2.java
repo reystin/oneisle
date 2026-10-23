@@ -10,6 +10,8 @@ package com.hack337.omniisle.continent;
  * - Near-coast micro-roughness centered at shoreline -0.08 with smoothstep falloff.
  * - Ocean bathymetry with soft floor at -0.80, seabed noise (fBm + ridged trenches), and guaranteed deep ocean band.
  * - Satellite islets with jittered cellular placement, 350-block margin from main island, and density slider.
+ * - Procedural ridged mountain spines with headroom and tanh soft saturation (stops the cone).
+ * - 4-tier height layer support with blurred sampling.
  * - Pure, thread-safe, allocation-free evaluation.
  */
 public final class ModernTerrainV2 implements IslandTerrain {
@@ -31,6 +33,7 @@ public final class ModernTerrainV2 implements IslandTerrain {
     private final double isletDensity;
 
     private final float[] sdfGrid;
+    private final float[] heightGrid;
 
     public ModernTerrainV2(IslandShapeConfig config) {
         this.config = config;
@@ -49,6 +52,7 @@ public final class ModernTerrainV2 implements IslandTerrain {
         this.isletDensity = config != null ? config.isletDensity : 0.25;
 
         this.sdfGrid = buildSdfGrid();
+        this.heightGrid = buildHeightGrid(config != null ? config.unpackedHeight : null);
     }
 
     public IslandShapeConfig config() {
@@ -86,11 +90,69 @@ public final class ModernTerrainV2 implements IslandTerrain {
     public double continentalness(double worldX, double worldZ) {
         double worldDistance = computeSignedDistance(worldX, worldZ, true);
 
-        double cBase = worldDistance >= 0.0
-            ? -0.08 + worldDistance * 0.70 / coastWidth
-            : -0.08 + worldDistance * 0.92 / oceanTransitionWidth;
+        if (worldDistance >= 0.0) {
+            // Land side
+            double d = worldDistance;
+            double reliefScale = Math.max(0.5, Math.min(1.5, 192.0 / coastWidth));
+            double x = d / coastWidth;
+            double baseUnclamped = -0.08 + 0.48 * Math.tanh(x * 1.25);
 
-        // Near-coast micro-roughness centered at shoreline -0.08
+            // Height layer sampling
+            double px = ((Math.max(minX, Math.min(maxX, worldX)) - minX) / (maxX - minX)) * width - 0.5;
+            double pz = ((Math.max(minZ, Math.min(maxZ, worldZ)) - minZ) / (maxZ - minZ)) * height - 0.5;
+            double tierVal = sampleHeight(px, pz);
+
+            double tierOffset;
+            double mountainBias;
+            if (tierVal <= 1.0) {
+                double u = Math.max(0.0, tierVal);
+                tierOffset = -0.15 * (1.0 - u);
+                mountainBias = 0.3 + 0.7 * u;
+            } else if (tierVal <= 2.0) {
+                double u = tierVal - 1.0;
+                tierOffset = 0.18 * u;
+                mountainBias = 1.0 + 0.3 * u;
+            } else {
+                double u = Math.min(1.0, tierVal - 2.0);
+                tierOffset = 0.18 + 0.22 * u;
+                mountainBias = 1.3 + 0.4 * u;
+            }
+
+            // Procedural ridged mountain spines
+            double inlandFactor = IslandNoise.smoothstep((d - 60.0) / 190.0);
+            double ridgeFbm = IslandNoise.fbm2(worldX / 750.0, worldZ / 750.0, seed + 801L, 3, 2.0, 0.5);
+            double ridge = 1.0 - 2.0 * Math.abs(ridgeFbm);
+            double ridgeTerm = ridge * 0.22 * inlandFactor * mountainBias * reliefScale;
+
+            double cTotal = baseUnclamped + ridgeTerm + tierOffset;
+
+            // Soft saturation instead of hard clamp
+            double c;
+            if (cTotal > 0.55) {
+                c = 0.55 + 0.40 * Math.tanh((cTotal - 0.55) / 0.40);
+            } else {
+                c = cTotal;
+            }
+
+            // Near-coast micro-roughness centered at shoreline -0.08
+            double diff = Math.abs(c - (-0.08));
+            if (diff < 0.22) {
+                double t = 1.0 - diff / 0.22;
+                double roughness = IslandNoise.fbm2(worldX / 72.0, worldZ / 72.0, seed + 911L, 3, 2.0, 0.5)
+                    * 0.045 * IslandNoise.smoothstep(t);
+                c += roughness;
+            }
+
+            return Math.max(-1.0, Math.min(0.95, c));
+        }
+
+        // Ocean bathymetry
+        double s = -worldDistance; // offshore distance in blocks
+        double wo = oceanTransitionWidth;
+        double base = -0.08 - 0.92 * (s / wo);
+        double cBase = base;
+
+        // Near-coast micro-roughness on the water side of the shoreline
         double diff = Math.abs(cBase - (-0.08));
         if (diff < 0.22) {
             double t = 1.0 - diff / 0.22;
@@ -99,14 +161,6 @@ public final class ModernTerrainV2 implements IslandTerrain {
             cBase += roughness;
         }
 
-        if (worldDistance >= 0.0) {
-            // Land side
-            return Math.max(-1.0, Math.min(0.70, cBase));
-        }
-
-        // Ocean bathymetry
-        double s = -worldDistance; // offshore distance in blocks
-        double wo = oceanTransitionWidth;
         double b = Math.max(cBase, -0.80); // soft floor at -0.80
 
         double w = IslandNoise.smoothstep(s / (0.5 * wo));
@@ -127,6 +181,66 @@ public final class ModernTerrainV2 implements IslandTerrain {
         }
 
         return cOcean;
+    }
+
+    private double sampleHeight(double px, double pz) {
+        if (heightGrid == null) return 1.0;
+        px = Math.max(0.0, Math.min(width - 1.0, px));
+        pz = Math.max(0.0, Math.min(height - 1.0, pz));
+        int x0 = (int) Math.floor(px);
+        int z0 = (int) Math.floor(pz);
+        int x1 = Math.min(width - 1, x0 + 1);
+        int z1 = Math.min(height - 1, z0 + 1);
+        double tx = px - x0;
+        double tz = pz - z0;
+        double a = lerp(heightGrid[z0 * width + x0], heightGrid[z0 * width + x1], tx);
+        double b = lerp(heightGrid[z1 * width + x0], heightGrid[z1 * width + x1], tx);
+        return lerp(a, b, tz);
+    }
+
+    private float[] buildHeightGrid(byte[] rawHeight) {
+        if (rawHeight == null || rawHeight.length != width * height) return null;
+
+        // Separable 7-tap binomial blur [1, 6, 15, 20, 15, 6, 1] / 64 (radius ~1.5 px)
+        float[] temp = new float[width * height];
+        for (int z = 0; z < height; z++) {
+            int row = z * width;
+            for (int x = 0; x < width; x++) {
+                float sum = 0.0f;
+                sum += 1.0f * (rawHeight[row + Math.max(0, x - 3)] & 3);
+                sum += 6.0f * (rawHeight[row + Math.max(0, x - 2)] & 3);
+                sum += 15.0f * (rawHeight[row + Math.max(0, x - 1)] & 3);
+                sum += 20.0f * (rawHeight[row + x] & 3);
+                sum += 15.0f * (rawHeight[row + Math.min(width - 1, x + 1)] & 3);
+                sum += 6.0f * (rawHeight[row + Math.min(width - 1, x + 2)] & 3);
+                sum += 1.0f * (rawHeight[row + Math.min(width - 1, x + 3)] & 3);
+                temp[row + x] = sum / 64.0f;
+            }
+        }
+
+        float[] result = new float[width * height];
+        for (int z = 0; z < height; z++) {
+            int zPrev3 = Math.max(0, z - 3) * width;
+            int zPrev2 = Math.max(0, z - 2) * width;
+            int zPrev1 = Math.max(0, z - 1) * width;
+            int zCur = z * width;
+            int zNext1 = Math.min(height - 1, z + 1) * width;
+            int zNext2 = Math.min(height - 1, z + 2) * width;
+            int zNext3 = Math.min(height - 1, z + 3) * width;
+            for (int x = 0; x < width; x++) {
+                float sum = 0.0f;
+                sum += 1.0f * temp[zPrev3 + x];
+                sum += 6.0f * temp[zPrev2 + x];
+                sum += 15.0f * temp[zPrev1 + x];
+                sum += 20.0f * temp[zCur + x];
+                sum += 15.0f * temp[zNext1 + x];
+                sum += 6.0f * temp[zNext2 + x];
+                sum += 1.0f * temp[zNext3 + x];
+                result[zCur + x] = sum / 64.0f;
+            }
+        }
+
+        return result;
     }
 
     private double sampleSatelliteIslets(double worldX, double worldZ, double cOcean) {
