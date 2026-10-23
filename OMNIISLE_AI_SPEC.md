@@ -157,11 +157,15 @@ Unlike mods that force hardcoded static maps, OmniIsle provides:
 | :--- | :--- | :--- |
 | **GUI Graphics** | `net.minecraft.client.gui.GuiGraphics` | `net.minecraft.client.gui.GuiGraphicsExtractor` |
 | **Mouse Event** | Direct coordinate doubles `(double x, double y, int button)` | `net.minecraft.client.input.MouseButtonEvent` (access via `event.x()`, `event.y()`, `event.button()`) |
-| **Mouse Button Left** | Hardcoded int `0` | GLFW Button `1` (`InputConstants.MOUSE_BUTTON_LEFT`) |
+| **Mouse Button Left** | 0 | `InputConstants.MOUSE_BUTTON_LEFT` (GLFW button 0) |
+| **Mouse Button Right**| 1 | `InputConstants.MOUSE_BUTTON_RIGHT` (GLFW button 1) |
 | **Keyboard Event** | `keyPressed(int keyCode, int scanCode, int modifiers)` | `net.minecraft.client.input.KeyEvent` (implements `InputWithModifiers`) |
 | **Pack Format** | Format 48 / 61 | Format `121` (`TargetPlatform.PACK_FORMAT`) |
 | **New Biomes** | N/A | `minecraft:dappled_forest` (Family 3), `minecraft:sulfur_caves` (Cave) |
 | **New Structures**| N/A | `minecraft:abandoned_camp` (Forest, Birch, Taiga, Jungle variants) |
+
+> [!NOTE]
+> In GLFW, mouse buttons are 0-indexed: `GLFW_MOUSE_BUTTON_1 = 0` (Left), `GLFW_MOUSE_BUTTON_2 = 1` (Right), `GLFW_MOUSE_BUTTON_3 = 2` (Middle). Always use Mojang's `InputConstants.MOUSE_BUTTON_LEFT` and `InputConstants.MOUSE_BUTTON_RIGHT` rather than hardcoded integer literals.
 
 ---
 
@@ -204,3 +208,242 @@ Unlike mods that force hardcoded static maps, OmniIsle provides:
 3. **Respect GLFW Button Identifiers:** In 26.3, do not use raw numeric literals for mouse buttons; always reference `InputConstants.MOUSE_BUTTON_LEFT` and `InputConstants.MOUSE_BUTTON_RIGHT`.
 4. **Encoding Invariance:** All text resources, ZIP entries, and JSON payloads must strictly use `StandardCharsets.UTF_8` to guarantee cross-platform compatibility between Windows, Linux, and macOS.
 5. **Preserve Mod Jar Targets:** Output builds must be mirrored to Prism Launcher instance mods (`C:\Game\prism\instances\Vulkan Optimization\minecraft\mods`) for immediate in-game test validation.
+
+---
+
+## 8. Advanced Technical Deep Dive & Next-Gen Implementation Guide
+
+### 8.1. Eliminating SDF Discretization & Terracing on Slopes
+
+#### The Root Cause
+At an island size of $4000$ blocks across a $192 \times 192$ raster grid:
+$$\text{Pixel Scale} = \frac{4000 \times 1.36}{192} \approx 28.33 \text{ blocks per pixel}$$
+At an island size of $8000$ blocks:
+$$\text{Pixel Scale} = \frac{8000 \times 1.36}{192} \approx 56.66 \text{ blocks per pixel}$$
+When `coast_width` ranges between $110.0$ and $320.0$ blocks, the entire coastal gradient spans only $2$ to $7$ pixels. Bilinear interpolation across a coarse grid produces:
+1. Octagonal contour lines (distance artifacts from discrete grids).
+2. Quantization terraces (artificial horizontal plateaus on mountain slopes).
+
+#### Three-Pronged Algorithmic Solution
+```
+[World Coordinates (X, Z)]
+            │
+            ▼
+[1. Domain Warping Noise] ───> Shifts (X, Z) by ±30..70 blocks
+            │
+            ▼
+[2. Exact EDT on 2x Super-sampled Grid] ───> Continuous sub-pixel distance
+            │
+            ▼
+[3. Coastal fBM Anti-Terrace Perturbation] ───> Adds natural fine roughness
+            │
+            ▼
+[Smooth Continentalness Router]
+```
+
+#### Mathematical Formulation & Java Implementation
+
+##### 1. Continuous Domain Warping
+Before projecting world coordinates into grid pixel space, perturb them using a dual-frequency simplex or value noise field:
+```java
+// Low-frequency organic warp: amplitude 45.0 blocks, frequency 1/520
+double warpX = fbm(worldX / 520.0, worldZ / 520.0, seed ^ 0x9E3779B9L) * 45.0;
+double warpZ = fbm((worldX + 31.7) / 520.0, (worldZ + 73.1) / 520.0, seed ^ 0x6A09E667L) * 45.0;
+double warpedWorldX = worldX + warpX;
+double warpedWorldZ = worldZ + warpZ;
+```
+
+##### 2. Exact Euclidean Distance Transform (Felzenszwalb-Huttenlocher)
+`IslandMask` already implements the $O(N)$ parabolic lower-envelope algorithm. To achieve sub-pixel smoothness, upsample the mask by $2\times$ ($384 \times 384$) before running `edt1d`:
+$$\mathcal{D}(p) = \min_{q} \left( (p_x - q_x)^2 + (p_y - q_y)^2 + I(q) \right)$$
+Where $I(q) = 0$ if $q \in \text{Target}$, and $\infty$ otherwise.
+
+##### 3. Near-Coast fBM Anti-Terrace Perturbation
+In `sampleTerrainValue()`, modulate continentalness within the transition band $|c| < 0.22$:
+```java
+double baseContinentalness = worldDistance >= 0.0
+    ? -0.08 + worldDistance * 0.70 / coastWidth
+    : -0.08 + worldDistance * 0.92 / oceanTransitionWidth;
+
+// Attenuate perturbation to zero outside the coastal band [-0.22, 0.22]
+double transitionWeight = Math.max(0.0, 1.0 - Math.abs(baseContinentalness) / 0.22);
+if (transitionWeight > 0.0) {
+    double microRoughness = fbm(worldX / 72.0, worldZ / 72.0, seed ^ 0xDEADBEEFL) * 0.045;
+    baseContinentalness += microRoughness * transitionWeight;
+}
+return Math.max(-1.0, Math.min(0.70, baseContinentalness));
+```
+
+---
+
+### 8.2. Breaking the Conical Relief: Ridged Mountains & Heightmaps
+
+#### The "Cone Problem"
+Because continentalness is strictly derived from distance-to-coast, any circular or elliptical island naturally produces a conical mountain in the center.
+
+#### Architectural Solutions
+
+##### Approach A: Procedural Ridged Mountain Spines
+Inject a ridged multifractal noise term into inland continentalness and erosion:
+```java
+if (worldDistance > 60.0) {
+    // Distance factor fades from 0 at 60 blocks from coast to 1 at 250 blocks inland
+    double inlandFactor = Math.min(1.0, (worldDistance - 60.0) / 190.0);
+    
+    // Ridged noise: peaks at zero crossings, sharp crests
+    double ridge = 1.0 - 2.0 * Math.abs(fbm(worldX / 750.0, worldZ / 750.0, seed ^ 0x4B3A9C11L));
+    ridge = Math.max(-0.5, Math.min(1.0, ridge));
+    
+    // Modulate continentalness: creates valleys and mountain ridges instead of a monotonic cone
+    baseContinentalness += ridge * 0.25 * inlandFactor;
+}
+```
+
+##### Approach B: 4-Tier Heightmap Layer (Dual-Layer Editor)
+* **Editor Integration:** Add a "Height Layer" toggle in `OmniIsleEditorScreen` allowing users to paint elevation tiers:
+  * Tier 0: Lowland / Plains (Erosion $+0.50$, Continentalness $+0.12$)
+  * Tier 1: Normal / Rolling Hills (Default SDF)
+  * Tier 2: Elevated Plateaus (Erosion $-0.20$, Continentalness $+0.35$)
+  * Tier 3: Alpine Peaks (Erosion $-0.65$, Continentalness $+0.55$)
+* **Data Packaging:** Stored as `data/omniisle/worldgen/height_layer.bin` (packed 2 bits per pixel $\to 4608$ bytes) inside `omniisle-generated.zip`.
+
+---
+
+### 8.3. Bathymetry, Satellite Islets & Seamounts
+
+#### Eliminating the Flat Ocean Floor
+When `worldDistance < -oceanTransitionWidth`, continentalness currently locks hard at $-1.0$. In Minecraft vanilla worldgen:
+* $-1.0$ produces a featureless flat bedrock plane.
+* Ocean Monuments require Deep Ocean ($-0.65 \le c \le -0.45$).
+* Shipwrecks and Ocean Ruins generate on slopes and trenches.
+
+#### Procedural Ocean Floor Formulation
+Replace the flat $-1.0$ clamp with organic seafloor topography:
+```java
+if (worldDistance < 0.0) {
+    double oceanDist = -worldDistance;
+    double baseOcean = -0.08 - Math.min(0.55, oceanDist * 0.92 / oceanTransitionWidth);
+    
+    // Low-frequency underwater terrain variation: trenches (-0.85) to seamounts (-0.35)
+    double seamountNoise = fbm(worldX / 1100.0, worldZ / 1100.0, seed ^ 0x8837AC7FL) * 0.18;
+    double trenchNoise = fbm(worldX / 450.0, worldZ / 450.0, seed ^ 0x110294FEL) * 0.12;
+    
+    double finalOcean = baseOcean + seamountNoise - trenchNoise;
+    return Math.max(-0.85, Math.min(-0.25, finalOcean));
+}
+```
+
+#### Satellite Islet Generator
+Introduce an "Islets" (Островки) slider in `OmniIsleEditorScreen` ($0.0 \dots 1.0$):
+* Uses thresholded Voronoi cellular noise:
+$$\text{IsletPeak}(x, z) = \max\left(0, \frac{\text{cellular}(x / 800, z / 800) - 0.85}{0.15}\right) \times \text{isletStrength}$$
+* Adds scattered small islands, rocky arches, and coral reefs in the outer ocean without cluttering the main mask.
+
+---
+
+### 8.4. Mask Versioning & Forward Compatibility Specification
+
+#### Updated `continents.json` Schema
+```json
+{
+  "type": "minecraft:cache",
+  "input": {
+    "type": "omniisle:island_continents",
+    "config": {
+      "mask": {
+        "version": 1,
+        "resolution": 192,
+        "width": 192,
+        "height": 192,
+        "min_x": -2720.0,
+        "max_x": 2720.0,
+        "min_z": -2720.0,
+        "max_z": 2720.0,
+        "coast_width": 192.0,
+        "ocean_transition_width": 400.0,
+        "data": "..."
+      },
+      "biome_seed": 123456789
+    }
+  }
+}
+```
+
+#### Codec Implementation in `IslandMask.java`
+```java
+public static final Codec<IslandMask> CODEC = RecordCodecBuilder.create(instance -> instance.group(
+    Codec.INT.optionalFieldOf("version", 1).forGetter(m -> m.version),
+    Codec.INT.optionalFieldOf("resolution", 192).forGetter(m -> m.resolution),
+    Codec.intRange(2, 4096).fieldOf("width").forGetter(m -> m.width),
+    Codec.intRange(2, 4096).fieldOf("height").forGetter(m -> m.height),
+    Codec.DOUBLE.fieldOf("min_x").forGetter(m -> m.minX),
+    Codec.DOUBLE.fieldOf("max_x").forGetter(m -> m.maxX),
+    Codec.DOUBLE.fieldOf("min_z").forGetter(m -> m.minZ),
+    Codec.DOUBLE.fieldOf("max_z").forGetter(m -> m.maxZ),
+    Codec.DOUBLE.optionalFieldOf("coast_width", 192.0).forGetter(m -> m.coastWidth),
+    Codec.DOUBLE.optionalFieldOf("ocean_transition_width", 400.0).forGetter(m -> m.oceanTransitionWidth),
+    Codec.STRING.fieldOf("data").forGetter(m -> m.data)
+).apply(instance, IslandMask::new));
+```
+
+---
+
+### 8.5. Biome Scaling & Latitudinal Climate Gradient
+
+#### 1. Biome Scale Slider (`climate_scale`)
+* Exposed in `OmniIsleEditorScreen` as a slider from $384$ to $1536$ blocks (default $720$).
+* Directly passed into `OmniBiomeSource` via `omniisle.json`:
+```json
+"climate_scale": 720
+```
+
+#### 2. Latitudinal Temperature Gradient
+In Minecraft: $-Z$ is North (Arctic), $+Z$ is South (Equatorial).
+Implement realistic global climate zonation across the island:
+```java
+public static double temperatureAt(double x, double z, double halfSpan, double scale, long seed, boolean gradient) {
+    double warpX = fbm(x / scale, z / scale, seed + 101) * scale * 0.30;
+    double warpZ = fbm(x / scale, z / scale, seed + 211) * scale * 0.30;
+    double wz = z + warpZ;
+    
+    double baseTemp = 0.50;
+    if (gradient) {
+        // Linear latitudinal gradient: North (-halfSpan) is -0.45, South (+halfSpan) is +0.45
+        double latitudinal = (wz / halfSpan) * 0.45;
+        baseTemp += latitudinal;
+    }
+    
+    double noise = fbm((x + warpX) / (scale * 1.35), wz / (scale * 1.35), seed + 307) * 0.18;
+    return Math.max(0.0, Math.min(1.0, baseTemp + noise));
+}
+```
+* **Result:** Setting Theme to "Nordic" naturally clusters glaciers, snowy peaks, and frozen oceans in the North, while "Tropical" clusters lush jungles and warm waters in the South.
+
+---
+
+### 8.6. Guaranteed Structure Placement & Editor Spawn Marker
+
+#### Small Island (2500 Blocks) Structure Safety Matrix
+
+| Structure | Critical Biome Requirement | Risk on 2500 Island | Mitigation Strategy |
+| :--- | :--- | :--- | :--- |
+| **Ancient City** | `deep_dark` AND (`stony_peaks` or `jagged_peaks`) | High (Mountain peaks may not exist at $Y < 0$) | Relax fallback: allow any land biome below $Y=0$ where deep dark noise triggers. |
+| **Ocean Monument** | `deep_ocean` / `deep_cold_ocean` | Medium (Offshore shelf may be shallow) | Fallback bathymetry: guarantee deep ocean trench at $> 120\text{ blocks}$ offshore. |
+| **Stronghold** | `plains` | Low | Automatically re-targets to any enabled land biome. |
+| **Trial Chambers** | `plains` (inland, underground) | Low | Disallow deep dark overlap, allow any solid stone stratum. |
+| **Abandoned Camp** | Forest / Taiga / Savanna variants | Zero | Selects matching camp variant for the specific biome sampled. |
+
+#### Editor Spawn Crosshair Marker
+In `OmniIsleEditorScreen.extractBackground`:
+```java
+// World spawn is at (0, 0). Calculate pixel location on preview canvas:
+int spawnScreenX = previewX + previewSize / 2;
+int spawnScreenY = previewY + previewSize / 2;
+
+// Draw gold spawn crosshair
+int gold = 0xFFFFD700;
+context.horizontalLine(spawnScreenX - 4, spawnScreenX + 4, spawnScreenY, gold);
+context.verticalLine(spawnScreenX, spawnScreenY - 4, spawnScreenY + 4, gold);
+context.outline(spawnScreenX - 2, spawnScreenY - 2, 5, 5, 0xFFFFAA00);
+```
+Displays an unmistakable spawn compass marker right on the editor preview canvas!
