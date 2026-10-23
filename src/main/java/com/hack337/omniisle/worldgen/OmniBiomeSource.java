@@ -95,6 +95,10 @@ public final class OmniBiomeSource extends BiomeSource {
     }
 
     @Override
+    public net.minecraft.world.level.biome.BiomeResolver createResolver(net.minecraft.world.level.biome.Climate.Sampler sampler) {
+        return (biomeX, biomeY, biomeZ) -> getNoiseBiome(biomeX, biomeY, biomeZ, sampler);
+    }
+
     public Holder<Biome> getNoiseBiome(int biomeX, int biomeY, int biomeZ, net.minecraft.world.level.biome.Climate.Sampler sampler) {
         net.minecraft.world.level.biome.Climate.TargetPoint point = sampler.sample(biomeX, biomeY, biomeZ);
         double continentalness = net.minecraft.world.level.biome.Climate.unquantizeCoord(point.continentalness());

@@ -4,7 +4,8 @@ import it.unimi.dsi.fastutil.doubles.DoubleArrayList;
 import it.unimi.dsi.fastutil.doubles.DoubleList;
 import net.minecraft.util.Mth;
 import net.minecraft.world.level.levelgen.LegacyRandomSource;
-import net.minecraft.world.level.levelgen.synth.PerlinNoise;
+import net.minecraft.world.level.levelgen.synth.LegacyFbmInitializer;
+import net.minecraft.world.level.levelgen.synth.NoiseStack;
 
 public class ShapeLayerSettings {
     public final double xTran;
@@ -33,20 +34,21 @@ public class ShapeLayerSettings {
     }
 
     public static class Noise {
-        private final PerlinNoise sampler;
+        private final NoiseStack sampler;
         private final double scale;
 
         public Noise(IslandShapeConfig.Entry.Noise noise) {
-            this.sampler = PerlinNoise.create(
+            this.sampler = LegacyFbmInitializer.createForLegacyNetherBiome(
                 new LegacyRandomSource(noise.getSeed()),
                 noise.first_octave,
                 (DoubleList)(noise.amplitudes instanceof DoubleList l ? l : new DoubleArrayList(noise.amplitudes))
             );
-            this.scale = noise.scale / this.sampler.maxBrokenValue(-1.0);
+            double maxVal = this.sampler.range().max();
+            this.scale = noise.scale / (maxVal > 0 ? maxVal : 1.0);
         }
 
         public double sample(double x, double z) {
-            return this.sampler.getValue(x, 1.95, z) * this.scale;
+            return (double) this.sampler.get(x, 1.95, z) * this.scale;
         }
     }
 }

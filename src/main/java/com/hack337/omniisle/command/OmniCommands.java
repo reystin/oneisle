@@ -1,10 +1,10 @@
 package com.hack337.omniisle.command;
 
-import com.mojang.brigadier.Command;
 import com.hack337.omniisle.worldgen.OmniBiomeSource;
-import java.util.StringJoiner;
+import com.mojang.brigadier.Command;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.StringJoiner;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.minecraft.commands.Commands;
 import net.minecraft.core.BlockPos;
@@ -13,8 +13,8 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.permissions.Permissions;
 import net.minecraft.world.level.biome.Biome;
+import net.minecraft.world.level.biome.BiomeResolver;
 import net.minecraft.world.level.biome.BiomeSource;
-import net.minecraft.world.level.biome.Climate;
 import net.minecraft.world.level.levelgen.Heightmap;
 
 public final class OmniCommands {
@@ -27,14 +27,14 @@ public final class OmniCommands {
                 .then(Commands.literal("verify").executes(context -> {
                     ServerLevel world = context.getSource().getLevel();
                     BiomeSource source = world.getChunkSource().getGenerator().getBiomeSource();
-                    Climate.Sampler sampler = world.getChunkSource().randomState().sampler();
+                    BiomeResolver resolver = source.createCachingResolver(world.getChunkSource().randomState());
                     int[][] points = {
                         {0, 0}, {256, 0}, {-256, 0}, {0, 256}, {0, -256},
                         {768, 0}, {-768, 0}, {0, 768}, {0, -768}, {1536, 1536}
                     };
                     StringJoiner samples = new StringJoiner(", ");
                     for (int[] point : points) {
-                        Holder<Biome> biome = source.getNoiseBiome(point[0] >> 2, 16, point[1] >> 2, sampler);
+                        Holder<Biome> biome = resolver.getNoiseBiome(point[0] >> 2, 16, point[1] >> 2);
                         world.getChunk(point[0] >> 4, point[1] >> 4);
                         int topY = world.getHeight(Heightmap.Types.WORLD_SURFACE, point[0], point[1]);
                         String topBlock = world.getBlockState(new BlockPos(point[0], topY - 1, point[1])).getBlock().getDescriptionId();
@@ -43,7 +43,7 @@ public final class OmniCommands {
                     Map<String, String> found = new LinkedHashMap<>();
                     for (int z = -2048; z <= 2048; z += 64) {
                         for (int x = -2048; x <= 2048; x += 64) {
-                            Holder<Biome> biome = source.getNoiseBiome(x >> 2, 16, z >> 2, sampler);
+                            Holder<Biome> biome = resolver.getNoiseBiome(x >> 2, 16, z >> 2);
                             found.putIfAbsent(biome.getRegisteredName(), x + "/" + z);
                         }
                     }

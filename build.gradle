@@ -28,7 +28,7 @@ tasks.register("generateTargetPlatform") {
         output.text = """package com.hack337.omniisle.platform;
 public final class TargetPlatform {
     public static final String MINECRAFT_VERSION = \"${minecraft_version}\";
-    public static final int PACK_FORMAT = ${(project.findProperty('pack_format') ?: '101') as int};
+    public static final int PACK_FORMAT = ${(project.findProperty('pack_format') ?: '121') as int};
     public static final int PACK_FORMAT_MINOR = ${(project.findProperty('pack_format_minor') ?: '0') as int};
     public static final boolean HAS_PALE_GARDEN = true;
     public static final boolean HAS_TRIAL_CHAMBERS = true;
@@ -47,6 +47,7 @@ sourceSets {
 
 tasks.withType(JavaCompile).configureEach {
     options.release = 25
+    options.encoding = "UTF-8"
     dependsOn(tasks.named("generateTargetPlatform"))
 }
 
@@ -54,7 +55,12 @@ tasks.matching { it.name == "sourcesJar" }.configureEach {
     dependsOn(tasks.named("generateTargetPlatform"))
 }
 
+tasks.withType(ProcessResources).configureEach {
+    filteringCharset = "UTF-8"
+}
+
 processResources {
+    filteringCharset = "UTF-8"
     inputs.properties(
         version: project.version,
         minecraft_version: minecraft_version,
