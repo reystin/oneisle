@@ -63,9 +63,10 @@ public final class WorldPackBuilder {
         Path target = dataPackDirectory.resolve(FILE_NAME);
         Path temporary = dataPackDirectory.resolve(FILE_NAME + ".tmp");
         double halfSpan = state.worldSpan() * 0.5;
+        double coastWidth = state.relief().coastWidth;
         IslandMask mask = new IslandMask(IslandDraft.RESOLUTION, IslandDraft.RESOLUTION,
             -halfSpan, halfSpan, -halfSpan, halfSpan,
-            COAST_TRANSITION_WIDTH, OCEAN_TRANSITION_WIDTH, state.packedMask());
+            coastWidth, OCEAN_TRANSITION_WIDTH, state.packedMask());
 
         try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(temporary), StandardCharsets.UTF_8)) {
             putEntry(zip, "pack.mcmeta", packMetadata());
@@ -94,7 +95,7 @@ public final class WorldPackBuilder {
         mask.addProperty("max_x", halfSpan);
         mask.addProperty("min_z", -halfSpan);
         mask.addProperty("max_z", halfSpan);
-        mask.addProperty("coast_width", COAST_TRANSITION_WIDTH);
+        mask.addProperty("coast_width", state.relief().coastWidth);
         mask.addProperty("ocean_transition_width", OCEAN_TRANSITION_WIDTH);
         mask.addProperty("data", state.packedMask());
         JsonObject config = new JsonObject();

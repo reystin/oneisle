@@ -1,6 +1,7 @@
 package com.hack337.omniisle.client;
 
 import com.hack337.omniisle.platform.TargetPlatform;
+import java.util.ArrayDeque;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.EnumSet;
@@ -45,6 +46,31 @@ public final class IslandDraft {
         Preset(String translationKey) { this.translationKey = translationKey; }
     }
 
+    public enum Relief {
+        BALANCED("omniisle.relief.balanced", 192.0),
+        FLAT("omniisle.relief.flat", 320.0),
+        MOUNTAINOUS("omniisle.relief.mountainous", 110.0);
+
+        public final String translationKey;
+        public final double coastWidth;
+        Relief(String translationKey, double coastWidth) {
+            this.translationKey = translationKey;
+            this.coastWidth = coastWidth;
+        }
+    }
+
+    public enum BiomeTheme {
+        ALL("omniisle.theme.all"),
+        STANDARD("omniisle.theme.standard"),
+        TROPICAL("omniisle.theme.tropical"),
+        NORDIC("omniisle.theme.nordic"),
+        DESERT("omniisle.theme.desert"),
+        MYSTIC("omniisle.theme.mystic");
+
+        public final String translationKey;
+        BiomeTheme(String translationKey) { this.translationKey = translationKey; }
+    }
+
     public enum StructureOption {
         VILLAGE("omniisle.structure.village"), OUTPOST("omniisle.structure.outpost"),
         MANSION("omniisle.structure.mansion"), DESERT_PYRAMID("omniisle.structure.desert_pyramid"),
@@ -71,8 +97,14 @@ public final class IslandDraft {
     private long shapeSeed;
     private long biomeSeed;
     private Preset preset;
+    private Relief relief = Relief.BALANCED;
+    private BiomeTheme theme = BiomeTheme.STANDARD;
     private EnumSet<BiomePreview.Type> enabledBiomes;
     private EnumSet<StructureOption> enabledStructures;
+
+    private final ArrayDeque<boolean[]> undoStack = new ArrayDeque<>();
+    private final ArrayDeque<boolean[]> redoStack = new ArrayDeque<>();
+    private static final int MAX_UNDO_STEPS = 32;
 
     public IslandDraft() {
         this(new boolean[RESOLUTION * RESOLUTION], DEFAULT_ISLAND_SIZE,
@@ -110,12 +142,45 @@ public final class IslandDraft {
     }
 
     public IslandDraft copy() {
-        return new IslandDraft(Arrays.copyOf(land, land.length), islandSize, shapeSeed, biomeSeed, preset,
+        IslandDraft draft = new IslandDraft(Arrays.copyOf(land, land.length), islandSize, shapeSeed, biomeSeed, preset,
             EnumSet.copyOf(enabledBiomes), EnumSet.copyOf(enabledStructures));
+        draft.relief = this.relief;
+        draft.theme = this.theme;
+        return draft;
     }
 
     public boolean isLand(int x, int z) {
         return x >= 0 && z >= 0 && x < RESOLUTION && z < RESOLUTION && land[z * RESOLUTION + x];
+    }
+
+    public void pushUndo() {
+        if (undoStack.size() >= MAX_UNDO_STEPS) {
+            undoStack.removeLast();
+        }
+        undoStack.push(Arrays.copyOf(land, land.length));
+        redoStack.clear();
+    }
+
+    public boolean canUndo() { return !undoStack.isEmpty(); }
+    public boolean canRedo() { return !redoStack.isEmpty(); }
+
+    public boolean undo() {
+        if (undoStack.isEmpty()) return false;
+        redoStack.push(Arrays.copyOf(land, land.length));
+        land = undoStack.pop();
+        return true;
+    }
+
+    public boolean redo() {
+        if (redoStack.isEmpty()) return false;
+        undoStack.push(Arrays.copyOf(land, land.length));
+        land = redoStack.pop();
+        return true;
+    }
+
+    public void clearLand() {
+        pushUndo();
+        Arrays.fill(land, false);
     }
 
     public void paint(int centerX, int centerZ, int radius, boolean value) {
@@ -129,7 +194,33 @@ public final class IslandDraft {
         }
     }
 
+    public void smooth(int centerX, int centerZ, int radius) {
+        int r2 = radius * radius;
+        boolean[] snapshot = Arrays.copyOf(land, land.length);
+        for (int z = Math.max(0, centerZ - radius); z <= Math.min(RESOLUTION - 1, centerZ + radius); z++) {
+            for (int x = Math.max(0, centerX - radius); x <= Math.min(RESOLUTION - 1, centerX + radius); x++) {
+                int dx = x - centerX;
+                int dz = z - centerZ;
+                if (dx * dx + dz * dz > r2) continue;
+                int landCount = 0;
+                int total = 0;
+                for (int nz = Math.max(0, z - 1); nz <= Math.min(RESOLUTION - 1, z + 1); nz++) {
+                    for (int nx = Math.max(0, x - 1); nx <= Math.min(RESOLUTION - 1, x + 1); nx++) {
+                        total++;
+                        if (snapshot[nz * RESOLUTION + nx]) landCount++;
+                    }
+                }
+                if (landCount * 2 > total) {
+                    land[z * RESOLUTION + x] = true;
+                } else if (landCount * 2 < total) {
+                    land[z * RESOLUTION + x] = false;
+                }
+            }
+        }
+    }
+
     public void rebuildShape() {
+        pushUndo();
         boolean[] next = new boolean[land.length];
         Random random = new Random(shapeSeed);
         double rotation = random.nextDouble() * Math.PI * 2.0;
@@ -259,24 +350,89 @@ public final class IslandDraft {
     public long biomeSeed() { return biomeSeed; }
     public SetView enabledBiomes() { return new SetView(EnumSet.copyOf(enabledBiomes)); }
     public boolean isBiomeEnabled(BiomePreview.Type type) { return enabledBiomes.contains(type); }
+
     public boolean toggleBiome(BiomePreview.Type type) {
-        if (enabledBiomes.contains(type)) {
-            long remainingInCategory = enabledBiomes.stream()
-                .filter(other -> other.category == type.category).count();
-            if (remainingInCategory == 1) return false;
-            enabledBiomes.remove(type);
-        } else {
+        if (!enabledBiomes.remove(type)) {
             enabledBiomes.add(type);
         }
         return true;
     }
+
+    public void selectAllBiomes(BiomePreview.Category category) {
+        for (BiomePreview.Type type : OVERWORLD_BIOMES) {
+            if (category == null || type.category == category) {
+                enabledBiomes.add(type);
+            }
+        }
+    }
+
+    public void deselectAllBiomes(BiomePreview.Category category) {
+        if (category == null) {
+            enabledBiomes.clear();
+        } else {
+            enabledBiomes.removeIf(type -> type.category == category);
+        }
+    }
+
+    public void applyTheme(BiomeTheme theme) {
+        this.theme = theme;
+        enabledBiomes.clear();
+        switch (theme) {
+            case ALL -> enabledBiomes.addAll(OVERWORLD_BIOMES);
+            case STANDARD -> enabledBiomes.addAll(defaultBiomes());
+            case TROPICAL -> enabledBiomes.addAll(List.of(
+                BiomePreview.Type.JUNGLE, BiomePreview.Type.BAMBOO_JUNGLE, BiomePreview.Type.SPARSE_JUNGLE,
+                BiomePreview.Type.SAVANNA, BiomePreview.Type.SAVANNA_PLATEAU, BiomePreview.Type.WINDSWEPT_SAVANNA,
+                BiomePreview.Type.MANGROVE_SWAMP, BiomePreview.Type.CHERRY_GROVE,
+                BiomePreview.Type.BEACH,
+                BiomePreview.Type.WARM_OCEAN, BiomePreview.Type.LUKEWARM_OCEAN, BiomePreview.Type.DEEP_LUKEWARM_OCEAN,
+                BiomePreview.Type.RIVER,
+                BiomePreview.Type.LUSH_CAVES
+            ));
+            case NORDIC -> enabledBiomes.addAll(List.of(
+                BiomePreview.Type.SNOWY_PLAINS, BiomePreview.Type.ICE_SPIKES,
+                BiomePreview.Type.TAIGA, BiomePreview.Type.SNOWY_TAIGA,
+                BiomePreview.Type.OLD_GROWTH_PINE_TAIGA, BiomePreview.Type.OLD_GROWTH_SPRUCE_TAIGA,
+                BiomePreview.Type.GROVE, BiomePreview.Type.JAGGED_PEAKS, BiomePreview.Type.FROZEN_PEAKS,
+                BiomePreview.Type.SNOWY_SLOPES, BiomePreview.Type.WINDSWEPT_HILLS,
+                BiomePreview.Type.SNOWY_BEACH, BiomePreview.Type.STONY_SHORE,
+                BiomePreview.Type.COLD_OCEAN, BiomePreview.Type.DEEP_COLD_OCEAN,
+                BiomePreview.Type.FROZEN_OCEAN, BiomePreview.Type.DEEP_FROZEN_OCEAN,
+                BiomePreview.Type.FROZEN_RIVER,
+                BiomePreview.Type.DRIPSTONE_CAVES
+            ));
+            case DESERT -> enabledBiomes.addAll(List.of(
+                BiomePreview.Type.DESERT, BiomePreview.Type.BADLANDS,
+                BiomePreview.Type.ERODED_BADLANDS, BiomePreview.Type.WOODED_BADLANDS,
+                BiomePreview.Type.SAVANNA, BiomePreview.Type.SAVANNA_PLATEAU, BiomePreview.Type.WINDSWEPT_SAVANNA,
+                BiomePreview.Type.BEACH,
+                BiomePreview.Type.WARM_OCEAN, BiomePreview.Type.OCEAN, BiomePreview.Type.DEEP_OCEAN,
+                BiomePreview.Type.RIVER,
+                BiomePreview.Type.DRIPSTONE_CAVES, BiomePreview.Type.SULFUR_CAVES
+            ));
+            case MYSTIC -> enabledBiomes.addAll(List.of(
+                BiomePreview.Type.DARK_FOREST, BiomePreview.Type.PALE_GARDEN,
+                BiomePreview.Type.MUSHROOM_FIELDS, BiomePreview.Type.SWAMP,
+                BiomePreview.Type.DAPPLED_FOREST,
+                BiomePreview.Type.STONY_SHORE,
+                BiomePreview.Type.DEEP_OCEAN,
+                BiomePreview.Type.RIVER,
+                BiomePreview.Type.DEEP_DARK, BiomePreview.Type.SULFUR_CAVES, BiomePreview.Type.LUSH_CAVES
+            ));
+        }
+        enabledBiomes.retainAll(OVERWORLD_BIOMES);
+    }
+
     public boolean isStructureEnabled(StructureOption option) { return enabledStructures.contains(option); }
     public void toggleStructure(StructureOption option) {
         if (!enabledStructures.remove(option)) enabledStructures.add(option);
     }
+    public void selectAllStructures() { enabledStructures.addAll(STRUCTURE_OPTIONS); }
+    public void deselectAllStructures() { enabledStructures.clear(); }
 
     public BiomePreview.Type selectBiome(BiomePreview.Type preferred, double x, double z) {
         List<BiomePreview.Type> compatible = compatibleChoices(preferred);
+        if (compatible.isEmpty()) return preferred;
         if (compatible.size() == 1) return compatible.get(0);
         if (!preferred.isLand() && enabledBiomes.contains(preferred)) return preferred;
         double patch = fbm(x / 420.0, z / 420.0,
@@ -292,17 +448,26 @@ public final class IslandDraft {
             .filter(type -> !preferred.isLand() || type.family == preferred.family)
             .toList();
         if (!exactFamily.isEmpty()) return exactFamily;
-        return enabledBiomes.stream().filter(type -> type.category == preferred.category).toList();
+        List<BiomePreview.Type> inCategory = enabledBiomes.stream().filter(type -> type.category == preferred.category).toList();
+        if (!inCategory.isEmpty()) return inCategory;
+        return List.of(preferred);
     }
 
     public List<BiomePreview.Type> enabledBiomes(BiomePreview.Category category) {
-        return enabledBiomes.stream().filter(type -> type.category == category).toList();
+        List<BiomePreview.Type> list = enabledBiomes.stream().filter(type -> type.category == category).toList();
+        if (list.isEmpty()) {
+            return DEFAULT_BIOMES.stream().filter(type -> type.category == category && OVERWORLD_BIOMES.contains(type)).toList();
+        }
+        return list;
     }
 
     /** Immutable-enough iterable wrapper kept off Minecraft's serialization path. */
     public record SetView(EnumSet<BiomePreview.Type> values) {}
     public Preset preset() { return preset; }
     public void setPreset(Preset preset) { this.preset = preset; rebuildShape(); }
+    public Relief relief() { return relief; }
+    public void setRelief(Relief relief) { this.relief = relief; }
+    public BiomeTheme theme() { return theme; }
 
     private static double fbm(double x, double z, long seed) {
         double total = 0.0;
