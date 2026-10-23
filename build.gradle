@@ -32,6 +32,7 @@ public final class TargetPlatform {
     public static final int PACK_FORMAT_MINOR = ${(project.findProperty('pack_format_minor') ?: '0') as int};
     public static final boolean HAS_PALE_GARDEN = true;
     public static final boolean HAS_TRIAL_CHAMBERS = true;
+    public static final boolean HAS_ABANDONED_CAMP = true;
     private TargetPlatform() {}
 }
 """

@@ -51,7 +51,8 @@
           "cave_biomes": [
             "minecraft:lush_caves",
             "minecraft:dripstone_caves",
-            "minecraft:deep_dark"
+            "minecraft:deep_dark",
+            "minecraft:sulfur_caves"
           ]
         },
         "settings": "omniisle:omni_terrain"

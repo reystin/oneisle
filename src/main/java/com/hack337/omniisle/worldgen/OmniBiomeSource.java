@@ -224,6 +224,9 @@ public final class OmniBiomeSource extends BiomeSource {
         if (y < 0 && fbm(x / 520.0, z / 520.0, saltedSeed(biomeSeed, 977)) > 0.02) {
             return selectEnabled(enabledCaveBiomes, caveBiomes, "deep_dark");
         }
+        if (climate.temperature > 0.65) {
+            return selectEnabled(enabledCaveBiomes, caveBiomes, "sulfur_caves");
+        }
         return selectEnabled(enabledCaveBiomes, caveBiomes,
             climate.humidity > 0.52 ? "lush_caves" : "dripstone_caves");
     }
@@ -266,7 +269,7 @@ public final class OmniBiomeSource extends BiomeSource {
             case "snowy_plains", "ice_spikes" -> 0;
             case "taiga", "snowy_taiga", "old_growth_pine_taiga", "old_growth_spruce_taiga" -> 1;
             case "birch_forest", "old_growth_birch_forest" -> 2;
-            case "forest", "flower_forest", "windswept_forest" -> 3;
+            case "forest", "flower_forest", "windswept_forest", "dappled_forest" -> 3;
             case "plains", "sunflower_plains" -> 4;
             case "meadow", "grove" -> 5;
             case "cherry_grove" -> 6;

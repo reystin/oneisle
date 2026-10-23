@@ -27,30 +27,31 @@ public final class WorldPackBuilder {
     private static final double OCEAN_TRANSITION_WIDTH = 400.0;
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
-    private record StructureDefinition(String setName, String structure, String biomeTag,
+    private record StructureDefinition(IslandDraft.StructureOption option, String setName, String structure, String biomeTag,
                                        Set<BiomePreview.Type> biomes, boolean deepDark) {}
     private record Point(int chunkX, int chunkZ) {}
     private record Sample(double continentalness, BiomePreview.Type biome, boolean deepDark) {}
 
     private static final List<StructureDefinition> STRUCTURES = List.of(
-        structure("villages", "minecraft:village_plains", "village_plains", BiomePreview.Type.PLAINS),
-        structure("pillager_outposts", "minecraft:pillager_outpost", "pillager_outpost", BiomePreview.Type.PLAINS),
-        structure("woodland_mansions", "minecraft:mansion", "woodland_mansion", BiomePreview.Type.DARK_FOREST),
-        structure("desert_pyramids", "minecraft:desert_pyramid", "desert_pyramid", BiomePreview.Type.BADLANDS),
-        structure("igloos", "minecraft:igloo", "igloo", BiomePreview.Type.SNOWY_PLAINS),
-        structure("jungle_temples", "minecraft:jungle_pyramid", "jungle_temple", BiomePreview.Type.JUNGLE),
-        structure("swamp_huts", "minecraft:swamp_hut", "swamp_hut", BiomePreview.Type.SWAMP),
-        structure("trail_ruins", "minecraft:trail_ruins", "trail_ruins", BiomePreview.Type.TAIGA),
-        structure("trial_chambers", "minecraft:trial_chambers", "trial_chambers", BiomePreview.Type.PLAINS),
-        new StructureDefinition("ancient_cities", "minecraft:ancient_city", "ancient_city",
+        structure(IslandDraft.StructureOption.VILLAGE, "villages", "minecraft:village_plains", "village_plains", BiomePreview.Type.PLAINS),
+        structure(IslandDraft.StructureOption.OUTPOST, "pillager_outposts", "minecraft:pillager_outpost", "pillager_outpost", BiomePreview.Type.PLAINS),
+        structure(IslandDraft.StructureOption.MANSION, "woodland_mansions", "minecraft:mansion", "woodland_mansion", BiomePreview.Type.DARK_FOREST),
+        structure(IslandDraft.StructureOption.DESERT_PYRAMID, "desert_pyramids", "minecraft:desert_pyramid", "desert_pyramid", BiomePreview.Type.BADLANDS),
+        structure(IslandDraft.StructureOption.IGLOO, "igloos", "minecraft:igloo", "igloo", BiomePreview.Type.SNOWY_PLAINS),
+        structure(IslandDraft.StructureOption.JUNGLE_TEMPLE, "jungle_temples", "minecraft:jungle_pyramid", "jungle_temple", BiomePreview.Type.JUNGLE),
+        structure(IslandDraft.StructureOption.SWAMP_HUT, "swamp_huts", "minecraft:swamp_hut", "swamp_hut", BiomePreview.Type.SWAMP),
+        structure(IslandDraft.StructureOption.TRAIL_RUINS, "trail_ruins", "minecraft:trail_ruins", "trail_ruins", BiomePreview.Type.TAIGA),
+        structure(IslandDraft.StructureOption.TRIAL_CHAMBERS, "trial_chambers", "minecraft:trial_chambers", "trial_chambers", BiomePreview.Type.PLAINS),
+        new StructureDefinition(IslandDraft.StructureOption.ANCIENT_CITY, "ancient_cities", "minecraft:ancient_city", "ancient_city",
             EnumSet.of(BiomePreview.Type.STONY_PEAKS, BiomePreview.Type.JAGGED_PEAKS), true),
-        structure("strongholds", "minecraft:stronghold", "stronghold", BiomePreview.Type.PLAINS),
-        structure("ruined_portals", "minecraft:ruined_portal", "ruined_portal_standard", BiomePreview.Type.PLAINS),
-        structure("mineshafts", "minecraft:mineshaft", "mineshaft", BiomePreview.Type.PLAINS),
-        structure("ocean_monuments", "minecraft:monument", "ocean_monument", BiomePreview.Type.DEEP_OCEAN),
-        structure("ocean_ruins", "minecraft:ocean_ruin_cold", "ocean_ruin_cold", BiomePreview.Type.COLD_OCEAN),
-        structure("shipwrecks", "minecraft:shipwreck", "shipwreck", BiomePreview.Type.OCEAN),
-        structure("buried_treasures", "minecraft:buried_treasure", "buried_treasure", BiomePreview.Type.BEACH)
+        structure(IslandDraft.StructureOption.STRONGHOLD, "strongholds", "minecraft:stronghold", "stronghold", BiomePreview.Type.PLAINS),
+        structure(IslandDraft.StructureOption.RUINED_PORTAL, "ruined_portals", "minecraft:ruined_portal", "ruined_portal_standard", BiomePreview.Type.PLAINS),
+        structure(IslandDraft.StructureOption.MINESHAFT, "mineshafts", "minecraft:mineshaft", "mineshaft", BiomePreview.Type.PLAINS),
+        structure(IslandDraft.StructureOption.OCEAN_MONUMENT, "ocean_monuments", "minecraft:monument", "ocean_monument", BiomePreview.Type.DEEP_OCEAN),
+        structure(IslandDraft.StructureOption.OCEAN_RUINS, "ocean_ruins", "minecraft:ocean_ruin_cold", "ocean_ruin_cold", BiomePreview.Type.COLD_OCEAN),
+        structure(IslandDraft.StructureOption.SHIPWRECK, "shipwrecks", "minecraft:shipwreck", "shipwreck", BiomePreview.Type.OCEAN),
+        structure(IslandDraft.StructureOption.BURIED_TREASURE, "buried_treasures", "minecraft:buried_treasure", "buried_treasure", BiomePreview.Type.BEACH),
+        structure(IslandDraft.StructureOption.ABANDONED_CAMP, "abandoned_camp", "minecraft:abandoned_camp_forest", "abandoned_camp_forest", BiomePreview.Type.FOREST)
     );
 
     private WorldPackBuilder() {}
@@ -154,10 +155,10 @@ public final class WorldPackBuilder {
         }
 
         List<Point> used = new ArrayList<>();
-        for (int structureIndex = 0; structureIndex < STRUCTURES.size(); structureIndex++) {
-            StructureDefinition definition = STRUCTURES.get(structureIndex);
-            if (!TargetPlatform.HAS_TRIAL_CHAMBERS && definition.setName.equals("trial_chambers")) continue;
-            boolean enabled = state.isStructureEnabled(IslandDraft.StructureOption.values()[structureIndex]);
+        for (StructureDefinition definition : STRUCTURES) {
+            if (!TargetPlatform.HAS_TRIAL_CHAMBERS && definition.option == IslandDraft.StructureOption.TRIAL_CHAMBERS) continue;
+            if (!TargetPlatform.HAS_ABANDONED_CAMP && definition.option == IslandDraft.StructureOption.ABANDONED_CAMP) continue;
+            boolean enabled = state.isStructureEnabled(definition.option);
             Point point = enabled ? locateStructure(definition, state, samples, minChunk, maxChunk, width, used) : new Point(0, 0);
             if (enabled) used.add(point);
             String json = "{\n  \"structures\": [{\n    \"structure\": \"" + definition.structure +
@@ -201,7 +202,7 @@ public final class WorldPackBuilder {
         if (best == null) {
             Set<BiomePreview.Type> fallback = fallbackBiomes(definition.biomes, state);
             if (!fallback.equals(accepted) || definition.deepDark) {
-                return locateStructure(new StructureDefinition(definition.setName, definition.structure,
+                return locateStructure(new StructureDefinition(definition.option, definition.setName, definition.structure,
                     definition.biomeTag, fallback, false), state, samples, minChunk, maxChunk, width, used);
             }
             throw new IOException("No suitable biome for " + definition.setName);
@@ -217,8 +218,8 @@ public final class WorldPackBuilder {
         return result;
     }
 
-    private static StructureDefinition structure(String name, String structure, String tag, BiomePreview.Type biome) {
-        return new StructureDefinition(name, structure, tag, EnumSet.of(biome), false);
+    private static StructureDefinition structure(IslandDraft.StructureOption option, String name, String structure, String tag, BiomePreview.Type biome) {
+        return new StructureDefinition(option, name, structure, tag, EnumSet.of(biome), false);
     }
 
     private static void putEntry(ZipOutputStream zip, String name, String contents) throws IOException {

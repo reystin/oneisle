@@ -1,5 +1,6 @@
 package com.hack337.omniisle.client;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.blaze3d.platform.NativeImage;
 import com.mojang.datafixers.util.Pair;
 import com.hack337.omniisle.mixin.client.CreateWorldBridge;
@@ -335,10 +336,20 @@ public final class OmniIsleEditorScreen extends Screen {
         double mouseX = event.x();
         double mouseY = event.y();
         int button = event.button();
-        if (!saving && button == 0 && isInsideBiomeList(mouseX, mouseY)) {
+        if (!saving && button == InputConstants.MOUSE_BUTTON_LEFT && isInsideBiomeList(mouseX, mouseY)) {
             if (mouseY < biomeListY + 20) {
                 showStructures = mouseX >= biomeListX + biomeListWidth / 2;
                 biomeScroll = 0;
+                return true;
+            }
+            if (mouseX >= biomeListX + biomeListWidth - 8) {
+                int visibleRows = Math.max(1, (biomeListHeight - 22) / 15);
+                int itemCount = showStructures ? IslandDraft.STRUCTURE_OPTIONS.size() : IslandDraft.OVERWORLD_BIOMES.size();
+                int maxScroll = Math.max(0, itemCount - visibleRows);
+                if (maxScroll > 0) {
+                    double progress = Math.max(0.0, Math.min(1.0, (mouseY - (biomeListY + 20)) / (double)(biomeListHeight - 23)));
+                    biomeScroll = (int)Math.round(progress * maxScroll);
+                }
                 return true;
             }
             int index = biomeScroll + ((int)mouseY - (biomeListY + 20)) / 15;
@@ -355,10 +366,10 @@ public final class OmniIsleEditorScreen extends Screen {
             }
             return true;
         }
-        if (!saving && isInsidePreview(mouseX, mouseY) && (button == 0 || button == 1)) {
+        if (!saving && isInsidePreview(mouseX, mouseY) && (button == InputConstants.MOUSE_BUTTON_LEFT || button == InputConstants.MOUSE_BUTTON_RIGHT)) {
             lastPaintX = -1;
             lastPaintZ = -1;
-            applyBrush(mouseX, mouseY, button == 1 ? Tool.ERASER : tool);
+            applyBrush(mouseX, mouseY, button == InputConstants.MOUSE_BUTTON_RIGHT ? Tool.ERASER : tool);
             return true;
         }
         return super.mouseClicked(event, doubleClick);
@@ -381,8 +392,8 @@ public final class OmniIsleEditorScreen extends Screen {
         double mouseX = event.x();
         double mouseY = event.y();
         int button = event.button();
-        if (!saving && (button == 0 || button == 1) && isInsidePreview(mouseX, mouseY)) {
-            applyBrush(mouseX, mouseY, button == 1 ? Tool.ERASER : tool);
+        if (!saving && (button == InputConstants.MOUSE_BUTTON_LEFT || button == InputConstants.MOUSE_BUTTON_RIGHT) && isInsidePreview(mouseX, mouseY)) {
+            applyBrush(mouseX, mouseY, button == InputConstants.MOUSE_BUTTON_RIGHT ? Tool.ERASER : tool);
             return true;
         }
         return super.mouseDragged(event, deltaX, deltaY);

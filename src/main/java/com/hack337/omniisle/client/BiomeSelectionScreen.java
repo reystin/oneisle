@@ -1,5 +1,6 @@
 package com.hack337.omniisle.client;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.input.MouseButtonEvent;
@@ -107,10 +108,20 @@ final class BiomeSelectionScreen extends Screen {
         double mouseX = event.x();
         double mouseY = event.y();
         int button = event.button();
-        if (button == 0 && insideList(mouseX, mouseY)) {
+        if (button == InputConstants.MOUSE_BUTTON_LEFT && insideList(mouseX, mouseY)) {
             if (mouseY < listY + 20) {
                 showStructures = mouseX >= listX + listWidth / 2;
                 scroll = 0;
+                return true;
+            }
+            if (mouseX >= listX + listWidth - 8) {
+                int visibleRows = Math.max(1, (listHeight - 22) / 15);
+                int count = showStructures ? IslandDraft.STRUCTURE_OPTIONS.size() : IslandDraft.OVERWORLD_BIOMES.size();
+                int maxScroll = Math.max(0, count - visibleRows);
+                if (maxScroll > 0) {
+                    double progress = Math.max(0.0, Math.min(1.0, (mouseY - (listY + 20)) / (double)(listHeight - 23)));
+                    scroll = (int)Math.round(progress * maxScroll);
+                }
                 return true;
             }
             int index = scroll + ((int)mouseY - (listY + 20)) / 15;

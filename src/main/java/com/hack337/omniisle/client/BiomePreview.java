@@ -20,6 +20,7 @@ public final class BiomePreview {
         FOREST("forest", 0xFF2E7D32, Category.LAND, 3),
         FLOWER_FOREST("flower_forest", 0xFF5A9C55, Category.LAND, 3),
         WINDSWEPT_FOREST("windswept_forest", 0xFF3E7546, Category.LAND, 3),
+        DAPPLED_FOREST("dappled_forest", 0xFFDF6827, Category.LAND, 3),
         PLAINS("plains", 0xFF8DB84D, Category.LAND, 4),
         SUNFLOWER_PLAINS("sunflower_plains", 0xFFA9C84E, Category.LAND, 4),
         MEADOW("meadow", 0xFF76B852, Category.LAND, 5),
@@ -66,7 +67,8 @@ public final class BiomePreview {
 
         LUSH_CAVES("lush_caves", 0xFF4F8F55, Category.CAVE, -1),
         DRIPSTONE_CAVES("dripstone_caves", 0xFF8A6F62, Category.CAVE, -1),
-        DEEP_DARK("deep_dark", 0xFF183B3B, Category.CAVE, -1);
+        DEEP_DARK("deep_dark", 0xFF183B3B, Category.CAVE, -1),
+        SULFUR_CAVES("sulfur_caves", 0xFFABA64F, Category.CAVE, -1);
 
         public final String id;
         public final int color;

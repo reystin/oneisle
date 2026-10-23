@@ -19,6 +19,7 @@ public final class IslandDraft {
         BiomePreview.Type.BIRCH_FOREST, BiomePreview.Type.FOREST,
         BiomePreview.Type.PLAINS, BiomePreview.Type.MEADOW,
         BiomePreview.Type.CHERRY_GROVE, BiomePreview.Type.DARK_FOREST,
+        BiomePreview.Type.DAPPLED_FOREST,
         BiomePreview.Type.PALE_GARDEN, BiomePreview.Type.SWAMP,
         BiomePreview.Type.MANGROVE_SWAMP, BiomePreview.Type.JUNGLE,
         BiomePreview.Type.SAVANNA, BiomePreview.Type.DESERT,
@@ -30,7 +31,8 @@ public final class IslandDraft {
         BiomePreview.Type.LUKEWARM_OCEAN, BiomePreview.Type.COLD_OCEAN,
         BiomePreview.Type.FROZEN_OCEAN, BiomePreview.Type.RIVER,
         BiomePreview.Type.FROZEN_RIVER, BiomePreview.Type.LUSH_CAVES,
-        BiomePreview.Type.DRIPSTONE_CAVES, BiomePreview.Type.DEEP_DARK);
+        BiomePreview.Type.DRIPSTONE_CAVES, BiomePreview.Type.DEEP_DARK,
+        BiomePreview.Type.SULFUR_CAVES);
 
     public enum Preset {
         NATURAL("omniisle.preset.natural"),
@@ -52,7 +54,8 @@ public final class IslandDraft {
         STRONGHOLD("omniisle.structure.stronghold"), RUINED_PORTAL("omniisle.structure.ruined_portal"),
         MINESHAFT("omniisle.structure.mineshaft"), OCEAN_MONUMENT("omniisle.structure.ocean_monument"),
         OCEAN_RUINS("omniisle.structure.ocean_ruins"), SHIPWRECK("omniisle.structure.shipwreck"),
-        BURIED_TREASURE("omniisle.structure.buried_treasure");
+        BURIED_TREASURE("omniisle.structure.buried_treasure"),
+        ABANDONED_CAMP("omniisle.structure.abandoned_camp");
 
         public final String translationKey;
         StructureOption(String translationKey) { this.translationKey = translationKey; }
@@ -60,6 +63,7 @@ public final class IslandDraft {
 
     public static final List<StructureOption> STRUCTURE_OPTIONS = Arrays.stream(StructureOption.values())
         .filter(option -> TargetPlatform.HAS_TRIAL_CHAMBERS || option != StructureOption.TRIAL_CHAMBERS)
+        .filter(option -> TargetPlatform.HAS_ABANDONED_CAMP || option != StructureOption.ABANDONED_CAMP)
         .toList();
 
     private boolean[] land;
