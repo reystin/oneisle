@@ -83,5 +83,7 @@
   "omniisle.editor.generation.tooltip": "v2 uses improved coastlines and relief; v1 preserves legacy 0.5.0 generation",
   "omniisle.generation.v2": "v2 (recommended)",
   "omniisle.generation.v1": "v1 (legacy)",
+  "omniisle.editor.islets": "Islets: %s",
+  "omniisle.editor.islets.tooltip": "Density of satellite islets in the surrounding ocean (0% = disabled)",
   "omniisle.warning.unsupported_version": "World uses generation_version %s which is newer than supported (%s). Falling back to v%s."
 }

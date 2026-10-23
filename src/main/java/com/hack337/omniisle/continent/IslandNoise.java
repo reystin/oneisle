@@ -110,6 +110,13 @@ public final class IslandNoise {
         return t * t * (3.0 - 2.0 * t);
     }
 
+    public static double hashUnit01(long seed, int salt) {
+        long h = seed + 0x9E3779B97F4A7C15L * salt;
+        h = (h ^ (h >>> 30)) * 0xBF58476D1CE4E5B9L;
+        h = (h ^ (h >>> 27)) * 0x94D049BB133111EBL;
+        return ((h ^ (h >>> 31)) >>> 11) * 0x1.0p-53;
+    }
+
     private static int fastFloor(double x) {
         int xi = (int) x;
         return x < xi ? xi - 1 : xi;

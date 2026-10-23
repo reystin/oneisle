@@ -2,6 +2,7 @@ package com.hack337.omniisle.client;
 
 import java.util.List;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.components.AbstractSliderButton;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.CycleButton;
 import net.minecraft.client.gui.components.Tooltip;
@@ -23,7 +24,7 @@ final class AdvancedSettingsScreen extends Screen {
     protected void init() {
         int panelWidth = Math.min(260, width - 40);
         int startX = (width - panelWidth) / 2;
-        int y = Math.max(48, height / 2 - 50);
+        int y = Math.max(48, height / 2 - 58);
 
         CycleButton<IslandDraft.GenerationVersion> genButton = CycleButton
             .<IslandDraft.GenerationVersion>builder(val -> Component.translatable(val.translationKey), state.generationVersion())
@@ -33,6 +34,11 @@ final class AdvancedSettingsScreen extends Screen {
                 state.setGenerationVersion(value);
             });
         addRenderableWidget(genButton);
+        y += 24;
+
+        IsletDensitySlider isletSlider = new IsletDensitySlider(startX, y, panelWidth, 20);
+        isletSlider.setTooltip(Tooltip.create(Component.translatable("omniisle.editor.islets.tooltip")));
+        addRenderableWidget(isletSlider);
 
         addRenderableWidget(Button.builder(Component.translatable("gui.done"), button -> onClose())
             .bounds(width / 2 - 75, height - 32, 150, 20).build());
@@ -43,9 +49,9 @@ final class AdvancedSettingsScreen extends Screen {
         super.extractBackground(context, mouseX, mouseY, delta);
         context.fill(0, 0, width, height, 0x30000000);
         int panelWidth = Math.min(280, width - 24);
-        int panelHeight = Math.min(140, height - 70);
+        int panelHeight = Math.min(160, height - 60);
         int panelX = (width - panelWidth) / 2;
-        int panelY = Math.max(36, height / 2 - 62);
+        int panelY = Math.max(32, height / 2 - 70);
         panel(context, panelX, panelY, panelWidth, panelHeight, 0xFF202B2C);
         context.centeredText(font, title, width / 2, panelY + 8, 0xFFF4E8C1);
     }
@@ -60,5 +66,24 @@ final class AdvancedSettingsScreen extends Screen {
         context.fill(x + 1, y + 1, x + w - 1, y + h - 1, 0xFF788078);
         context.fill(x + 2, y + 2, x + w - 2, y + h - 2, 0xFF343A35);
         context.fill(x + 4, y + 4, x + w - 4, y + h - 4, interior);
+    }
+
+    private final class IsletDensitySlider extends AbstractSliderButton {
+        private IsletDensitySlider(int x, int y, int width, int height) {
+            super(x, y, width, height, Component.empty(), state.isletDensity());
+            updateMessage();
+        }
+
+        @Override
+        protected void updateMessage() {
+            int pct = (int) Math.round(value * 100.0);
+            setMessage(Component.translatable("omniisle.editor.islets", pct + "%"));
+        }
+
+        @Override
+        protected void applyValue() {
+            state.setIsletDensity(value);
+            updateMessage();
+        }
     }
 }

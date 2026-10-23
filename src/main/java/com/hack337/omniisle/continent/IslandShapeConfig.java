@@ -22,6 +22,7 @@ public class IslandShapeConfig {
     public static final Codec<IslandShapeConfig> CODEC = RecordCodecBuilder.create(
         instance -> instance.group(
             Codec.INT.optionalFieldOf("generation_version", 1).forGetter(d -> d.generationVersion),
+            Codec.DOUBLE.optionalFieldOf("islet_density", 0.25).forGetter(d -> d.isletDensity),
             IslandShapeConfig.Entry.CODEC.listOf().fieldOf("entries").orElseGet(ArrayList::new).forGetter(d -> d.entries),
             IslandMask.CODEC.optionalFieldOf("mask").forGetter(d -> java.util.Optional.ofNullable(d.mask)),
             Codec.LONG.optionalFieldOf("biome_seed", 0L).forGetter(d -> d.biomeSeed)
@@ -29,11 +30,12 @@ public class IslandShapeConfig {
     );
 
     public int generationVersion;
+    public double isletDensity = 0.25;
     public ArrayList<IslandShapeConfig.Entry> entries;
     public IslandMask mask;
     public long biomeSeed;
 
-    public IslandShapeConfig(int generationVersion, List<IslandShapeConfig.Entry> entries, java.util.Optional<IslandMask> mask, long biomeSeed) {
+    public IslandShapeConfig(int generationVersion, double isletDensity, List<IslandShapeConfig.Entry> entries, java.util.Optional<IslandMask> mask, long biomeSeed) {
         if (generationVersion > MAX_SUPPORTED_GENERATION_VERSION) {
             LOGGER.error("OmniIsle: Unknown generation_version {}, capping to {}", generationVersion, MAX_SUPPORTED_GENERATION_VERSION);
             this.generationVersion = MAX_SUPPORTED_GENERATION_VERSION;
@@ -42,9 +44,14 @@ public class IslandShapeConfig {
         } else {
             this.generationVersion = Math.max(1, generationVersion);
         }
+        this.isletDensity = Math.max(0.0, Math.min(1.0, isletDensity));
         this.entries = new ArrayList<>(entries);
         this.mask = mask.orElse(null);
         this.biomeSeed = biomeSeed;
+    }
+
+    public IslandShapeConfig(int generationVersion, List<IslandShapeConfig.Entry> entries, java.util.Optional<IslandMask> mask, long biomeSeed) {
+        this(generationVersion, 0.25, entries, mask, biomeSeed);
     }
 
     public IslandShapeConfig(List<IslandShapeConfig.Entry> entries, java.util.Optional<IslandMask> mask, long biomeSeed) {

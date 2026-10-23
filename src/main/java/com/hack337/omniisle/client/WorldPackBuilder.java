@@ -102,6 +102,7 @@ public final class WorldPackBuilder {
         mask.addProperty("data", state.packedMask());
         JsonObject config = new JsonObject();
         config.addProperty("generation_version", state.generationVersionNumber());
+        config.addProperty("islet_density", state.isletDensity());
         config.add("entries", new JsonArray());
         config.add("mask", mask);
         config.addProperty("biome_seed", state.biomeSeed());

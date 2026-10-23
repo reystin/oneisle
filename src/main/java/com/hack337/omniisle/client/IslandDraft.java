@@ -117,6 +117,7 @@ public final class IslandDraft {
     private Relief relief = Relief.BALANCED;
     private BiomeTheme theme = BiomeTheme.STANDARD;
     private GenerationVersion generationVersion = GenerationVersion.V2;
+    private double isletDensity = 0.25;
     private EnumSet<BiomePreview.Type> enabledBiomes;
     private EnumSet<StructureOption> enabledStructures;
 
@@ -165,6 +166,7 @@ public final class IslandDraft {
         draft.relief = this.relief;
         draft.theme = this.theme;
         draft.generationVersion = this.generationVersion;
+        draft.isletDensity = this.isletDensity;
         return draft;
     }
 
@@ -496,6 +498,8 @@ public final class IslandDraft {
     public GenerationVersion generationVersion() { return generationVersion; }
     public void setGenerationVersion(GenerationVersion generationVersion) { this.generationVersion = generationVersion; }
     public int generationVersionNumber() { return generationVersion.version; }
+    public double isletDensity() { return isletDensity; }
+    public void setIsletDensity(double isletDensity) { this.isletDensity = Math.max(0.0, Math.min(1.0, isletDensity)); }
 
     private static double fbm(double x, double z, long seed) {
         double total = 0.0;

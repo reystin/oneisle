@@ -117,7 +117,7 @@ public class Phase2SdfQualityTest {
 
         IslandMask mask = new IslandMask(192, 192, -halfSpan, halfSpan, -halfSpan, halfSpan,
             192.0, 400.0, draft.packedMask());
-        IslandShapeConfig config = new IslandShapeConfig(2, List.of(), Optional.of(mask), 99999L);
+        IslandShapeConfig config = new IslandShapeConfig(2, 0.0, List.of(), Optional.of(mask), 99999L);
         ModernTerrainV2 terrain = new ModernTerrainV2(config);
 
         long lcg = 0xDEADBEEFCAFE1234L;

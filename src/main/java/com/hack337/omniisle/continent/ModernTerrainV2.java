@@ -8,6 +8,8 @@ package com.hack337.omniisle.continent;
  * - Catmull-Rom bicubic interpolation on the continuous SDF field with 4x4 neighbourhood clamping.
  * - Domain warping on mask lookup only (frequency 1/520, amplitude 45; octave 2 at 1/190, amplitude 12).
  * - Near-coast micro-roughness centered at shoreline -0.08 with smoothstep falloff.
+ * - Ocean bathymetry with soft floor at -0.80, seabed noise (fBm + ridged trenches), and guaranteed deep ocean band.
+ * - Satellite islets with jittered cellular placement, 350-block margin from main island, and density slider.
  * - Pure, thread-safe, allocation-free evaluation.
  */
 public final class ModernTerrainV2 implements IslandTerrain {
@@ -26,12 +28,13 @@ public final class ModernTerrainV2 implements IslandTerrain {
     private final double blocksPerPixel;
     private final long seed;
     private final double coastWarp;
+    private final double isletDensity;
 
     private final float[] sdfGrid;
 
     public ModernTerrainV2(IslandShapeConfig config) {
         this.config = config;
-        this.mask = config.mask != null ? config.mask : new IslandMask(192, 192, -2720, 2720, -2720, 2720, 192.0, 400.0, "");
+        this.mask = config != null && config.mask != null ? config.mask : new IslandMask(192, 192, -2720, 2720, -2720, 2720, 192.0, 400.0, "");
         this.width = this.mask.width;
         this.height = this.mask.height;
         this.minX = this.mask.minX;
@@ -41,8 +44,9 @@ public final class ModernTerrainV2 implements IslandTerrain {
         this.coastWidth = this.mask.coastWidth;
         this.oceanTransitionWidth = this.mask.oceanTransitionWidth;
         this.blocksPerPixel = 0.5 * ((maxX - minX) / width + (maxZ - minZ) / height);
-        this.seed = config.biomeSeed != 0L ? config.biomeSeed : 0x5EED1234ABCDL;
+        this.seed = config != null && config.biomeSeed != 0L ? config.biomeSeed : 0x5EED1234ABCDL;
         this.coastWarp = 45.0;
+        this.isletDensity = config != null ? config.isletDensity : 0.25;
 
         this.sdfGrid = buildSdfGrid();
     }
@@ -59,9 +63,23 @@ public final class ModernTerrainV2 implements IslandTerrain {
         return sdfGrid;
     }
 
+    public double isletDensity() {
+        return isletDensity;
+    }
+
     @Override
     public double signedDistance(double worldX, double worldZ) {
-        return computeSignedDistance(worldX, worldZ, true);
+        double worldDistance = computeSignedDistance(worldX, worldZ, true);
+
+        // Check if inside any satellite islet
+        if (worldDistance < 0.0 && isletDensity > 0.0) {
+            double isletDist = sampleSatelliteIsletDistance(worldX, worldZ);
+            if (isletDist > worldDistance) {
+                worldDistance = isletDist;
+            }
+        }
+
+        return worldDistance;
     }
 
     @Override
@@ -81,7 +99,112 @@ public final class ModernTerrainV2 implements IslandTerrain {
             cBase += roughness;
         }
 
-        return Math.max(-1.0, Math.min(0.70, cBase));
+        if (worldDistance >= 0.0) {
+            // Land side
+            return Math.max(-1.0, Math.min(0.70, cBase));
+        }
+
+        // Ocean bathymetry
+        double s = -worldDistance; // offshore distance in blocks
+        double wo = oceanTransitionWidth;
+        double b = Math.max(cBase, -0.80); // soft floor at -0.80
+
+        double w = IslandNoise.smoothstep(s / (0.5 * wo));
+        double fbmBed = IslandNoise.fbm2(worldX / 1100.0, worldZ / 1100.0, seed + 555L, 3, 2.0, 0.5);
+        double trench = 1.0 - Math.abs(IslandNoise.fbm2(worldX / 450.0, worldZ / 450.0, seed + 777L, 2, 2.0, 0.5));
+
+        // Seamounts (positive seabed noise) fade in only beyond 1.0*wo, keeping [0.4*wo, 1.0*wo] guaranteed deep
+        double seamountFade = s > 1.0 * wo ? IslandNoise.smoothstep((s - 1.0 * wo) / (0.3 * wo)) : 0.0;
+        double positiveBed = Math.max(0.0, fbmBed * 0.18) * seamountFade;
+        double negativeBed = Math.min(0.0, fbmBed * 0.18) - trench * 0.12;
+        double seabed = positiveBed + negativeBed;
+
+        double cOcean = Math.max(-1.0, Math.min(0.70, b + w * seabed));
+
+        // Satellite islets (density slider in [0, 1])
+        if (isletDensity > 0.0) {
+            cOcean = sampleSatelliteIslets(worldX, worldZ, cOcean);
+        }
+
+        return cOcean;
+    }
+
+    private double sampleSatelliteIslets(double worldX, double worldZ, double cOcean) {
+        int cellX = fastFloor(worldX / 800.0);
+        int cellZ = fastFloor(worldZ / 800.0);
+        double maxC = cOcean;
+
+        for (int dz = -1; dz <= 1; dz++) {
+            for (int dx = -1; dx <= 1; dx++) {
+                int cx = cellX + dx;
+                int cz = cellZ + dz;
+                long cellSeed = seed ^ ((long) cx * 0x4B372819L + (long) cz * 0x9E3779B9L);
+                double p = 0.15 + 0.5 * isletDensity;
+                if (IslandNoise.hashUnit01(cellSeed, 1) < p) {
+                    double centerX = (cx + 0.15 + IslandNoise.hashUnit01(cellSeed, 2) * 0.70) * 800.0;
+                    double centerZ = (cz + 0.15 + IslandNoise.hashUnit01(cellSeed, 3) * 0.70) * 800.0;
+
+                    double r = 40.0 + IslandNoise.hashUnit01(cellSeed, 4) * 120.0;
+                    // Ensure the entire islet disc remains strictly outside the 350-block buffer
+                    double centerDist = computeSignedDistance(centerX, centerZ, false);
+                    if (centerDist > -(350.0 + r)) continue;
+
+                    double dist = Math.hypot(worldX - centerX, worldZ - centerZ);
+                    if (dist < r) {
+                        double t = dist / r;
+                        double isletC;
+                        if (t <= 0.55) {
+                            double u = (0.55 - t) / 0.55;
+                            isletC = -0.08 + 0.33 * (u * u * (3.0 - 2.0 * u));
+                        } else {
+                            double v = (t - 0.55) / 0.45;
+                            isletC = -0.08 - 0.92 * (v * v * (3.0 - 2.0 * v));
+                        }
+                        if (isletC > maxC) {
+                            maxC = isletC;
+                        }
+                    }
+                }
+            }
+        }
+        return maxC;
+    }
+
+    private double sampleSatelliteIsletDistance(double worldX, double worldZ) {
+        int cellX = fastFloor(worldX / 800.0);
+        int cellZ = fastFloor(worldZ / 800.0);
+        double maxDist = Double.NEGATIVE_INFINITY;
+
+        for (int dz = -1; dz <= 1; dz++) {
+            for (int dx = -1; dx <= 1; dx++) {
+                int cx = cellX + dx;
+                int cz = cellZ + dz;
+                long cellSeed = seed ^ ((long) cx * 0x4B372819L + (long) cz * 0x9E3779B9L);
+                double p = 0.15 + 0.5 * isletDensity;
+                if (IslandNoise.hashUnit01(cellSeed, 1) < p) {
+                    double centerX = (cx + 0.15 + IslandNoise.hashUnit01(cellSeed, 2) * 0.70) * 800.0;
+                    double centerZ = (cz + 0.15 + IslandNoise.hashUnit01(cellSeed, 3) * 0.70) * 800.0;
+
+                    double r = 40.0 + IslandNoise.hashUnit01(cellSeed, 4) * 120.0;
+                    double centerDist = computeSignedDistance(centerX, centerZ, false);
+                    if (centerDist > -(350.0 + r)) continue;
+
+                    double dist = Math.hypot(worldX - centerX, worldZ - centerZ);
+                    if (dist < r) {
+                        double shoreDist = (0.55 - dist / r) * r;
+                        if (shoreDist > maxDist) {
+                            maxDist = shoreDist;
+                        }
+                    }
+                }
+            }
+        }
+        return maxDist;
+    }
+
+    private static int fastFloor(double x) {
+        int xi = (int) x;
+        return x < xi ? xi - 1 : xi;
     }
 
     @Override

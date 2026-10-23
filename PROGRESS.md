@@ -34,10 +34,10 @@
 - [x] **2.5** Performance benchmarking & flat float[] cache
 
 ### Phase 3 — Ocean Floor & Satellite Islets [v2]
-- [ ] **3.1** Soft ocean floor at -0.80
-- [ ] **3.2** Continuous seabed noise (weight = 0 at coast)
-- [ ] **3.3** Guaranteed deep band for Ocean Monuments
-- [ ] **3.4** Satellite islets generator with `islet_density` slider
+- [x] **3.1** Soft ocean floor at -0.80
+- [x] **3.2** Continuous seabed noise (weight = 0 at coast)
+- [x] **3.3** Guaranteed deep band for Ocean Monuments
+- [x] **3.4** Satellite islets generator with `islet_density` slider
 
 ### Phase 4 — Inland Relief (Stop the Cone) [v2]
 - [ ] **4.1** Procedural ridged mountain spines with tanh soft saturation
