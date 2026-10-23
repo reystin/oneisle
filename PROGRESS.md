@@ -27,11 +27,11 @@
 - [x] **1.6** `/omniisle info` command
 
 ### Phase 2 — SDF Quality (Coast & Slopes) [v2]
-- [ ] **2.1** Sub-pixel distance convention (`dIn - 0.5`, `-(dOut - 0.5)`)
-- [ ] **2.2** Catmull-Rom bicubic interpolation on SDF with neighborhood clamping
-- [ ] **2.3** Domain warping on mask lookup only (frequency 1/520, amplitude 45)
-- [ ] **2.4** Near-coast micro-roughness centered at shoreline -0.08
-- [ ] **2.5** Performance benchmarking & flat float[] cache
+- [x] **2.1** Sub-pixel distance convention (`dIn - 0.5`, `-(dOut - 0.5)`)
+- [x] **2.2** Catmull-Rom bicubic interpolation on SDF with neighborhood clamping
+- [x] **2.3** Domain warping on mask lookup only (frequency 1/520, amplitude 45)
+- [x] **2.4** Near-coast micro-roughness centered at shoreline -0.08
+- [x] **2.5** Performance benchmarking & flat float[] cache
 
 ### Phase 3 — Ocean Floor & Satellite Islets [v2]
 - [ ] **3.1** Soft ocean floor at -0.80
