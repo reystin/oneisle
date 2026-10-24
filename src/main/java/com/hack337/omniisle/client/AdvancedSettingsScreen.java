@@ -39,6 +39,16 @@ final class AdvancedSettingsScreen extends Screen {
         IsletDensitySlider isletSlider = new IsletDensitySlider(startX, y, panelWidth, 20);
         isletSlider.setTooltip(Tooltip.create(Component.translatable("omniisle.editor.islets.tooltip")));
         addRenderableWidget(isletSlider);
+        y += 24;
+
+        CycleButton<Double> structDensityButton = CycleButton
+            .<Double>builder(val -> Component.literal(String.format(java.util.Locale.ROOT, "%.1fx", val)), state.structureDensity())
+            .withValues(List.of(0.5, 1.0, 2.0))
+            .withTooltip(val -> Tooltip.create(Component.translatable("omniisle.editor.structure_density.tooltip")))
+            .create(startX, y, panelWidth, 20, Component.translatable("omniisle.editor.structure_density", String.format(java.util.Locale.ROOT, "%.1fx", state.structureDensity())), (button, value) -> {
+                state.setStructureDensity(value);
+            });
+        addRenderableWidget(structDensityButton);
 
         addRenderableWidget(Button.builder(Component.translatable("gui.done"), button -> onClose())
             .bounds(width / 2 - 75, height - 32, 150, 20).build());

@@ -32,7 +32,7 @@ public final class OmniIsleEditorScreen extends Screen {
         Layer(String key) { this.translationKey = key; }
     }
 
-    private enum Tool { LAND, ERASER, SMOOTH }
+    private enum Tool { LAND, ERASER, SMOOTH, SPAWN }
 
     private final CreateWorldScreen parent;
     private final IslandDraft state;
@@ -70,6 +70,7 @@ public final class OmniIsleEditorScreen extends Screen {
     private Button landButton;
     private Button eraserButton;
     private Button smoothButton;
+    private Button spawnButton;
     private Button tier0Button;
     private Button tier1Button;
     private Button tier2Button;
@@ -79,6 +80,7 @@ public final class OmniIsleEditorScreen extends Screen {
     private Button newBiomesButton;
     private Button clearButton;
     private Button doneButton;
+    private long waterClickFlash = 0L;
 
     public OmniIsleEditorScreen(CreateWorldScreen parent) {
         super(Component.translatable("omniisle.editor.title"));
@@ -138,11 +140,13 @@ public final class OmniIsleEditorScreen extends Screen {
         y += 24;
 
         landButton = addRenderableWidget(Button.builder(Component.translatable("omniisle.editor.land.short"), button -> selectTool(Tool.LAND))
-            .bounds(controlsX, y, 74, 20).tooltip(Tooltip.create(Component.translatable("omniisle.editor.land.tooltip"))).build());
+            .bounds(controlsX, y, 54, 20).tooltip(Tooltip.create(Component.translatable("omniisle.editor.land.tooltip"))).build());
         eraserButton = addRenderableWidget(Button.builder(Component.translatable("omniisle.editor.eraser.short"), button -> selectTool(Tool.ERASER))
-            .bounds(controlsX + 78, y, 74, 20).tooltip(Tooltip.create(Component.translatable("omniisle.editor.eraser.tooltip"))).build());
+            .bounds(controlsX + 58, y, 54, 20).tooltip(Tooltip.create(Component.translatable("omniisle.editor.eraser.tooltip"))).build());
         smoothButton = addRenderableWidget(Button.builder(Component.translatable("omniisle.editor.smooth.short"), button -> selectTool(Tool.SMOOTH))
-            .bounds(controlsX + 156, y, 74, 20).tooltip(Tooltip.create(Component.translatable("omniisle.editor.smooth.tooltip"))).build());
+            .bounds(controlsX + 116, y, 54, 20).tooltip(Tooltip.create(Component.translatable("omniisle.editor.smooth.tooltip"))).build());
+        spawnButton = addRenderableWidget(Button.builder(Component.translatable("omniisle.editor.spawn.short"), button -> selectTool(Tool.SPAWN))
+            .bounds(controlsX + 174, y, 56, 20).tooltip(Tooltip.create(Component.translatable("omniisle.editor.spawn.tooltip"))).build());
 
         tier0Button = addRenderableWidget(Button.builder(Component.translatable("omniisle.editor.tier0"), button -> selectTier(0))
             .bounds(controlsX, y, 43, 20).tooltip(Tooltip.create(Component.translatable("omniisle.editor.tier0.tooltip"))).build());
@@ -264,6 +268,7 @@ public final class OmniIsleEditorScreen extends Screen {
         if (landButton != null) landButton.visible = isLand;
         if (eraserButton != null) eraserButton.visible = isLand;
         if (smoothButton != null) smoothButton.visible = isLand;
+        if (spawnButton != null) spawnButton.visible = isLand;
 
         if (tier0Button != null) tier0Button.visible = !isLand;
         if (tier1Button != null) tier1Button.visible = !isLand;
@@ -278,6 +283,8 @@ public final class OmniIsleEditorScreen extends Screen {
                 .withStyle(tool == Tool.ERASER ? ChatFormatting.GREEN : ChatFormatting.WHITE));
             if (smoothButton != null) smoothButton.setMessage(Component.translatable("omniisle.editor.smooth.short")
                 .withStyle(tool == Tool.SMOOTH ? ChatFormatting.GREEN : ChatFormatting.WHITE));
+            if (spawnButton != null) spawnButton.setMessage(Component.translatable("omniisle.editor.spawn.short")
+                .withStyle(tool == Tool.SPAWN ? ChatFormatting.GOLD : ChatFormatting.WHITE));
         } else {
             if (tier0Button != null) tier0Button.setMessage(Component.literal("T0")
                 .withStyle(!heightSmooth && activeTier == 0 ? ChatFormatting.GREEN : ChatFormatting.DARK_GREEN));
@@ -397,7 +404,10 @@ public final class OmniIsleEditorScreen extends Screen {
         context.blit(RenderPipelines.GUI_TEXTURED, previewId, previewX, previewY, 0.0F, 0.0F,
             previewSize, previewSize, IslandDraft.RESOLUTION, IslandDraft.RESOLUTION,
             IslandDraft.RESOLUTION, IslandDraft.RESOLUTION);
-        context.outline(previewX - 1, previewY - 1, previewSize + 2, previewSize + 2, 0xFFB6C1AA);
+        long flashElapsed = System.currentTimeMillis() - waterClickFlash;
+        int outlineColor = (flashElapsed < 400L) ? 0xFFFF3333 : 0xFFB6C1AA;
+        context.outline(previewX - 1, previewY - 1, previewSize + 2, previewSize + 2, outlineColor);
+        drawSpawnMarker(context);
 
         drawPanel(context, controlsX - 6, controlsY - 6, controlsWidth + 12, controlsHeight + 12, 0xFF2A302B);
         if (!compactLayout) {
@@ -408,6 +418,24 @@ public final class OmniIsleEditorScreen extends Screen {
 
         int bottomY = Math.min(height - 29, Math.max(previewY + previewSize, controlsY + controlsHeight) + 14);
         drawPanel(context, width / 2 - 162, bottomY - 5, 324, 30, 0xFF2A302B);
+    }
+
+    private void drawSpawnMarker(GuiGraphicsExtractor context) {
+        int[] spawn = state.effectiveSpawnPx();
+        if (spawn == null) return;
+        int sx = previewX + (int) Math.round(spawn[0] * previewSize / (double) IslandDraft.RESOLUTION);
+        int sy = previewY + (int) Math.round(spawn[1] * previewSize / (double) IslandDraft.RESOLUTION);
+        boolean explicit = state.hasExplicitSpawn();
+        if (explicit) {
+            context.horizontalLine(sx - 5, sx + 5, sy, 0xFFFFD700);
+            context.verticalLine(sx, sy - 5, sy + 5, 0xFFFFD700);
+            context.outline(sx - 3, sy - 3, 7, 7, 0xFFFFD700);
+            context.fill(sx - 1, sy - 1, sx + 2, sy + 2, 0xFFFF3333);
+        } else {
+            context.horizontalLine(sx - 4, sx + 4, sy, 0xC0E0D080);
+            context.verticalLine(sx, sy - 4, sy + 4, 0xC0E0D080);
+            context.outline(sx - 2, sy - 2, 5, 5, 0xC0E0D080);
+        }
     }
 
     private static void drawPanel(GuiGraphicsExtractor context, int x, int y, int panelWidth,
@@ -423,6 +451,12 @@ public final class OmniIsleEditorScreen extends Screen {
     }
 
     private void drawBrushCursor(GuiGraphicsExtractor context, int mouseX, int mouseY) {
+        if (layer == Layer.LAND && tool == Tool.SPAWN) {
+            context.horizontalLine(mouseX - 6, mouseX + 6, mouseY, 0xFFFFD700);
+            context.verticalLine(mouseX, mouseY - 6, mouseY + 6, 0xFFFFD700);
+            context.outline(mouseX - 3, mouseY - 3, 7, 7, 0xFFFFD700);
+            return;
+        }
         int radius = Math.max(2, (int)Math.round(brushRadius * previewSize / (double)IslandDraft.RESOLUTION));
         int color;
         if (layer == Layer.LAND) {
@@ -430,6 +464,7 @@ public final class OmniIsleEditorScreen extends Screen {
                 case LAND -> 0xD0FFFFFF;
                 case ERASER -> 0xD0FF6666;
                 case SMOOTH -> 0xD066CCFF;
+                case SPAWN -> 0xFFFFD700;
             };
         } else {
             color = heightSmooth ? 0xD066CCFF : switch (activeTier) {
@@ -711,6 +746,27 @@ public final class OmniIsleEditorScreen extends Screen {
             return true;
         }
         if (!saving && isInsidePreview(mouseX, mouseY) && (button == InputConstants.MOUSE_BUTTON_LEFT || button == InputConstants.MOUSE_BUTTON_RIGHT)) {
+            if (layer == Layer.LAND && tool == Tool.SPAWN) {
+                int px = Math.max(0, Math.min(IslandDraft.RESOLUTION - 1,
+                    (int)((mouseX - previewX) * IslandDraft.RESOLUTION / (double)previewSize)));
+                int pz = Math.max(0, Math.min(IslandDraft.RESOLUTION - 1,
+                    (int)((mouseY - previewY) * IslandDraft.RESOLUTION / (double)previewSize)));
+                if (button == InputConstants.MOUSE_BUTTON_LEFT) {
+                    if (state.isLand(px, pz)) {
+                        state.setSpawn(px, pz);
+                        status = Component.empty();
+                        invalidatePreview();
+                    } else {
+                        waterClickFlash = System.currentTimeMillis();
+                        status = Component.translatable("omniisle.editor.spawn.water_error");
+                    }
+                } else if (button == InputConstants.MOUSE_BUTTON_RIGHT) {
+                    state.clearSpawn();
+                    status = Component.empty();
+                    invalidatePreview();
+                }
+                return true;
+            }
             state.pushUndo();
             lastPaintX = -1;
             lastPaintZ = -1;
@@ -738,6 +794,9 @@ public final class OmniIsleEditorScreen extends Screen {
         double mouseY = event.y();
         int button = event.button();
         if (!saving && (button == InputConstants.MOUSE_BUTTON_LEFT || button == InputConstants.MOUSE_BUTTON_RIGHT) && isInsidePreview(mouseX, mouseY)) {
+            if (layer == Layer.LAND && tool == Tool.SPAWN) {
+                return false;
+            }
             applyBrush(mouseX, mouseY, button == InputConstants.MOUSE_BUTTON_RIGHT ? Tool.ERASER : tool);
             return true;
         }

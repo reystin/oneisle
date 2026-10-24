@@ -42,11 +42,21 @@ public class IslandShapeConfig {
         }
     }
 
+    public record SpawnPos(int x, int z) {
+        public static final Codec<SpawnPos> CODEC = RecordCodecBuilder.create(
+            instance -> instance.group(
+                Codec.INT.fieldOf("x").forGetter(SpawnPos::x),
+                Codec.INT.fieldOf("z").forGetter(SpawnPos::z)
+            ).apply(instance, SpawnPos::new)
+        );
+    }
+
     public static final Codec<IslandShapeConfig> CODEC = RecordCodecBuilder.create(
         instance -> instance.group(
             Codec.INT.optionalFieldOf("generation_version", 1).forGetter(d -> d.generationVersion),
             Codec.DOUBLE.optionalFieldOf("islet_density", 0.25).forGetter(d -> d.isletDensity),
             HeightLayer.CODEC.optionalFieldOf("height_layer").forGetter(d -> java.util.Optional.ofNullable(d.heightLayer)),
+            SpawnPos.CODEC.optionalFieldOf("spawn").forGetter(d -> java.util.Optional.ofNullable(d.spawn)),
             IslandShapeConfig.Entry.CODEC.listOf().fieldOf("entries").orElseGet(ArrayList::new).forGetter(d -> d.entries),
             IslandMask.CODEC.optionalFieldOf("mask").forGetter(d -> java.util.Optional.ofNullable(d.mask)),
             Codec.LONG.optionalFieldOf("biome_seed", 0L).forGetter(d -> d.biomeSeed)
@@ -56,12 +66,14 @@ public class IslandShapeConfig {
     public int generationVersion;
     public double isletDensity = 0.25;
     public HeightLayer heightLayer;
+    public SpawnPos spawn;
     public byte[] unpackedHeight;
     public ArrayList<IslandShapeConfig.Entry> entries;
     public IslandMask mask;
     public long biomeSeed;
 
     public IslandShapeConfig(int generationVersion, double isletDensity, java.util.Optional<HeightLayer> heightLayer,
+                             java.util.Optional<SpawnPos> spawn,
                              List<IslandShapeConfig.Entry> entries, java.util.Optional<IslandMask> mask, long biomeSeed) {
         if (generationVersion > MAX_SUPPORTED_GENERATION_VERSION) {
             LOGGER.error("OmniIsle: Unknown generation_version {}, capping to {}", generationVersion, MAX_SUPPORTED_GENERATION_VERSION);
@@ -73,6 +85,7 @@ public class IslandShapeConfig {
         }
         this.isletDensity = Math.max(0.0, Math.min(1.0, isletDensity));
         this.heightLayer = heightLayer.orElse(null);
+        this.spawn = spawn.orElse(null);
         this.entries = new ArrayList<>(entries);
         this.mask = mask.orElse(null);
         this.biomeSeed = biomeSeed;
@@ -83,6 +96,11 @@ public class IslandShapeConfig {
         } else {
             this.unpackedHeight = null;
         }
+    }
+
+    public IslandShapeConfig(int generationVersion, double isletDensity, java.util.Optional<HeightLayer> heightLayer,
+                             List<IslandShapeConfig.Entry> entries, java.util.Optional<IslandMask> mask, long biomeSeed) {
+        this(generationVersion, isletDensity, heightLayer, java.util.Optional.empty(), entries, mask, biomeSeed);
     }
 
     public IslandShapeConfig(int generationVersion, double isletDensity, List<IslandShapeConfig.Entry> entries,
@@ -97,6 +115,9 @@ public class IslandShapeConfig {
     public IslandShapeConfig(List<IslandShapeConfig.Entry> entries, java.util.Optional<IslandMask> mask, long biomeSeed) {
         this(1, entries, mask, biomeSeed);
     }
+
+    public java.util.Optional<SpawnPos> spawn() { return java.util.Optional.ofNullable(spawn); }
+    public java.util.Optional<IslandMask> mask() { return java.util.Optional.ofNullable(mask); }
 
     public List<ShapeLayerSettings> createSettings() {
         return this.entries.stream().map(ShapeLayerSettings::new).toList();

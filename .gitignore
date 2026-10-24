@@ -9,3 +9,4 @@ out/
 *.log
 hs_err_pid*
 
+logs/

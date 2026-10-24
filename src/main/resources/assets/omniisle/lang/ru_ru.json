@@ -103,5 +103,10 @@
   "omniisle.editor.tier_name.0": "Низина (T0)",
   "omniisle.editor.tier_name.1": "Обычный (T1)",
   "omniisle.editor.tier_name.2": "Плато (T2)",
-  "omniisle.editor.tier_name.3": "Альпийский (T3)"
+  "omniisle.editor.tier_name.3": "Альпийский (T3)",
+  "omniisle.editor.spawn.short": "Спавн",
+  "omniisle.editor.spawn.tooltip": "ЛКМ по суше для выбора спавна; ПКМ для сброса на авто",
+  "omniisle.editor.spawn.water_error": "Точка спавна должна быть на суше!",
+  "omniisle.editor.structure_density": "Структуры: %s",
+  "omniisle.editor.structure_density.tooltip": "Множитель плотности структур (0.5x, 1.0x, 2.0x)"
 }

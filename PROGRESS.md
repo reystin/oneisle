@@ -45,10 +45,10 @@
 - [x] **4.3** Hillshade lighting in preview (NW light 315°, 45° altitude)
 
 ### Phase 5 — Structures & Spawn
-- [ ] **5.1** Automated structure placement verification harness
-- [ ] **5.2** Stronghold distance scaling for island radius
-- [ ] **5.3** Relaxed Ancient City & Ocean Monument placement fallbacks
-- [ ] **5.4** Largest-SDF inland spawn selector & editor gold crosshair marker
+- [x] **5.1** Automated structure placement verification harness
+- [x] **5.2** Stronghold distance scaling for island radius
+- [x] **5.3** Relaxed Ancient City & Ocean Monument placement fallbacks
+- [x] **5.4** Largest-SDF inland spawn selector & editor gold crosshair marker
 
 ### Phase 6 — Climate & Biomes
 - [ ] **6.1** `climate_scale` slider (384-1536) in editor

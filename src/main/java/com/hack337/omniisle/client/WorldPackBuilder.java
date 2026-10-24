@@ -36,14 +36,14 @@ public final class WorldPackBuilder {
         structure(IslandDraft.StructureOption.VILLAGE, "villages", "minecraft:village_plains", "village_plains", BiomePreview.Type.PLAINS),
         structure(IslandDraft.StructureOption.OUTPOST, "pillager_outposts", "minecraft:pillager_outpost", "pillager_outpost", BiomePreview.Type.PLAINS),
         structure(IslandDraft.StructureOption.MANSION, "woodland_mansions", "minecraft:mansion", "woodland_mansion", BiomePreview.Type.DARK_FOREST),
-        structure(IslandDraft.StructureOption.DESERT_PYRAMID, "desert_pyramids", "minecraft:desert_pyramid", "desert_pyramid", BiomePreview.Type.BADLANDS),
+        structure(IslandDraft.StructureOption.DESERT_PYRAMID, "desert_pyramids", "minecraft:desert_pyramid", "desert_pyramid", BiomePreview.Type.DESERT),
         structure(IslandDraft.StructureOption.IGLOO, "igloos", "minecraft:igloo", "igloo", BiomePreview.Type.SNOWY_PLAINS),
         structure(IslandDraft.StructureOption.JUNGLE_TEMPLE, "jungle_temples", "minecraft:jungle_pyramid", "jungle_temple", BiomePreview.Type.JUNGLE),
         structure(IslandDraft.StructureOption.SWAMP_HUT, "swamp_huts", "minecraft:swamp_hut", "swamp_hut", BiomePreview.Type.SWAMP),
         structure(IslandDraft.StructureOption.TRAIL_RUINS, "trail_ruins", "minecraft:trail_ruins", "trail_ruins", BiomePreview.Type.TAIGA),
         structure(IslandDraft.StructureOption.TRIAL_CHAMBERS, "trial_chambers", "minecraft:trial_chambers", "trial_chambers", BiomePreview.Type.PLAINS),
         new StructureDefinition(IslandDraft.StructureOption.ANCIENT_CITY, "ancient_cities", "minecraft:ancient_city", "ancient_city",
-            EnumSet.of(BiomePreview.Type.STONY_PEAKS, BiomePreview.Type.JAGGED_PEAKS), true),
+            EnumSet.of(BiomePreview.Type.PLAINS, BiomePreview.Type.FOREST, BiomePreview.Type.TAIGA, BiomePreview.Type.STONY_PEAKS, BiomePreview.Type.JAGGED_PEAKS), true),
         structure(IslandDraft.StructureOption.STRONGHOLD, "strongholds", "minecraft:stronghold", "stronghold", BiomePreview.Type.PLAINS),
         structure(IslandDraft.StructureOption.RUINED_PORTAL, "ruined_portals", "minecraft:ruined_portal", "ruined_portal_standard", BiomePreview.Type.PLAINS),
         structure(IslandDraft.StructureOption.MINESHAFT, "mineshafts", "minecraft:mineshaft", "mineshaft", BiomePreview.Type.PLAINS),
@@ -109,6 +109,11 @@ public final class WorldPackBuilder {
             heightObj.addProperty("data", state.packedHeight());
             config.add("height_layer", heightObj);
         }
+        int[] sp = state.effectiveSpawnPx();
+        JsonObject spawnObj = new JsonObject();
+        spawnObj.addProperty("x", (int) Math.round(state.worldX(sp[0])));
+        spawnObj.addProperty("z", (int) Math.round(state.worldZ(sp[1])));
+        config.add("spawn", spawnObj);
         config.add("entries", new JsonArray());
         config.add("mask", mask);
         config.addProperty("biome_seed", state.biomeSeed());
@@ -149,6 +154,13 @@ public final class WorldPackBuilder {
 
     private static void exportStructureSets(ZipOutputStream zip, IslandDraft state,
                                            IslandMask mask, double halfSpan) throws IOException {
+        com.hack337.omniisle.continent.IslandShapeConfig terrainConfig = new com.hack337.omniisle.continent.IslandShapeConfig(
+            state.generationVersionNumber(), state.isletDensity(),
+            state.hasCustomHeight() ? java.util.Optional.of(new com.hack337.omniisle.continent.IslandShapeConfig.HeightLayer(2, state.packedHeight())) : java.util.Optional.empty(),
+            List.of(), java.util.Optional.of(mask), state.biomeSeed()
+        );
+        com.hack337.omniisle.continent.IslandTerrain terrain = com.hack337.omniisle.continent.IslandTerrain.create(terrainConfig);
+
         int minChunk = (int)Math.floor(-halfSpan / 16.0);
         int maxChunk = (int)Math.ceil(halfSpan / 16.0);
         int width = maxChunk - minChunk + 1;
@@ -157,7 +169,7 @@ public final class WorldPackBuilder {
             for (int cx = minChunk; cx <= maxChunk; cx++) {
                 int x = cx * 16 + 8;
                 int z = cz * 16 + 8;
-                double continentalness = mask.sampleTerrainValue(x, z);
+                double continentalness = terrain.continentalness(x, z);
                 BiomePreview.Type biome = state.selectBiome(
                     BiomePreview.surface(continentalness, x, z, state.biomeSeed()), x, z);
                 samples[(cz - minChunk) * width + cx - minChunk] =
@@ -165,11 +177,25 @@ public final class WorldPackBuilder {
             }
         }
 
+        boolean isV2 = state.generationVersionNumber() >= 2;
         List<Point> used = new ArrayList<>();
         for (StructureDefinition definition : STRUCTURES) {
             if (!TargetPlatform.HAS_TRIAL_CHAMBERS && definition.option == IslandDraft.StructureOption.TRIAL_CHAMBERS) continue;
             if (!TargetPlatform.HAS_ABANDONED_CAMP && definition.option == IslandDraft.StructureOption.ABANDONED_CAMP) continue;
             boolean enabled = state.isStructureEnabled(definition.option);
+
+            if (isV2 && definition.option == IslandDraft.StructureOption.STRONGHOLD) {
+                // Scale concentric rings with island radius so strongholds lie inside the island
+                int scaledDistance = Math.max(8, Math.min(32, (int) Math.round(32.0 * state.islandSize() / 8000.0)));
+                int scaledSpread = Math.max(1, scaledDistance / 10);
+                String json = "{\n  \"structures\": [{\n    \"structure\": \"" + definition.structure +
+                    "\",\n    \"weight\": 1\n  }],\n  \"placement\": {\n    \"type\": \"minecraft:concentric_rings\",\n" +
+                    "    \"count\": 128,\n    \"distance\": " + scaledDistance + ",\n    \"spread\": " + scaledSpread + ",\n" +
+                    "    \"preferred_biomes\": \"#minecraft:stronghold_biased_to\",\n    \"salt\": 0\n  }\n}\n";
+                putEntry(zip, "data/minecraft/worldgen/structure_set/" + definition.setName + ".json", json);
+                continue;
+            }
+
             Point point = enabled ? locateStructure(definition, state, samples, minChunk, maxChunk, width, used) : new Point(0, 0);
             if (enabled) used.add(point);
             String json = "{\n  \"structures\": [{\n    \"structure\": \"" + definition.structure +
@@ -179,8 +205,14 @@ public final class WorldPackBuilder {
             putEntry(zip, "data/minecraft/worldgen/structure_set/" + definition.setName + ".json", json);
             if (enabled) {
                 Sample pointSample = samples[(point.chunkZ - minChunk) * width + point.chunkX - minChunk];
-                putEntry(zip, "data/minecraft/tags/worldgen/biome/has_structure/" + definition.biomeTag + ".json",
-                    "{\n  \"replace\": false,\n  \"values\": [\n    \"" + pointSample.biome.biomeId() + "\"\n  ]\n}\n");
+                String biomeId = pointSample.biome.biomeId();
+                if (definition.option == IslandDraft.StructureOption.ANCIENT_CITY) {
+                    putEntry(zip, "data/minecraft/tags/worldgen/biome/has_structure/ancient_city.json",
+                        "{\n  \"replace\": false,\n  \"values\": [\n    \"minecraft:deep_dark\",\n    \"" + biomeId + "\"\n  ]\n}\n");
+                } else {
+                    putEntry(zip, "data/minecraft/tags/worldgen/biome/has_structure/" + definition.biomeTag + ".json",
+                        "{\n  \"replace\": false,\n  \"values\": [\n    \"" + biomeId + "\"\n  ]\n}\n");
+                }
             }
         }
     }
@@ -191,6 +223,8 @@ public final class WorldPackBuilder {
         definition.biomes.forEach(type -> accepted.addAll(state.compatibleChoices(type)));
         Point best = null;
         double bestScore = Double.NEGATIVE_INFINITY;
+        double spawnX = state.worldSpawnX();
+        double spawnZ = state.worldSpawnZ();
         for (int cz = minChunk; cz <= maxChunk; cz++) {
             for (int cx = minChunk; cx <= maxChunk; cx++) {
                 Sample sample = samples[(cz - minChunk) * width + cx - minChunk];
@@ -206,7 +240,8 @@ public final class WorldPackBuilder {
                 if (tooClose) continue;
                 boolean oceanOrShore = sample.biome.name().contains("OCEAN") || sample.biome == BiomePreview.Type.BEACH;
                 double score = oceanOrShore ? -Math.abs(sample.continentalness + 0.40) : sample.continentalness;
-                score -= (Math.abs(cx) + Math.abs(cz)) * 0.00001;
+                double distFromSpawn = Math.hypot((cx * 16 + 8) - spawnX, (cz * 16 + 8) - spawnZ);
+                score -= distFromSpawn * 0.00005;
                 if (score > bestScore) { bestScore = score; best = new Point(cx, cz); }
             }
         }

@@ -109,10 +109,12 @@ public final class IslandDraft {
         .filter(option -> TargetPlatform.HAS_ABANDONED_CAMP || option != StructureOption.ABANDONED_CAMP)
         .toList();
 
-    public record DraftSnapshot(boolean[] land, byte[] height) {}
+    public record DraftSnapshot(boolean[] land, byte[] height, Integer spawnPx, Integer spawnPz) {}
 
     private boolean[] land;
     private byte[] height;
+    private Integer spawnPx = null;
+    private Integer spawnPz = null;
     private int islandSize;
     private long shapeSeed;
     private long biomeSeed;
@@ -121,6 +123,7 @@ public final class IslandDraft {
     private BiomeTheme theme = BiomeTheme.STANDARD;
     private GenerationVersion generationVersion = GenerationVersion.V2;
     private double isletDensity = 0.25;
+    private double structureDensity = 1.0;
     private EnumSet<BiomePreview.Type> enabledBiomes;
     private EnumSet<StructureOption> enabledStructures;
 
@@ -177,6 +180,9 @@ public final class IslandDraft {
         draft.theme = this.theme;
         draft.generationVersion = this.generationVersion;
         draft.isletDensity = this.isletDensity;
+        draft.structureDensity = this.structureDensity;
+        draft.spawnPx = this.spawnPx;
+        draft.spawnPz = this.spawnPz;
         return draft;
     }
 
@@ -199,11 +205,131 @@ public final class IslandDraft {
         return height;
     }
 
+    public boolean hasExplicitSpawn() {
+        return spawnPx != null && spawnPz != null;
+    }
+
+    public Integer spawnPx() {
+        return spawnPx;
+    }
+
+    public Integer spawnPz() {
+        return spawnPz;
+    }
+
+    public void setSpawn(int px, int pz) {
+        if (isLand(px, pz)) {
+            pushUndo();
+            this.spawnPx = px;
+            this.spawnPz = pz;
+        }
+    }
+
+    public void clearSpawn() {
+        pushUndo();
+        this.spawnPx = null;
+        this.spawnPz = null;
+    }
+
+    public double structureDensity() {
+        return structureDensity;
+    }
+
+    public void setStructureDensity(double structureDensity) {
+        this.structureDensity = Math.max(0.5, Math.min(2.0, structureDensity));
+    }
+
+    /**
+     * Returns [px, pz] for the effective spawn location.
+     * Uses explicit spawn if valid and on land, otherwise computes auto-spawn.
+     */
+    public int[] effectiveSpawnPx() {
+        if (spawnPx != null && spawnPz != null && isLand(spawnPx, spawnPz)) {
+            return new int[]{spawnPx, spawnPz};
+        }
+        return computeAutoSpawn();
+    }
+
+    public int[] computeAutoSpawn() {
+        int cx = RESOLUTION / 2;
+        int cz = RESOLUTION / 2;
+
+        int bestPx = cx;
+        int bestPz = cz;
+        double bestDist = -1.0;
+
+        // Search within expanding radii (40% default) from center
+        for (double factor : new double[]{0.40, 0.60, 0.85, 1.0}) {
+            int r = (int) Math.round(RESOLUTION * 0.5 * factor);
+            int r2 = r * r;
+
+            for (int z = Math.max(0, cz - r); z <= Math.min(RESOLUTION - 1, cz + r); z++) {
+                for (int x = Math.max(0, cx - r); x <= Math.min(RESOLUTION - 1, cx + r); x++) {
+                    int dx = x - cx;
+                    int dz = z - cz;
+                    if (dx * dx + dz * dz > r2) continue;
+                    if (!land[z * RESOLUTION + x]) continue;
+
+                    double d = distanceToWater(x, z);
+                    if (d > bestDist) {
+                        bestDist = d;
+                        bestPx = x;
+                        bestPz = z;
+                    }
+                }
+            }
+            if (bestDist > 0.0) break;
+        }
+
+        if (bestDist < 0.0) {
+            for (int z = 0; z < RESOLUTION; z++) {
+                for (int x = 0; x < RESOLUTION; x++) {
+                    if (land[z * RESOLUTION + x]) {
+                        return new int[]{x, z};
+                    }
+                }
+            }
+            return new int[]{cx, cz};
+        }
+
+        return new int[]{bestPx, bestPz};
+    }
+
+    private double distanceToWater(int px, int pz) {
+        int maxCheck = 15;
+        double minDistSq = maxCheck * maxCheck;
+        for (int dz = -maxCheck; dz <= maxCheck; dz++) {
+            int z = pz + dz;
+            if (z < 0 || z >= RESOLUTION) {
+                minDistSq = Math.min(minDistSq, dz * dz);
+                continue;
+            }
+            for (int dx = -maxCheck; dx <= maxCheck; dx++) {
+                int x = px + dx;
+                if (x < 0 || x >= RESOLUTION || !land[z * RESOLUTION + x]) {
+                    double distSq = dx * dx + dz * dz;
+                    if (distSq < minDistSq) minDistSq = distSq;
+                }
+            }
+        }
+        return Math.sqrt(minDistSq);
+    }
+
+    public double worldSpawnX() {
+        int[] sp = effectiveSpawnPx();
+        return worldX(sp[0]);
+    }
+
+    public double worldSpawnZ() {
+        int[] sp = effectiveSpawnPx();
+        return worldZ(sp[1]);
+    }
+
     public void pushUndo() {
         if (undoStack.size() >= MAX_UNDO_STEPS) {
             undoStack.removeLast();
         }
-        undoStack.push(new DraftSnapshot(Arrays.copyOf(land, land.length), Arrays.copyOf(height, height.length)));
+        undoStack.push(new DraftSnapshot(Arrays.copyOf(land, land.length), Arrays.copyOf(height, height.length), spawnPx, spawnPz));
         redoStack.clear();
     }
 
@@ -212,19 +338,23 @@ public final class IslandDraft {
 
     public boolean undo() {
         if (undoStack.isEmpty()) return false;
-        redoStack.push(new DraftSnapshot(Arrays.copyOf(land, land.length), Arrays.copyOf(height, height.length)));
+        redoStack.push(new DraftSnapshot(Arrays.copyOf(land, land.length), Arrays.copyOf(height, height.length), spawnPx, spawnPz));
         DraftSnapshot snap = undoStack.pop();
         land = snap.land;
         height = snap.height;
+        spawnPx = snap.spawnPx;
+        spawnPz = snap.spawnPz;
         return true;
     }
 
     public boolean redo() {
         if (redoStack.isEmpty()) return false;
-        undoStack.push(new DraftSnapshot(Arrays.copyOf(land, land.length), Arrays.copyOf(height, height.length)));
+        undoStack.push(new DraftSnapshot(Arrays.copyOf(land, land.length), Arrays.copyOf(height, height.length), spawnPx, spawnPz));
         DraftSnapshot snap = redoStack.pop();
         land = snap.land;
         height = snap.height;
+        spawnPx = snap.spawnPx;
+        spawnPz = snap.spawnPz;
         return true;
     }
 

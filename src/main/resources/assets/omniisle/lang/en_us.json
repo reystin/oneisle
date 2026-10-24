@@ -103,5 +103,10 @@
   "omniisle.editor.tier_name.0": "Lowland (T0)",
   "omniisle.editor.tier_name.1": "Normal (T1)",
   "omniisle.editor.tier_name.2": "Plateau (T2)",
-  "omniisle.editor.tier_name.3": "Alpine (T3)"
+  "omniisle.editor.tier_name.3": "Alpine (T3)",
+  "omniisle.editor.spawn.short": "Spawn",
+  "omniisle.editor.spawn.tooltip": "Left-click on land to set spawn; right-click resets to auto",
+  "omniisle.editor.spawn.water_error": "Spawn point must be on land!",
+  "omniisle.editor.structure_density": "Structures: %s",
+  "omniisle.editor.structure_density.tooltip": "Density multiplier for structures (0.5x, 1.0x, 2.0x)"
 }

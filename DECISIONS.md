@@ -44,3 +44,11 @@ This log records every design choice, trade-off, and architectural resolution ma
   3. Compress coastal rise using `base = -0.08 + 0.48 * tanh(d * 1.25 / coastWidth)` so base levels off at ~0.40 inland.
 * **Choice:** Option 3.
 * **Reason:** Leaves sufficient dynamic range (0.40 to 0.95) for procedural ridged mountain spines and painted height tiers to form multiple distinct peaks, mountain ranges, and valleys without saturating.
+
+### Decision 006: Stronghold Ring Scaling and Land-Guaranteed Spawn
+* **Question:** How to guarantee that the stronghold and player spawn always generate on land on smaller island sizes (e.g. 2500)?
+* **Options:**
+  1. Force stronghold to fixed coordinates.
+  2. Scale the concentric rings `distance` parameter with island radius: `scaledDistance = clamp(8, 32, round(32 * islandSize / 8000))`.
+* **Choice:** Option 2 for Stronghold, combined with `SpawnSavedData` and `findSafeSpawn()` spiral search on first world load.
+* **Reason:** Stronghold generation in 26.3 uses `concentric_rings` where chunk radius is $\approx 4 \times distance$. At distance=32 chunks, the first ring is at $r \approx 2048$ blocks, falling into the deep ocean on 2500 and 4000 block islands. Scaling `distance` brings the first ring to $r \approx 640$ blocks on size 2500, placing strongholds reliably on land. For spawn, an explicit crosshair editor tool and auto-spawn SDF finder with first-load spiral relocation guarantees players never spawn in water.
