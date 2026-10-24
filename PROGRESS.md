@@ -87,7 +87,7 @@
 - [x] **9.1.3** Density-sampler timing v1/v2; full chunk generation marked UNVERIFIED
 - [x] **9.1.4** Real source vs preview parity 256×256 (100 % rivers off; 88.3 % family with rivers)
 - [x] **9.1.5** Golden tests extended with real v1 `OmniBiomeSource` snapshot
-- [x] **9.1.6** Ancient City tag/placement audited (surface biome can host it)
+- [x] **9.1.6** Ancient City tag/placement audited (surface biome can host it); v3 now disables the city when Deep Dark is not in the enabled biome palette
 - [x] **9.1.7** World border default off; `copy()` bug recorded
 - [x] **9.1.8** Climate family fractions measured; theme gradient ineffective in ALL/STANDARD
 - [x] **9.1.9** Uniform shore ribbon measured: 100 % of coast samples
@@ -131,6 +131,7 @@ regeneration gate). Evidence: `docs/evidence/ocean/`.
 - [x] **9.4.4** v3 village/trial-chamber spacing scales with size and the structure-density slider (`min(1, size/4000)`, separation < spacing); headless `structure_scaling.csv`
 - [x] **9.4.5** Spawn evidence on 45 configs: 45/45 marker x/z match, land and dry; 42/45 fully dry ray probes to 64 blocks; v3 spawn plateau keeps the marker dry
 - [x] **9.4.6** v3 relaxed pyramids bypass the vanilla 21×21 sea-level gate; v1/v2 packs untouched (I1); legacy `has_structure` tags stay single-biome (review regression fixed and tested)
+- [x] **9.4.7** v3 ancient city is disabled when `deep_dark` is not in the enabled biome palette; `Phase9StructureTest` asserts the pack placement flag flips with the palette, v1/v2 tags unchanged
 
 Measured: stronghold spawn distances 526.0–551.9 (2500, requirement 150), 868.4–875.4
 (4000) and 818.8–1193.6 (8000, requirement 300); minimum mutual distance 273.9

@@ -211,6 +211,16 @@ pieces, IDs, tags and `afterPlace`; v1/v2 packs keep the vanilla codecs. In the 
 sweep both pyramids are 15/15, including the NATURAL_8000_101 rows that failed before
 the override.
 
+**Deep-dark gate (Phase 9.8):** the 9.1 audit found that a 0.6.0 ancient-city tag was
+`deep_dark` plus one surface biome, and the city could be selected on a surface biome
+even when the user had disabled the Deep Dark biome. v3 now disables the
+`ancient_cities` structure set whenever `deep_dark` is absent from the enabled biome
+palette; v1/v2 tag JSON and placement are untouched (I1). `Phase9StructureTest`
+exports a v3 pack with and without `deep_dark` and asserts the placement `enabled`
+flag flips true → false. The remaining scope caveat: when Deep Dark is enabled but a
+particular 16-block sample grid has no deep-dark biome, `locateStructure` still falls
+back to a non-deep-dark candidate so the option does not silently disappear.
+
 **Spawn:** the v3 world writes a spawn plateau density wrapper around
 `effectiveSpawnPx()` (80-block radius, top y 78), and `SERVER_STARTED` reconciles
 `getRespawnData()`. Across 45 fresh worlds the real spawn block equals the editor

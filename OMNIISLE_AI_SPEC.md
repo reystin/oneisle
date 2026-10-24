@@ -235,7 +235,7 @@ Codec defaults (`IslandShapeConfig.CODEC`): `generation_version=1`, `islet_densi
 * **Biome selection:** family lists are selected by temperature/humidity/mountain class; enabled-user lists are intersected with the category; empty categories fall back safely. Dynamic registry supplies modded/datapack biomes.
 
 ### 8.6. Structures & spawn
-* **18 structure options**, all filtered to land/biome/depth conditions by the pack's structure sets. Strongholds: fixed 3-start ring scaled by island size. Ocean monuments: guaranteed deep band. Ancient cities: deep-dark conditions independent of surface peaks.
+* **18 structure options**, all filtered to land/biome/depth conditions by the pack's structure sets. Strongholds: fixed 3-start ring scaled by island size. Ocean monuments: guaranteed deep band. Ancient cities: deep-dark conditions independent of surface peaks; v3 disables the city when `deep_dark` is not in the enabled palette.
 * **Spawn selection:** largest positive SDF within 40 % of the island radius, written as `spawn` into the config. v3 places a local dome (`radius 80`, `top_y 78`) so the marker is dry. On load, `OmniIsleMod` initializes the respawn point: v1/v2 run an SDF spiral search, v3 reconciles after `SERVER_STARTED` using the marker surface or the deepest land on sampled rings (radius 16–512, stop at depth 48). This sets the world spawn; it does not teleport an existing player.
 * **World border:** optional, centered on the island with a 500–4000-block margin.
 

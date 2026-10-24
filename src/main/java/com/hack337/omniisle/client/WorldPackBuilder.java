@@ -267,6 +267,10 @@ public final class WorldPackBuilder {
             if (!TargetPlatform.HAS_TRIAL_CHAMBERS && definition.option == IslandDraft.StructureOption.TRIAL_CHAMBERS) continue;
             if (!TargetPlatform.HAS_ABANDONED_CAMP && definition.option == IslandDraft.StructureOption.ABANDONED_CAMP) continue;
             boolean enabled = state.isStructureEnabled(definition.option);
+            if (isV3 && definition.option == IslandDraft.StructureOption.ANCIENT_CITY
+                && !state.isBiomeEnabled(BiomePreview.Type.DEEP_DARK)) {
+                enabled = false;
+            }
 
             if (isV3 && definition.option == IslandDraft.StructureOption.STRONGHOLD) {
                 List<Point> points = enabled

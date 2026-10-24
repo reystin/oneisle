@@ -2,6 +2,7 @@ package com.hack337.omniisle.test;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.hack337.omniisle.client.BiomePreview;
 import com.hack337.omniisle.client.IslandDraft;
 import com.hack337.omniisle.client.WorldPackBuilder;
 import com.hack337.omniisle.continent.IslandMask;
@@ -219,6 +220,31 @@ public class Phase9StructureTest {
             } finally {
                 deleteTree(tmp);
             }
+        }
+    }
+
+    @Test
+    void v3AncientCityRequiresEnabledDeepDarkBiome() throws IOException {
+        IslandDraft draft = draft(IslandDraft.Preset.ROUND, 4000, 303L, 0.25, IslandDraft.GenerationVersion.V3);
+        assertTrue(draft.isBiomeEnabled(BiomePreview.Type.DEEP_DARK));
+        if (!draft.isStructureEnabled(IslandDraft.StructureOption.ANCIENT_CITY)) {
+            draft.toggleStructure(IslandDraft.StructureOption.ANCIENT_CITY);
+        }
+        Path with = Files.createTempDirectory("omniisle-city-deep-dark-");
+        Path without = Files.createTempDirectory("omniisle-city-no-deep-dark-");
+        try {
+            WorldPackBuilder.export(with, draft);
+            assertTrue(placement(with, "ancient_cities").get("enabled").getAsBoolean(),
+                "v3 should place the ancient city when deep_dark is enabled");
+
+            draft.toggleBiome(BiomePreview.Type.DEEP_DARK);
+            assertFalse(draft.isBiomeEnabled(BiomePreview.Type.DEEP_DARK));
+            WorldPackBuilder.export(without, draft);
+            assertFalse(placement(without, "ancient_cities").get("enabled").getAsBoolean(),
+                "v3 must not place an ancient city when deep_dark is disabled");
+        } finally {
+            deleteTree(with);
+            deleteTree(without);
         }
     }
 

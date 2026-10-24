@@ -42,6 +42,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Spawn in water; spawn marker now has a dry plateau in v3.
 - Vanilla ribbon shores at bay heads and steep slopes; slope-aware stony shores.
 - Radial symmetry rasterization gaps.
+- Ancient Cities selected without Deep Dark; v3 now disables the structure set when `deep_dark` is not in the enabled biome palette.
 - Dedicated server loading a world without the generated pack.
 
 ## [0.6.0+mc26.3-fabric] - 2026-10-24
