@@ -64,7 +64,8 @@ public final class WorldPackBuilder {
         Path temporary = dataPackDirectory.resolve(FILE_NAME + ".tmp");
         double halfSpan = state.worldSpan() * 0.5;
         double coastWidth = state.relief().coastWidth;
-        IslandMask mask = new IslandMask(IslandDraft.RESOLUTION, IslandDraft.RESOLUTION,
+        int res = state.resolution();
+        IslandMask mask = new IslandMask(res, res,
             -halfSpan, halfSpan, -halfSpan, halfSpan,
             coastWidth, OCEAN_TRANSITION_WIDTH, state.packedMask());
 
@@ -90,9 +91,9 @@ public final class WorldPackBuilder {
     private static String createDensityJson(IslandDraft state, double halfSpan) {
         JsonObject mask = new JsonObject();
         mask.addProperty("version", 1);
-        mask.addProperty("resolution", IslandDraft.RESOLUTION);
-        mask.addProperty("width", IslandDraft.RESOLUTION);
-        mask.addProperty("height", IslandDraft.RESOLUTION);
+        mask.addProperty("resolution", state.resolution());
+        mask.addProperty("width", state.resolution());
+        mask.addProperty("height", state.resolution());
         mask.addProperty("min_x", -halfSpan);
         mask.addProperty("max_x", halfSpan);
         mask.addProperty("min_z", -halfSpan);

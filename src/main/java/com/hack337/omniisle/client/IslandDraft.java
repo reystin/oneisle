@@ -2,8 +2,10 @@ package com.hack337.omniisle.client;
 
 import com.hack337.omniisle.platform.TargetPlatform;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
+import java.util.Collections;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Random;
@@ -57,10 +59,29 @@ public final class IslandDraft {
         ROUND("omniisle.preset.round"),
         LONG("omniisle.preset.long"),
         CRESCENT("omniisle.preset.crescent"),
-        ARCHIPELAGO("omniisle.preset.archipelago");
+        ARCHIPELAGO("omniisle.preset.archipelago"),
+        ATOLL("omniisle.preset.atoll"),
+        VOLCANO("omniisle.preset.volcano"),
+        FJORDS("omniisle.preset.fjords"),
+        TWIN_ISLANDS("omniisle.preset.twin_islands"),
+        INLAND_SEA("omniisle.preset.inland_sea"),
+        HORSESHOE_BAY("omniisle.preset.horseshoe_bay"),
+        RIDGE_ISLAND("omniisle.preset.ridge_island");
 
         public final String translationKey;
         Preset(String translationKey) { this.translationKey = translationKey; }
+    }
+
+    public enum Symmetry {
+        OFF("omniisle.symmetry.off"),
+        MIRROR_X("omniisle.symmetry.mirror_x"),
+        MIRROR_Z("omniisle.symmetry.mirror_z"),
+        FOUR_WAY("omniisle.symmetry.four_way"),
+        SIX_WAY("omniisle.symmetry.six_way"),
+        EIGHT_WAY("omniisle.symmetry.eight_way");
+
+        public final String translationKey;
+        Symmetry(String translationKey) { this.translationKey = translationKey; }
     }
 
     public enum Relief {
@@ -109,8 +130,9 @@ public final class IslandDraft {
         .filter(option -> TargetPlatform.HAS_ABANDONED_CAMP || option != StructureOption.ABANDONED_CAMP)
         .toList();
 
-    public record DraftSnapshot(boolean[] land, byte[] height, Integer spawnPx, Integer spawnPz) {}
+    public record DraftSnapshot(boolean[] land, byte[] height, Integer spawnPx, Integer spawnPz, int resolution) {}
 
+    private int resolution = RESOLUTION;
     private boolean[] land;
     private byte[] height;
     private Integer spawnPx = null;
@@ -136,28 +158,28 @@ public final class IslandDraft {
     private static final int MAX_UNDO_STEPS = 32;
 
     public IslandDraft() {
-        this(new boolean[RESOLUTION * RESOLUTION], defaultHeight(), DEFAULT_ISLAND_SIZE,
+        this(RESOLUTION);
+    }
+
+    public IslandDraft(int resolution) {
+        this(resolution, new boolean[resolution * resolution], defaultHeight(resolution), DEFAULT_ISLAND_SIZE,
             new Random().nextLong(), new Random().nextLong(), Preset.NATURAL, defaultBiomes(),
             defaultStructures());
         rebuildShape();
     }
 
-    private static byte[] defaultHeight() {
-        byte[] h = new byte[RESOLUTION * RESOLUTION];
+    private static byte[] defaultHeight(int res) {
+        byte[] h = new byte[res * res];
         Arrays.fill(h, (byte) 1);
         return h;
     }
 
-    private IslandDraft(boolean[] land, byte[] height, int islandSize, long shapeSeed, long biomeSeed, Preset preset,
-                              EnumSet<BiomePreview.Type> enabledBiomes) {
-        this(land, height, islandSize, shapeSeed, biomeSeed, preset, enabledBiomes, defaultStructures());
-    }
-
-    private IslandDraft(boolean[] land, byte[] height, int islandSize, long shapeSeed, long biomeSeed, Preset preset,
-                              EnumSet<BiomePreview.Type> enabledBiomes,
-                              EnumSet<StructureOption> enabledStructures) {
+    private IslandDraft(int resolution, boolean[] land, byte[] height, int islandSize, long shapeSeed, long biomeSeed, Preset preset,
+                        EnumSet<BiomePreview.Type> enabledBiomes,
+                        EnumSet<StructureOption> enabledStructures) {
+        this.resolution = resolution;
         this.land = land;
-        this.height = height != null ? height : defaultHeight();
+        this.height = height != null ? height : defaultHeight(resolution);
         this.islandSize = islandSize;
         this.shapeSeed = shapeSeed;
         this.biomeSeed = biomeSeed;
@@ -178,7 +200,8 @@ public final class IslandDraft {
     }
 
     public IslandDraft copy() {
-        IslandDraft draft = new IslandDraft(Arrays.copyOf(land, land.length), Arrays.copyOf(height, height.length), islandSize, shapeSeed, biomeSeed, preset,
+        IslandDraft draft = new IslandDraft(this.resolution, Arrays.copyOf(land, land.length),
+            Arrays.copyOf(height, height.length), islandSize, shapeSeed, biomeSeed, preset,
             EnumSet.copyOf(enabledBiomes), EnumSet.copyOf(enabledStructures));
         draft.relief = this.relief;
         draft.theme = this.theme;
@@ -193,18 +216,71 @@ public final class IslandDraft {
         return draft;
     }
 
+    public int resolution() {
+        return resolution;
+    }
+
+    public void setResolution(int newRes) {
+        if (newRes == this.resolution || newRes <= 0) return;
+        pushUndo();
+        boolean[] newLand = new boolean[newRes * newRes];
+        byte[] newHeight = new byte[newRes * newRes];
+        Arrays.fill(newHeight, (byte) 1);
+
+        for (int z = 0; z < newRes; z++) {
+            double srcZ = (z + 0.5) * this.resolution / (double) newRes - 0.5;
+            int z0 = Math.max(0, Math.min(this.resolution - 1, (int) Math.floor(srcZ)));
+            int z1 = Math.max(0, Math.min(this.resolution - 1, z0 + 1));
+            double fz = Math.max(0.0, Math.min(1.0, srcZ - z0));
+
+            for (int x = 0; x < newRes; x++) {
+                double srcX = (x + 0.5) * this.resolution / (double) newRes - 0.5;
+                int x0 = Math.max(0, Math.min(this.resolution - 1, (int) Math.floor(srcX)));
+                int x1 = Math.max(0, Math.min(this.resolution - 1, x0 + 1));
+                double fx = Math.max(0.0, Math.min(1.0, srcX - x0));
+
+                double l00 = land[z0 * this.resolution + x0] ? 1.0 : 0.0;
+                double l10 = land[z0 * this.resolution + x1] ? 1.0 : 0.0;
+                double l01 = land[z1 * this.resolution + x0] ? 1.0 : 0.0;
+                double l11 = land[z1 * this.resolution + x1] ? 1.0 : 0.0;
+                double l = (1.0 - fz) * ((1.0 - fx) * l00 + fx * l10) + fz * ((1.0 - fx) * l01 + fx * l11);
+                newLand[z * newRes + x] = l >= 0.5;
+
+                double h00 = height[z0 * this.resolution + x0];
+                double h10 = height[z0 * this.resolution + x1];
+                double h01 = height[z1 * this.resolution + x0];
+                double h11 = height[z1 * this.resolution + x1];
+                double h = (1.0 - fz) * ((1.0 - fx) * h00 + fx * h10) + fz * ((1.0 - fx) * h01 + fx * h11);
+                newHeight[z * newRes + x] = (byte) Math.max(0, Math.min(3, (int) Math.round(h)));
+            }
+        }
+        if (spawnPx != null && spawnPz != null) {
+            spawnPx = (int) Math.round(spawnPx * (double) newRes / this.resolution);
+            spawnPz = (int) Math.round(spawnPz * (double) newRes / this.resolution);
+        }
+        this.resolution = newRes;
+        this.land = newLand;
+        this.height = newHeight;
+    }
+
     public boolean isLand(int x, int z) {
-        return x >= 0 && z >= 0 && x < RESOLUTION && z < RESOLUTION && land[z * RESOLUTION + x];
+        return x >= 0 && z >= 0 && x < resolution && z < resolution && land[z * resolution + x];
+    }
+
+    public void setLand(int x, int z, boolean value) {
+        if (x >= 0 && z >= 0 && x < resolution && z < resolution) {
+            land[z * resolution + x] = value;
+        }
     }
 
     public byte tier(int x, int z) {
-        if (x < 0 || z < 0 || x >= RESOLUTION || z >= RESOLUTION) return 1;
-        return height[z * RESOLUTION + x];
+        if (x < 0 || z < 0 || x >= resolution || z >= resolution) return 1;
+        return height[z * resolution + x];
     }
 
     public void setTier(int x, int z, int tier) {
-        if (x >= 0 && z >= 0 && x < RESOLUTION && z < RESOLUTION) {
-            height[z * RESOLUTION + x] = (byte) Math.max(0, Math.min(3, tier));
+        if (x >= 0 && z >= 0 && x < resolution && z < resolution) {
+            height[z * resolution + x] = (byte) Math.max(0, Math.min(3, tier));
         }
     }
 
@@ -221,6 +297,14 @@ public final class IslandDraft {
     }
 
     public Integer spawnPz() {
+        return spawnPz;
+    }
+
+    public Integer explicitSpawnPx() {
+        return spawnPx;
+    }
+
+    public Integer explicitSpawnPz() {
         return spawnPz;
     }
 
@@ -273,8 +357,8 @@ public final class IslandDraft {
     }
 
     public int[] computeAutoSpawn() {
-        int cx = RESOLUTION / 2;
-        int cz = RESOLUTION / 2;
+        int cx = resolution / 2;
+        int cz = resolution / 2;
 
         int bestPx = cx;
         int bestPz = cz;
@@ -282,15 +366,15 @@ public final class IslandDraft {
 
         // Search within expanding radii (40% default) from center
         for (double factor : new double[]{0.40, 0.60, 0.85, 1.0}) {
-            int r = (int) Math.round(RESOLUTION * 0.5 * factor);
+            int r = (int) Math.round(resolution * 0.5 * factor);
             int r2 = r * r;
 
-            for (int z = Math.max(0, cz - r); z <= Math.min(RESOLUTION - 1, cz + r); z++) {
-                for (int x = Math.max(0, cx - r); x <= Math.min(RESOLUTION - 1, cx + r); x++) {
+            for (int z = Math.max(0, cz - r); z <= Math.min(resolution - 1, cz + r); z++) {
+                for (int x = Math.max(0, cx - r); x <= Math.min(resolution - 1, cx + r); x++) {
                     int dx = x - cx;
                     int dz = z - cz;
                     if (dx * dx + dz * dz > r2) continue;
-                    if (!land[z * RESOLUTION + x]) continue;
+                    if (!land[z * resolution + x]) continue;
 
                     double d = distanceToWater(x, z);
                     if (d > bestDist) {
@@ -304,9 +388,9 @@ public final class IslandDraft {
         }
 
         if (bestDist < 0.0) {
-            for (int z = 0; z < RESOLUTION; z++) {
-                for (int x = 0; x < RESOLUTION; x++) {
-                    if (land[z * RESOLUTION + x]) {
+            for (int z = 0; z < resolution; z++) {
+                for (int x = 0; x < resolution; x++) {
+                    if (land[z * resolution + x]) {
                         return new int[]{x, z};
                     }
                 }
@@ -322,13 +406,13 @@ public final class IslandDraft {
         double minDistSq = maxCheck * maxCheck;
         for (int dz = -maxCheck; dz <= maxCheck; dz++) {
             int z = pz + dz;
-            if (z < 0 || z >= RESOLUTION) {
+            if (z < 0 || z >= resolution) {
                 minDistSq = Math.min(minDistSq, dz * dz);
                 continue;
             }
             for (int dx = -maxCheck; dx <= maxCheck; dx++) {
                 int x = px + dx;
-                if (x < 0 || x >= RESOLUTION || !land[z * RESOLUTION + x]) {
+                if (x < 0 || x >= resolution || !land[z * resolution + x]) {
                     double distSq = dx * dx + dz * dz;
                     if (distSq < minDistSq) minDistSq = distSq;
                 }
@@ -351,7 +435,7 @@ public final class IslandDraft {
         if (undoStack.size() >= MAX_UNDO_STEPS) {
             undoStack.removeLast();
         }
-        undoStack.push(new DraftSnapshot(Arrays.copyOf(land, land.length), Arrays.copyOf(height, height.length), spawnPx, spawnPz));
+        undoStack.push(new DraftSnapshot(Arrays.copyOf(land, land.length), Arrays.copyOf(height, height.length), spawnPx, spawnPz, resolution));
         redoStack.clear();
     }
 
@@ -360,23 +444,25 @@ public final class IslandDraft {
 
     public boolean undo() {
         if (undoStack.isEmpty()) return false;
-        redoStack.push(new DraftSnapshot(Arrays.copyOf(land, land.length), Arrays.copyOf(height, height.length), spawnPx, spawnPz));
+        redoStack.push(new DraftSnapshot(Arrays.copyOf(land, land.length), Arrays.copyOf(height, height.length), spawnPx, spawnPz, resolution));
         DraftSnapshot snap = undoStack.pop();
-        land = snap.land;
-        height = snap.height;
-        spawnPx = snap.spawnPx;
-        spawnPz = snap.spawnPz;
+        this.resolution = snap.resolution;
+        this.land = snap.land;
+        this.height = snap.height;
+        this.spawnPx = snap.spawnPx;
+        this.spawnPz = snap.spawnPz;
         return true;
     }
 
     public boolean redo() {
         if (redoStack.isEmpty()) return false;
-        undoStack.push(new DraftSnapshot(Arrays.copyOf(land, land.length), Arrays.copyOf(height, height.length), spawnPx, spawnPz));
+        undoStack.push(new DraftSnapshot(Arrays.copyOf(land, land.length), Arrays.copyOf(height, height.length), spawnPx, spawnPz, resolution));
         DraftSnapshot snap = redoStack.pop();
-        land = snap.land;
-        height = snap.height;
-        spawnPx = snap.spawnPx;
-        spawnPz = snap.spawnPz;
+        this.resolution = snap.resolution;
+        this.land = snap.land;
+        this.height = snap.height;
+        this.spawnPx = snap.spawnPx;
+        this.spawnPz = snap.spawnPz;
         return true;
     }
 
@@ -390,102 +476,517 @@ public final class IslandDraft {
         Arrays.fill(height, (byte) 1);
     }
 
+    public List<int[]> getSymmetricPoints(int x, int z, Symmetry symmetry) {
+        if (symmetry == null || symmetry == Symmetry.OFF) {
+            return List.of(new int[]{x, z});
+        }
+        int w = resolution;
+        int h = resolution;
+        double cx = (w - 1) / 2.0;
+        double cz = (h - 1) / 2.0;
+        double dx = x - cx;
+        double dz = z - cz;
+
+        java.util.LinkedHashSet<Long> visited = new java.util.LinkedHashSet<>();
+        List<int[]> result = new ArrayList<>();
+
+        java.util.function.BiConsumer<Integer, Integer> add = (px, pz) -> {
+            if (px >= 0 && px < w && pz >= 0 && pz < h) {
+                long key = (((long) px) << 32) | (pz & 0xFFFFFFFFL);
+                if (visited.add(key)) {
+                    result.add(new int[]{px, pz});
+                }
+            }
+        };
+
+        add.accept(x, z);
+
+        switch (symmetry) {
+            case MIRROR_X -> add.accept(w - 1 - x, z);
+            case MIRROR_Z -> add.accept(x, h - 1 - z);
+            case FOUR_WAY -> {
+                add.accept(w - 1 - x, z);
+                add.accept(x, h - 1 - z);
+                add.accept(w - 1 - x, h - 1 - z);
+            }
+            case SIX_WAY -> {
+                for (int k = 1; k < 6; k++) {
+                    double angle = k * (Math.PI / 3.0);
+                    double cos = Math.cos(angle);
+                    double sin = Math.sin(angle);
+                    int rx = (int) Math.round(cx + dx * cos - dz * sin);
+                    int rz = (int) Math.round(cz + dx * sin + dz * cos);
+                    add.accept(rx, rz);
+                }
+            }
+            case EIGHT_WAY -> {
+                add.accept(w - 1 - x, z);
+                add.accept(x, h - 1 - z);
+                add.accept(w - 1 - x, h - 1 - z);
+                // Diagonal reflections
+                int d1x = (int) Math.round(cx + dz);
+                int d1z = (int) Math.round(cz + dx);
+                add.accept(d1x, d1z);
+                add.accept(w - 1 - d1x, d1z);
+                add.accept(d1x, h - 1 - d1z);
+                add.accept(w - 1 - d1x, h - 1 - d1z);
+            }
+            default -> {}
+        }
+        return result;
+    }
+
     public void paint(int centerX, int centerZ, int radius, boolean value) {
+        paint(centerX, centerZ, radius, value, Symmetry.OFF);
+    }
+
+    public void paint(int centerX, int centerZ, int radius, boolean value, Symmetry symmetry) {
+        for (int[] pt : getSymmetricPoints(centerX, centerZ, symmetry)) {
+            paintDirect(pt[0], pt[1], radius, value);
+        }
+    }
+
+    private void paintDirect(int centerX, int centerZ, int radius, boolean value) {
         int r2 = radius * radius;
-        for (int z = Math.max(0, centerZ - radius); z <= Math.min(RESOLUTION - 1, centerZ + radius); z++) {
-            for (int x = Math.max(0, centerX - radius); x <= Math.min(RESOLUTION - 1, centerX + radius); x++) {
+        for (int z = Math.max(0, centerZ - radius); z <= Math.min(resolution - 1, centerZ + radius); z++) {
+            for (int x = Math.max(0, centerX - radius); x <= Math.min(resolution - 1, centerX + radius); x++) {
                 int dx = x - centerX;
                 int dz = z - centerZ;
-                if (dx * dx + dz * dz <= r2) land[z * RESOLUTION + x] = value;
+                if (dx * dx + dz * dz <= r2) land[z * resolution + x] = value;
             }
         }
     }
 
     public void paintHeight(int centerX, int centerZ, int radius, int tier) {
+        paintHeight(centerX, centerZ, radius, tier, Symmetry.OFF);
+    }
+
+    public void paintHeight(int centerX, int centerZ, int radius, int tier, Symmetry symmetry) {
+        for (int[] pt : getSymmetricPoints(centerX, centerZ, symmetry)) {
+            paintHeightDirect(pt[0], pt[1], radius, tier);
+        }
+    }
+
+    private void paintHeightDirect(int centerX, int centerZ, int radius, int tier) {
         int r2 = radius * radius;
         byte bTier = (byte) Math.max(0, Math.min(3, tier));
-        for (int z = Math.max(0, centerZ - radius); z <= Math.min(RESOLUTION - 1, centerZ + radius); z++) {
-            for (int x = Math.max(0, centerX - radius); x <= Math.min(RESOLUTION - 1, centerX + radius); x++) {
+        for (int z = Math.max(0, centerZ - radius); z <= Math.min(resolution - 1, centerZ + radius); z++) {
+            for (int x = Math.max(0, centerX - radius); x <= Math.min(resolution - 1, centerX + radius); x++) {
                 int dx = x - centerX;
                 int dz = z - centerZ;
-                if (dx * dx + dz * dz <= r2) height[z * RESOLUTION + x] = bTier;
+                if (dx * dx + dz * dz <= r2) height[z * resolution + x] = bTier;
             }
         }
     }
 
     public void smoothHeight(int centerX, int centerZ, int radius) {
+        smoothHeight(centerX, centerZ, radius, Symmetry.OFF);
+    }
+
+    public void smoothHeight(int centerX, int centerZ, int radius, Symmetry symmetry) {
+        for (int[] pt : getSymmetricPoints(centerX, centerZ, symmetry)) {
+            smoothHeightDirect(pt[0], pt[1], radius);
+        }
+    }
+
+    private void smoothHeightDirect(int centerX, int centerZ, int radius) {
         int r2 = radius * radius;
         byte[] snapshot = Arrays.copyOf(height, height.length);
-        for (int z = Math.max(0, centerZ - radius); z <= Math.min(RESOLUTION - 1, centerZ + radius); z++) {
-            for (int x = Math.max(0, centerX - radius); x <= Math.min(RESOLUTION - 1, centerX + radius); x++) {
+        for (int z = Math.max(0, centerZ - radius); z <= Math.min(resolution - 1, centerZ + radius); z++) {
+            for (int x = Math.max(0, centerX - radius); x <= Math.min(resolution - 1, centerX + radius); x++) {
                 int dx = x - centerX;
                 int dz = z - centerZ;
                 if (dx * dx + dz * dz > r2) continue;
                 int sum = 0;
                 int count = 0;
-                for (int nz = Math.max(0, z - 1); nz <= Math.min(RESOLUTION - 1, z + 1); nz++) {
-                    for (int nx = Math.max(0, x - 1); nx <= Math.min(RESOLUTION - 1, x + 1); nx++) {
-                        sum += snapshot[nz * RESOLUTION + nx];
+                for (int nz = Math.max(0, z - 1); nz <= Math.min(resolution - 1, z + 1); nz++) {
+                    for (int nx = Math.max(0, x - 1); nx <= Math.min(resolution - 1, x + 1); nx++) {
+                        sum += snapshot[nz * resolution + nx];
                         count++;
                     }
                 }
-                height[z * RESOLUTION + x] = (byte) Math.round((double) sum / count);
+                height[z * resolution + x] = (byte) Math.round((double) sum / count);
             }
         }
     }
 
     public void smooth(int centerX, int centerZ, int radius) {
+        smooth(centerX, centerZ, radius, Symmetry.OFF);
+    }
+
+    public void smooth(int centerX, int centerZ, int radius, Symmetry symmetry) {
+        for (int[] pt : getSymmetricPoints(centerX, centerZ, symmetry)) {
+            smoothDirect(pt[0], pt[1], radius);
+        }
+    }
+
+    private void smoothDirect(int centerX, int centerZ, int radius) {
         int r2 = radius * radius;
         boolean[] snapshot = Arrays.copyOf(land, land.length);
-        for (int z = Math.max(0, centerZ - radius); z <= Math.min(RESOLUTION - 1, centerZ + radius); z++) {
-            for (int x = Math.max(0, centerX - radius); x <= Math.min(RESOLUTION - 1, centerX + radius); x++) {
+        for (int z = Math.max(0, centerZ - radius); z <= Math.min(resolution - 1, centerZ + radius); z++) {
+            for (int x = Math.max(0, centerX - radius); x <= Math.min(resolution - 1, centerX + radius); x++) {
                 int dx = x - centerX;
                 int dz = z - centerZ;
                 if (dx * dx + dz * dz > r2) continue;
                 int landCount = 0;
                 int total = 0;
-                for (int nz = Math.max(0, z - 1); nz <= Math.min(RESOLUTION - 1, z + 1); nz++) {
-                    for (int nx = Math.max(0, x - 1); nx <= Math.min(RESOLUTION - 1, x + 1); nx++) {
+                for (int nz = Math.max(0, z - 1); nz <= Math.min(resolution - 1, z + 1); nz++) {
+                    for (int nx = Math.max(0, x - 1); nx <= Math.min(resolution - 1, x + 1); nx++) {
                         total++;
-                        if (snapshot[nz * RESOLUTION + nx]) landCount++;
+                        if (snapshot[nz * resolution + nx]) landCount++;
                     }
                 }
                 if (landCount * 2 > total) {
-                    land[z * RESOLUTION + x] = true;
+                    land[z * resolution + x] = true;
                 } else if (landCount * 2 < total) {
-                    land[z * RESOLUTION + x] = false;
+                    land[z * resolution + x] = false;
                 }
+            }
+        }
+    }
+
+    public void floodFillLand(int startX, int startZ, boolean targetValue, Symmetry symmetry) {
+        if (startX < 0 || startX >= resolution || startZ < 0 || startZ >= resolution) return;
+        for (int[] pt : getSymmetricPoints(startX, startZ, symmetry)) {
+            floodFillLandDirect(pt[0], pt[1], targetValue);
+        }
+    }
+
+    private void floodFillLandDirect(int startX, int startZ, boolean targetValue) {
+        boolean original = land[startZ * resolution + startX];
+        if (original == targetValue) return;
+
+        ArrayDeque<int[]> queue = new ArrayDeque<>();
+        queue.add(new int[]{startX, startZ});
+        land[startZ * resolution + startX] = targetValue;
+
+        while (!queue.isEmpty()) {
+            int[] p = queue.poll();
+            int x = p[0];
+            int z = p[1];
+
+            int[][] neighbors = {{x + 1, z}, {x - 1, z}, {x, z + 1}, {x, z - 1}};
+            for (int[] n : neighbors) {
+                int nx = n[0];
+                int nz = n[1];
+                if (nx >= 0 && nx < resolution && nz >= 0 && nz < resolution) {
+                    if (land[nz * resolution + nx] == original) {
+                        land[nz * resolution + nx] = targetValue;
+                        queue.add(new int[]{nx, nz});
+                    }
+                }
+            }
+        }
+    }
+
+    public void floodFillHeight(int startX, int startZ, int newTier, Symmetry symmetry) {
+        if (startX < 0 || startX >= resolution || startZ < 0 || startZ >= resolution) return;
+        byte bTier = (byte) Math.max(0, Math.min(3, newTier));
+        for (int[] pt : getSymmetricPoints(startX, startZ, symmetry)) {
+            floodFillHeightDirect(pt[0], pt[1], bTier);
+        }
+    }
+
+    private void floodFillHeightDirect(int startX, int startZ, byte newTier) {
+        byte original = height[startZ * resolution + startX];
+        if (original == newTier) return;
+
+        ArrayDeque<int[]> queue = new ArrayDeque<>();
+        queue.add(new int[]{startX, startZ});
+        height[startZ * resolution + startX] = newTier;
+
+        while (!queue.isEmpty()) {
+            int[] p = queue.poll();
+            int x = p[0];
+            int z = p[1];
+
+            int[][] neighbors = {{x + 1, z}, {x - 1, z}, {x, z + 1}, {x, z - 1}};
+            for (int[] n : neighbors) {
+                int nx = n[0];
+                int nz = n[1];
+                if (nx >= 0 && nx < resolution && nz >= 0 && nz < resolution) {
+                    if (height[nz * resolution + nx] == original) {
+                        height[nz * resolution + nx] = newTier;
+                        queue.add(new int[]{nx, nz});
+                    }
+                }
+            }
+        }
+    }
+
+    public void drawLine(int x0, int z0, int x1, int z1, int radius, boolean value, Symmetry symmetry) {
+        int dx = Math.abs(x1 - x0);
+        int dz = Math.abs(z1 - z0);
+        int sx = x0 < x1 ? 1 : -1;
+        int sz = z0 < z1 ? 1 : -1;
+        int err = dx - dz;
+
+        int curX = x0;
+        int curZ = z0;
+        while (true) {
+            paint(curX, curZ, radius, value, symmetry);
+            if (curX == x1 && curZ == z1) break;
+            int e2 = 2 * err;
+            if (e2 > -dz) {
+                err -= dz;
+                curX += sx;
+            }
+            if (e2 < dx) {
+                err += dx;
+                curZ += sz;
+            }
+        }
+    }
+
+    public void drawLineHeight(int x0, int z0, int x1, int z1, int radius, int tier, Symmetry symmetry) {
+        int dx = Math.abs(x1 - x0);
+        int dz = Math.abs(z1 - z0);
+        int sx = x0 < x1 ? 1 : -1;
+        int sz = z0 < z1 ? 1 : -1;
+        int err = dx - dz;
+
+        int curX = x0;
+        int curZ = z0;
+        while (true) {
+            paintHeight(curX, curZ, radius, tier, symmetry);
+            if (curX == x1 && curZ == z1) break;
+            int e2 = 2 * err;
+            if (e2 > -dz) {
+                err -= dz;
+                curX += sx;
+            }
+            if (e2 < dx) {
+                err += dx;
+                curZ += sz;
+            }
+        }
+    }
+
+    public void drawRect(int x0, int z0, int x1, int z1, boolean filled, int radius, boolean value, Symmetry symmetry) {
+        int minX = Math.min(x0, x1);
+        int maxX = Math.max(x0, x1);
+        int minZ = Math.min(z0, z1);
+        int maxZ = Math.max(z0, z1);
+
+        if (filled) {
+            for (int z = minZ; z <= maxZ; z++) {
+                for (int x = minX; x <= maxX; x++) {
+                    paint(x, z, 0, value, symmetry);
+                }
+            }
+        } else {
+            drawLine(minX, minZ, maxX, minZ, radius, value, symmetry);
+            drawLine(maxX, minZ, maxX, maxZ, radius, value, symmetry);
+            drawLine(maxX, maxZ, minX, maxZ, radius, value, symmetry);
+            drawLine(minX, maxZ, minX, minZ, radius, value, symmetry);
+        }
+    }
+
+    public void drawRectHeight(int x0, int z0, int x1, int z1, boolean filled, int radius, int tier, Symmetry symmetry) {
+        int minX = Math.min(x0, x1);
+        int maxX = Math.max(x0, x1);
+        int minZ = Math.min(z0, z1);
+        int maxZ = Math.max(z0, z1);
+
+        if (filled) {
+            for (int z = minZ; z <= maxZ; z++) {
+                for (int x = minX; x <= maxX; x++) {
+                    paintHeight(x, z, 0, tier, symmetry);
+                }
+            }
+        } else {
+            drawLineHeight(minX, minZ, maxX, minZ, radius, tier, symmetry);
+            drawLineHeight(maxX, minZ, maxX, maxZ, radius, tier, symmetry);
+            drawLineHeight(maxX, maxZ, minX, maxZ, radius, tier, symmetry);
+            drawLineHeight(minX, maxZ, minX, minZ, radius, tier, symmetry);
+        }
+    }
+
+    public void drawEllipse(int x0, int z0, int x1, int z1, boolean filled, int radius, boolean value, Symmetry symmetry) {
+        int minX = Math.min(x0, x1);
+        int maxX = Math.max(x0, x1);
+        int minZ = Math.min(z0, z1);
+        int maxZ = Math.max(z0, z1);
+        double cx = (minX + maxX) / 2.0;
+        double cz = (minZ + maxZ) / 2.0;
+        double rx = Math.max(0.5, (maxX - minX) / 2.0);
+        double rz = Math.max(0.5, (maxZ - minZ) / 2.0);
+
+        if (filled) {
+            for (int z = minZ; z <= maxZ; z++) {
+                for (int x = minX; x <= maxX; x++) {
+                    double dx = (x - cx) / rx;
+                    double dz = (z - cz) / rz;
+                    if (dx * dx + dz * dz <= 1.0) {
+                        paint(x, z, 0, value, symmetry);
+                    }
+                }
+            }
+        } else {
+            int steps = Math.max(16, (int) Math.round(Math.PI * (rx + rz)));
+            for (int i = 0; i <= steps; i++) {
+                double theta = i * (2.0 * Math.PI / steps);
+                int px = (int) Math.round(cx + rx * Math.cos(theta));
+                int pz = (int) Math.round(cz + rz * Math.sin(theta));
+                paint(px, pz, radius, value, symmetry);
+            }
+        }
+    }
+
+    public void drawEllipseHeight(int x0, int z0, int x1, int z1, boolean filled, int radius, int tier, Symmetry symmetry) {
+        int minX = Math.min(x0, x1);
+        int maxX = Math.max(x0, x1);
+        int minZ = Math.min(z0, z1);
+        int maxZ = Math.max(z0, z1);
+        double cx = (minX + maxX) / 2.0;
+        double cz = (minZ + maxZ) / 2.0;
+        double rx = Math.max(0.5, (maxX - minX) / 2.0);
+        double rz = Math.max(0.5, (maxZ - minZ) / 2.0);
+
+        if (filled) {
+            for (int z = minZ; z <= maxZ; z++) {
+                for (int x = minX; x <= maxX; x++) {
+                    double dx = (x - cx) / rx;
+                    double dz = (z - cz) / rz;
+                    if (dx * dx + dz * dz <= 1.0) {
+                        paintHeight(x, z, 0, tier, symmetry);
+                    }
+                }
+            }
+        } else {
+            int steps = Math.max(16, (int) Math.round(Math.PI * (rx + rz)));
+            for (int i = 0; i <= steps; i++) {
+                double theta = i * (2.0 * Math.PI / steps);
+                int px = (int) Math.round(cx + rx * Math.cos(theta));
+                int pz = (int) Math.round(cz + rz * Math.sin(theta));
+                paintHeight(px, pz, radius, tier, symmetry);
             }
         }
     }
 
     public void rebuildShape() {
         pushUndo();
-        boolean[] next = new boolean[land.length];
+        boolean[] next = new boolean[resolution * resolution];
+        byte[] nextHeight = defaultHeight(resolution);
+
         Random random = new Random(shapeSeed);
         double rotation = random.nextDouble() * Math.PI * 2.0;
         List<ArchipelagoBlob> archipelago = preset == Preset.ARCHIPELAGO
             ? createArchipelago(shapeSeed) : List.of();
-        for (int z = 0; z < RESOLUTION; z++) {
-            double nz = ((z + 0.5) / RESOLUTION) * 2.0 - 1.0;
-            for (int x = 0; x < RESOLUTION; x++) {
-                double nx = ((x + 0.5) / RESOLUTION) * 2.0 - 1.0;
+
+        for (int z = 0; z < resolution; z++) {
+            double nz = ((z + 0.5) / resolution) * 2.0 - 1.0;
+            for (int x = 0; x < resolution; x++) {
+                double nx = ((x + 0.5) / resolution) * 2.0 - 1.0;
                 double rx = nx * Math.cos(rotation) - nz * Math.sin(rotation);
                 double rz = nx * Math.sin(rotation) + nz * Math.cos(rotation);
+                double r = Math.hypot(nx, nz);
+                double rRot = Math.hypot(rx, rz);
+                double theta = Math.atan2(rz, rx);
+
                 double noise = fbm(nx * 3.1, nz * 3.1, shapeSeed) * 0.10
                     + fbm(nx * 7.4, nz * 7.4, shapeSeed ^ 0x5DEECE66DL) * 0.035;
-                boolean value = switch (preset) {
-                    case NATURAL -> Math.hypot(nx / 0.72, nz / 0.68) < 1.0 + noise;
-                    case ROUND -> Math.hypot(nx / 0.70, nz / 0.70) < 1.0 + noise * 0.30;
-                    case LONG -> Math.hypot(rx / 0.78, rz / 0.47) < 1.0 + noise * 0.65;
-                    case CRESCENT -> Math.hypot(nx / 0.70, nz / 0.70) < 1.0 + noise * 0.45
+
+                boolean value = false;
+                switch (preset) {
+                    case NATURAL -> value = Math.hypot(nx / 0.72, nz / 0.68) < 1.0 + noise;
+                    case ROUND -> value = Math.hypot(nx / 0.70, nz / 0.70) < 1.0 + noise * 0.30;
+                    case LONG -> value = Math.hypot(rx / 0.78, rz / 0.47) < 1.0 + noise * 0.65;
+                    case CRESCENT -> value = Math.hypot(nx / 0.70, nz / 0.70) < 1.0 + noise * 0.45
                         && Math.hypot((nx - 0.27) / 0.59, (nz + 0.02) / 0.58) > 1.0;
-                    case ARCHIPELAGO -> archipelagoLand(nx, nz, archipelago);
-                };
-                next[z * RESOLUTION + x] = value;
+                    case ARCHIPELAGO -> value = archipelagoLand(nx, nz, archipelago);
+
+                    case ATOLL -> {
+                        double rOut = 0.72 + noise * 0.22;
+                        double rIn = 0.44 + noise * 0.15;
+                        boolean ring = rRot >= rIn && rRot <= rOut;
+                        // Single ocean channel opening
+                        boolean channel = Math.abs(theta) < 0.24;
+                        value = ring && !channel;
+                    }
+
+                    case VOLCANO -> {
+                        double rOut = 0.70 + noise * 0.20;
+                        double rIn = 0.22 + noise * 0.10;
+                        value = r >= rIn && r <= rOut;
+                        if (value) {
+                            if (r < 0.36) nextHeight[z * resolution + x] = (byte) 3;
+                            else if (r < 0.52) nextHeight[z * resolution + x] = (byte) 2;
+                            else nextHeight[z * resolution + x] = (byte) 1;
+                        }
+                    }
+
+                    case FJORDS -> {
+                        boolean body = r < 0.74 + noise * 0.20;
+                        if (body) {
+                            double rotTheta = theta + 0.18 * Math.sin(r * 6.0);
+                            double step = 2.0 * Math.PI / 5.0;
+                            boolean fjordCut = false;
+                            for (int k = 0; k < 5; k++) {
+                                double target = k * step - Math.PI;
+                                double diff = Math.abs(rotTheta - target);
+                                while (diff > Math.PI) diff = Math.abs(diff - 2.0 * Math.PI);
+                                if (r > 0.20 && diff < 0.12 * ((r - 0.20) / 0.54)) {
+                                    fjordCut = true;
+                                    break;
+                                }
+                            }
+                            value = !fjordCut;
+                        }
+                    }
+
+                    case TWIN_ISLANDS -> {
+                        double dA = Math.hypot((rx + 0.33) / 0.34, rz / 0.30);
+                        double dB = Math.hypot((rx - 0.33) / 0.32, rz / 0.28);
+                        boolean isA = dA < 1.0 + noise * 0.20;
+                        boolean isB = dB < 1.0 + fbm(rx * 3.5, rz * 3.5, shapeSeed ^ 0x99AL) * 0.20;
+                        value = (isA || isB) && Math.abs(rx) >= 0.08;
+                    }
+
+                    case INLAND_SEA -> {
+                        boolean continent = r < 0.78 + noise * 0.20;
+                        double seaDist = Math.hypot(nx - 0.06 * Math.cos(rotation), nz - 0.06 * Math.sin(rotation));
+                        boolean sea = seaDist < 0.36 + fbm(nx * 4.0, nz * 4.0, shapeSeed ^ 0xBEEFL) * 0.12;
+                        value = continent && !sea;
+                    }
+
+                    case HORSESHOE_BAY -> {
+                        boolean outer = Math.hypot(rx / 0.75, rz / 0.70) < 1.0 + noise * 0.25;
+                        double bayDist = Math.hypot((rx - 0.25) / 0.46, rz / 0.34);
+                        value = outer && (bayDist >= 1.0);
+                    }
+
+                    case RIDGE_ISLAND -> {
+                        double clampedRx = Math.max(-0.80, Math.min(0.80, rx));
+                        double maxRz = 0.28 * Math.sqrt(Math.max(0.0, 1.0 - (clampedRx / 0.82) * (clampedRx / 0.82)))
+                            + noise * 0.10;
+                        value = Math.abs(rz) < maxRz;
+                        if (value) {
+                            double distSpine = Math.abs(rz + 0.03);
+                            if (distSpine < 0.06) nextHeight[z * resolution + x] = (byte) 3;
+                            else if (distSpine < 0.14) nextHeight[z * resolution + x] = (byte) 2;
+                            else nextHeight[z * resolution + x] = (byte) 1;
+                        }
+                    }
+                }
+                next[z * resolution + x] = value;
             }
         }
-        land = next;
+
+        // Suppress border pixels strictly for new presets
+        if (preset != Preset.NATURAL && preset != Preset.ROUND && preset != Preset.LONG
+            && preset != Preset.CRESCENT && preset != Preset.ARCHIPELAGO) {
+            for (int z = 0; z < resolution; z++) {
+                for (int x = 0; x < resolution; x++) {
+                    if (x == 0 || z == 0 || x == resolution - 1 || z == resolution - 1) {
+                        next[z * resolution + x] = false;
+                    }
+                }
+            }
+        }
+
+        this.land = next;
+        this.height = nextHeight;
     }
 
     private static List<ArchipelagoBlob> createArchipelago(long seed) {
@@ -500,7 +1001,7 @@ public final class IslandDraft {
             { 0.58, -0.02, 0.12, 0.17, -0.10},
             {-0.13,  0.26, 0.10, 0.13,  0.25}
         };
-        java.util.ArrayList<ArchipelagoBlob> blobs = new java.util.ArrayList<>();
+        ArrayList<ArchipelagoBlob> blobs = new ArrayList<>();
         for (double[] values : main) {
             blobs.add(new ArchipelagoBlob(
                 values[0] + (random.nextDouble() - 0.5) * 0.07,
@@ -511,7 +1012,6 @@ public final class IslandDraft {
                 random.nextDouble() * Math.PI * 2.0,
                 0.13 + random.nextDouble() * 0.08));
         }
-        // Small satellite islands turn the preset into a real island chain instead of four circles.
         for (int i = 0; i < 12; i++) {
             double angle = random.nextDouble() * Math.PI * 2.0;
             double radius = 0.20 + random.nextDouble() * 0.65;
@@ -533,7 +1033,6 @@ public final class IslandDraft {
             if (insideBlob(x, z, blob)) { land = true; break; }
         }
         if (!land) return false;
-        // A small lagoon in the north-eastern main island, inspired by ring-shaped volcanic islands.
         ArchipelagoBlob atoll = blobs.get(1);
         double dx = x - atoll.cx;
         double dz = z - atoll.cz;
@@ -572,8 +1071,11 @@ public final class IslandDraft {
         rebuildShape();
     }
 
+    public long shapeSeed() { return shapeSeed; }
+
     public void rerollBiomes() { biomeSeed = new Random().nextLong(); }
     public void setBiomeSeed(long seed) { this.biomeSeed = seed; }
+    public long biomeSeed() { return biomeSeed; }
 
     public boolean hasLand() {
         for (boolean pixel : land) if (pixel) return true;
@@ -588,6 +1090,18 @@ public final class IslandDraft {
         return Base64.getEncoder().encodeToString(packed);
     }
 
+    public void unpackMask(String base64) {
+        if (base64 == null || base64.isEmpty()) return;
+        pushUndo();
+        try {
+            byte[] packed = Base64.getDecoder().decode(base64);
+            int total = resolution * resolution;
+            for (int i = 0; i < total && (i >>> 3) < packed.length; i++) {
+                land[i] = ((packed[i >>> 3] >>> (i & 7)) & 1) != 0;
+            }
+        } catch (Exception ignored) {}
+    }
+
     public String packedHeight() {
         byte[] packed = new byte[(height.length + 3) / 4];
         for (int i = 0; i < height.length; i++) {
@@ -595,6 +1109,12 @@ public final class IslandDraft {
             packed[i >>> 2] |= (byte) (val << ((i & 3) * 2));
         }
         return Base64.getEncoder().encodeToString(packed);
+    }
+
+    public void unpackHeight(String base64) {
+        if (base64 == null || base64.isEmpty()) return;
+        pushUndo();
+        this.height = unpackHeight(base64, resolution * resolution);
     }
 
     public boolean hasCustomHeight() {
@@ -617,11 +1137,10 @@ public final class IslandDraft {
     }
 
     public double worldSpan() { return islandSize * 1.36; }
-    public double worldX(int pixelX) { return ((pixelX + 0.5) / RESOLUTION - 0.5) * worldSpan(); }
-    public double worldZ(int pixelZ) { return ((pixelZ + 0.5) / RESOLUTION - 0.5) * worldSpan(); }
+    public double worldX(int pixelX) { return ((pixelX + 0.5) / resolution - 0.5) * worldSpan(); }
+    public double worldZ(int pixelZ) { return ((pixelZ + 0.5) / resolution - 0.5) * worldSpan(); }
     public int islandSize() { return islandSize; }
     public void setIslandSize(int islandSize) { this.islandSize = Math.max(2500, Math.min(8000, islandSize)); }
-    public long biomeSeed() { return biomeSeed; }
     public SetView enabledBiomes() { return new SetView(EnumSet.copyOf(enabledBiomes)); }
     public boolean isBiomeEnabled(BiomePreview.Type type) { return enabledBiomes.contains(type); }
 
@@ -645,6 +1164,30 @@ public final class IslandDraft {
             enabledBiomes.clear();
         } else {
             enabledBiomes.removeIf(type -> type.category == category);
+        }
+    }
+
+    public void restoreBiomesFromIds(List<String> ids) {
+        enabledBiomes.clear();
+        for (String id : ids) {
+            for (BiomePreview.Type type : OVERWORLD_BIOMES) {
+                if (type.id.equals(id)) {
+                    enabledBiomes.add(type);
+                    break;
+                }
+            }
+        }
+        if (enabledBiomes.isEmpty()) {
+            enabledBiomes.addAll(defaultBiomes());
+        }
+    }
+
+    public void restoreStructuresFromNames(List<String> names) {
+        enabledStructures.clear();
+        for (String name : names) {
+            try {
+                enabledStructures.add(StructureOption.valueOf(name));
+            } catch (Exception ignored) {}
         }
     }
 
@@ -698,6 +1241,7 @@ public final class IslandDraft {
     }
 
     public boolean isStructureEnabled(StructureOption option) { return enabledStructures.contains(option); }
+    public EnumSet<StructureOption> enabledStructures() { return EnumSet.copyOf(enabledStructures); }
     public void toggleStructure(StructureOption option) {
         if (!enabledStructures.remove(option)) enabledStructures.add(option);
     }

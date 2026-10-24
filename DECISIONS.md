@@ -60,3 +60,11 @@ This log records every design choice, trade-off, and architectural resolution ma
   2. Exactly mirror Minecraft's `Climate.quantizeCoord((float) continentalness)` truncation `(long)((float) continentalness * 10000.0f) / 10000.0` in `IslandClimate.sample`.
 * **Choice:** Option 2.
 * **Reason:** Minecraft's internal `TargetPoint` quantizes coordinates by `(long)(f * 10000.0F)` (truncating towards zero) and unquantizes with `(float)l / 10000.0F`. Mirroring this in `IslandClimate.sample` achieves 100% ocean/shore/land zone parity (65,536/65,536 sampled points) across the entire island and ocean domain, satisfying Invariant I3.
+
+### Decision 008: Multi-Resolution Draft Architecture, Deflate-Compressed Share Codes, and Border Invariants
+* **Question:** How to implement compact share codes, dynamic canvas resolutions (192, 256, 384), and new procedural presets without breaking Invariant I1?
+* **Options:**
+  1. Store raw uncompressed JSON in share codes, reload canvas from scratch on resolution change, and apply border suppression to all presets.
+  2. Use compact binary payload with Deflate compression and CRC16 checksum (`OMNI2-<base64url>-<crc16>`), bilinear resampling for masks and heightmaps on resolution change, and restrict procedural border suppression strictly to new presets (`ordinal >= 5`).
+* **Choice:** Option 2.
+* **Reason:** Uncompressed JSON codes exceed clipboard and chat limits; Deflate compression with CRC16 ensures safe transmission and tamper resistance while enforcing a strict 256 KiB decompressed payload cap. Resampling masks and heightmaps with bilinear interpolation allows users to switch resolutions seamlessly without losing their painted islands. Restricting border zeroing strictly to new presets guarantees that the 5 legacy presets generate 100% bit-for-bit identically with version 0.5.0, upholding Invariant I1. Furthermore, in `ShareCode.decode()`, mask data must be unpacked before `draft.setSpawn(px, pz)` because spawn validation requires land check against the imported mask.

@@ -58,13 +58,13 @@
 - [x] **6.5** Slope-based stony shore vs sandy beach (cliffs >= 0.35 slope become stony shore)
 
 ### Phase 7 — Editor Features
-- [ ] **7.1** PNG mask import/export
-- [ ] **7.2** Presets & share codes (`OMNI2-...`)
-- [ ] **7.3** Advanced drawing tools: Fill, Symmetry, Zoom/Pan, Grid
-- [ ] **7.4** New procedural presets (Atoll, Volcano, Fjords, Twin Islands, Inland Sea)
-- [ ] **7.5** Optional higher resolution: 192 / 256 / 384
-- [ ] **7.6** Seed text fields & copy buttons
-- [ ] **7.7** Inspector hover tooltip upgrade
+- [x] **7.1** PNG mask import/export
+- [x] **7.2** Presets & share codes (`OMNI2-...`)
+- [x] **7.3** Advanced drawing tools: Fill, Symmetry, Zoom/Pan, Grid
+- [x] **7.4** New procedural presets (Atoll, Volcano, Fjords, Twin Islands, Inland Sea, Horseshoe Bay, Ridge Island)
+- [x] **7.5** Optional higher resolution: 192 / 256 / 384
+- [x] **7.6** Seed text fields & copy buttons
+- [x] **7.7** Inspector hover tooltip upgrade
 
 ### Phase 8 — Stretch Goals
 - [ ] **8.1** Physically carved rivers & lakes

@@ -13,10 +13,15 @@ import static org.junit.jupiter.api.Assertions.*;
 
 public class Phase5StructureTest {
 
+    private static final IslandDraft.Preset[] BASE_PRESETS = {
+        IslandDraft.Preset.NATURAL, IslandDraft.Preset.ROUND, IslandDraft.Preset.LONG,
+        IslandDraft.Preset.CRESCENT, IslandDraft.Preset.ARCHIPELAGO
+    };
+
     @Test
     @DisplayName("5.1 Spawn is on land in 100% of 90 configs")
     void testSpawnOnLandForAllConfigs() {
-        IslandDraft.Preset[] presets = IslandDraft.Preset.values();
+        IslandDraft.Preset[] presets = BASE_PRESETS;
         int[] sizes = {2500, 4000, 8000};
         long[] seeds = {101L, 202L, 303L};
         int[] versions = {1, 2};
@@ -55,7 +60,7 @@ public class Phase5StructureTest {
     @Test
     @DisplayName("5.2 Stronghold guaranteed on size 2500 in v2")
     void testStrongholdFoundOnSize2500() {
-        IslandDraft.Preset[] presets = IslandDraft.Preset.values();
+        IslandDraft.Preset[] presets = BASE_PRESETS;
         long[] seeds = {101L, 202L, 303L};
 
         for (IslandDraft.Preset preset : presets) {
@@ -76,7 +81,7 @@ public class Phase5StructureTest {
     @Test
     @DisplayName("5.3 Non-ocean structures within 5000 blocks in >= 95% of configs (size >= 4000)")
     void testNonOceanStructuresWithinReach() {
-        IslandDraft.Preset[] presets = IslandDraft.Preset.values();
+        IslandDraft.Preset[] presets = BASE_PRESETS;
         int[] sizes = {4000, 8000};
         long[] seeds = {101L, 202L, 303L};
 

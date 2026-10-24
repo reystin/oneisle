@@ -44,7 +44,15 @@ public class GoldenV1Test {
                 int totalConfigs = dis.readInt();
                 assertEquals(30, totalConfigs, "Must contain exactly 30 preset/relief/size configurations");
 
-                for (IslandDraft.Preset preset : IslandDraft.Preset.values()) {
+                IslandDraft.Preset[] v1Presets = {
+                    IslandDraft.Preset.NATURAL,
+                    IslandDraft.Preset.ROUND,
+                    IslandDraft.Preset.LONG,
+                    IslandDraft.Preset.CRESCENT,
+                    IslandDraft.Preset.ARCHIPELAGO
+                };
+
+                for (IslandDraft.Preset preset : v1Presets) {
                     for (IslandDraft.Relief relief : IslandDraft.Relief.values()) {
                         for (int size : new int[]{2500, 8000}) {
                             int savedPresetOrd = dis.readInt();

@@ -261,7 +261,10 @@ public class StructurePlacementHarness {
     }
 
     public static void generateReportBefore(String outputPath) throws IOException {
-        IslandDraft.Preset[] presets = IslandDraft.Preset.values();
+        IslandDraft.Preset[] presets = {
+            IslandDraft.Preset.NATURAL, IslandDraft.Preset.ROUND, IslandDraft.Preset.LONG,
+            IslandDraft.Preset.CRESCENT, IslandDraft.Preset.ARCHIPELAGO
+        };
         int[] sizes = {2500, 4000, 8000};
         long[] seeds = {101L, 202L, 303L};
 
@@ -283,7 +286,10 @@ public class StructurePlacementHarness {
     }
 
     public static void generateReportAfter(String outputPath) throws IOException {
-        IslandDraft.Preset[] presets = IslandDraft.Preset.values();
+        IslandDraft.Preset[] presets = {
+            IslandDraft.Preset.NATURAL, IslandDraft.Preset.ROUND, IslandDraft.Preset.LONG,
+            IslandDraft.Preset.CRESCENT, IslandDraft.Preset.ARCHIPELAGO
+        };
         int[] sizes = {2500, 4000, 8000};
         long[] seeds = {101L, 202L, 303L};
 
