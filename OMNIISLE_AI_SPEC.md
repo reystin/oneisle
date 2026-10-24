@@ -12,10 +12,11 @@
 **OmniIsle** is an open-source Minecraft mod that transforms standard infinite Overworld generation into a standalone, fully customizable, isolated island surrounded by an endless ocean. 
 
 Unlike mods that force hardcoded static maps, OmniIsle provides:
-1. An **in-game real-time GUI editor** embedded seamlessly into the vanilla "Create New World" screen.
-2. An algorithmic bridge that translates pixel-drawn masks into continuous **Signed Distance Fields (SDF)** for Minecraft's native 3D noise router (density functions).
-3. A climate-driven custom **BiomeSource** (`omniisle:island_biomes`) supporting all 56 Overworld biomes and 18 structures, including the newest Minecraft 26.3 additions (**Dappled Forest**, **Sulfur Caves**, and **Abandoned Camp**).
-4. Automatic generation and injection of a lightweight, self-contained worldgen datapack (`omniisle-generated.zip`) upon world creation.
+1. An **in-game real-time GUI editor** embedded seamlessly into the vanilla "Create New World" screen with drawing tools, symmetry, layers, presets, and PNG tools.
+2. An algorithmic bridge translating pixel-drawn masks into continuous **Signed Distance Fields (SDF)** for Minecraft's native 3D noise router (density functions).
+3. A dual-generation architecture (**v1 legacy** bit-for-bit preserving 0.5.0 worlds, and **v2 modern** with domain warping, micro-roughness, mountain spines, bathymetry, satellite islets, and carved rivers).
+4. A climate-driven custom **BiomeSource** (`omniisle:island_biomes`) supporting all 56 Overworld biomes and modded biomes via dynamic registry discovery.
+5. Automatic generation and injection of a lightweight, self-contained worldgen datapack (`omniisle-generated.zip`) upon world creation.
 
 ---
 
@@ -36,25 +37,31 @@ Unlike mods that force hardcoded static maps, OmniIsle provides:
 ```
 [CreateWorldScreen (Vanilla)]
             │
-            ▼ (Mixin: WorldTypeEditorMixin)
-[OmniIsleEditorScreen] <──────> [IslandDraft (192x192 bitmask + parameters)]
+            ▼ (Mixin: WorldTypeEditorMixin -> DynamicBiomeRegistry.updateFromRegistry)
+[OmniIsleEditorScreen] <──────> [IslandDraft (192/256/384 grid + Land + Height Tiers)]
             │                               │
-            │ (User paints / configures)     ▼
-            │                         [BiomePreview] (Fast Client Noise Sim)
+            │ (Paints, symmetry, tools)     ▼
+            │                         [BiomePreview] <---> [IslandTerrain (v1/v2)]
             ▼
 [Click "Done" (Commit)]
             │
             ▼ (WorldPackBuilder.export())
-[Pack: omnisle-generated.zip]
+[Pack: omniisle-generated.zip]
    ├── pack.mcmeta (Format 121)
-   ├── data/omniisle/worldgen/density_function/overworld/continents.json (IslandMask SDF)
+   ├── data/omniisle/worldgen/density_function/overworld/continents.json (IslandMask SDF + v2 configs)
    ├── data/omniisle/worldgen/world_preset/omniisle.json (OmniBiomeSource)
-   └── data/omniisle/worldgen/structure_set/*.json (Targeted Structure Placements)
+   └── data/minecraft/worldgen/structure_set/*.json (Scaled ring / single structure placements)
             │
             ▼ (Mixin: CreateWorldBridge injects pack into PackRepository)
 [World Generation / Server Startup]
-   ├── IslandDensityFunction -> LandmassSampler -> IslandMask (SDF continuous noise)
-   └── OmniBiomeSource (Climatic multi-noise biome distribution)
+   ├── IslandDensityFunction -> IslandTerrain (ModernTerrainV2 or LegacyTerrainV1)
+   │     ├── Exact EDT on native grid + Catmull-Rom bicubic interpolation
+   │     ├── Domain warp (mask lookup only) + shoreline micro-roughness (-0.08)
+   │     ├── Mountain ridges (headroom + soft tanh) + blurred height tiers
+   │     ├── Bathymetry (soft floor -0.80) + guaranteed deep band + satellite islets
+   │     └── IslandRivers (Priority-flood depression filling + C1 smooth carving)
+   ├── OmniBiomeSource (Shared IslandClimate + latitudinal gradient + jittered blending + dynamic biomes)
+   └── Spawn / WorldBorder setup (Safe inland spawn search + centered world border)
 ```
 
 ---
@@ -62,294 +69,76 @@ Unlike mods that force hardcoded static maps, OmniIsle provides:
 ## 4. Codebase Architecture & Class Roles
 
 ### 4.1. Core Client / GUI Layer (`com.hack337.omniisle.client`)
+* **`IslandDraft.java`:** The in-memory data model representing the island draft. Supports dynamic resolutions (192, 256, 384) with bilinear resampling, dual layers (boolean[] land, byte[] height 0-3), undo/redo immutable snapshots, 12 procedural presets, 6 symmetry modes, river density, world border, and largest-SDF auto-spawn selection.
+* **`OmniIsleEditorScreen.java`:** The interactive editor GUI. Divided into 4 clean tabs (`DRAW`, `SHAPE`, `CLIMATE`, `PRESETS`), with zoom/pan (1x-8x), 16px grid toggle, tool selection, seed inputs with dice buttons, and an inspector tooltip displaying elevation, height tier, distance to coast, and islet/ocean status.
+* **`AdvancedSettingsScreen.java`:** Secondary screen for fine-tuning generation version (v2/v1), climate scale (384-1536), latitudinal gradient mode and strength, satellite islet density, river density, structure density, and world border margin.
+* **`ShareCode.java`:** Encodes and decodes designs using `OMNI2-<base64url(deflate(payload))>-<crc16>` with CRC16 verification and a strict 256 KiB decompressed payload cap.
+* **`ImageImportExport.java`:** PNG import with grayscale threshold (0-255), invert, aspect-preserving letterbox, and heightmap quantile mode; exports B/W mask, 4-shade height layer, color biome map, and NW hillshade.
+* **`BiomePreview.java`:** Fast client-side counterpart of `OmniBiomeSource` powered by shared `IslandClimate` and `IslandRivers` for 100% zone parity and > 99.9% family agreement.
+* **`DynamicBiomeRegistry.java`:** Registry-driven biome discovery scanning `WorldCreationContext` at world creation, categorizing into LAND, SHORE, OCEAN, RIVER, and CAVE with structure associations and falling back to 56 Overworld biomes.
+* **`WorldPackBuilder.java`:** Generates `omniisle-generated.zip` containing `pack.mcmeta`, `continents.json`, `omniisle.json`, and scaled structure sets.
 
-#### `IslandDraft.java`
-* **Purpose:** The in-memory data model representing the island draft before it is compiled into a Minecraft datapack.
-* **Resolution:** `RESOLUTION = 192` (representing a 192x192 raster grid).
-* **World Span:** `islandSize * 1.36` (block span in the actual Minecraft world, default `4000`, range `2500` to `8000`).
-* **Key Fields:**
-  * `boolean[] land`: 1D boolean array representing `192 * 192` pixels (true = land, false = water).
-  * `long shapeSeed`, `long biomeSeed`: Random seeds for procedural shape and climate noises.
-  * `Preset preset`: Procedural shape generator (`NATURAL`, `ROUND`, `LONG`, `CRESCENT`, `ARCHIPELAGO`).
-  * `Relief relief`: Coastline elevation gradient (`BALANCED` [coast width 192.0], `FLAT` [320.0], `MOUNTAINOUS` [110.0]).
-  * `BiomeTheme theme`: Quick-selection biome presets (`ALL`, `STANDARD`, `TROPICAL`, `NORDIC`, `DESERT`, `MYSTIC`).
-  * `EnumSet<BiomePreview.Type> enabledBiomes`: Set of user-toggled biomes.
-  * `EnumSet<StructureOption> enabledStructures`: Set of user-toggled structures.
-  * `ArrayDeque<boolean[]> undoStack`, `redoStack`: Circular undo/redo history buffer (max 32 steps).
-* **Key Algorithms:**
-  * `rebuildShape()`: Fractional Brownian Motion (fBM) noise combined with trigonometric distortion curves to synthesize natural coastlines and atolls.
-  * `smooth(centerX, centerZ, radius)`: Cellular majority-voting smoothing kernel over 8-connected neighborhoods to eliminate harsh pixel stairs.
-  * `toggleBiome(type)`: Removes restrictive legacy checks (`remainingInCategory == 1`), allowing any biome to be toggled freely.
-  * `compatibleChoices(preferred)`: Resilient biome fallback selector that safely handles empty user categories without `IndexOutOfBoundsException`.
-  * `packedMask()`: Encodes `boolean[] land` into a Base64 bit-packed byte string (`(192*192)/8 = 4608 bytes`) for transmission into JSON.
+### 4.2. Side-Neutral Continent / Terrain Layer (`com.hack337.omniisle.continent`)
+* **`IslandTerrain.java`:** Side-neutral terrain interface exposing `continentalness(x, z)`, `erosionBias(x, z)`, `signedDistance(x, z)`, and `rivers()`.
+* **`ModernTerrainV2.java`:** Modern (0.6.0+) terrain generator implementing exact Felzenszwalb-Huttenlocher EDT on native grid, flat `float[]` cache, Catmull-Rom bicubic interpolation with neighborhood clamping, mask-only domain warping, shoreline micro-roughness, ocean floor bathymetry, satellite islets, procedural mountain spines, and carved rivers.
+* **`LegacyTerrainV1.java`:** Frozen 0.5.0 terrain implementation guaranteeing bit-for-bit backward compatibility for existing worlds.
+* **`IslandRivers.java`:** Deterministic river and lake derivation via coarse height estimation, Priority-Flood depression filling, D8 flow routing, flow accumulation, and $C^1$ continuous smoothstep carving into continentalness and erosion.
+* **`IslandMask.java`:** Holds raster data, EDT calculation, bilinear sampling, and Mojang Codec serialization with backward-compatible defaults.
+* **`IslandClimate.java`:** Shared side-neutral climate classification implementing temperature gradients (N-S, E-W, Radial) with theme-aware compression, noise-jittered border blending, and slope-based stony shore cliff selection.
+* **`IslandShapeConfig.java`:** Side-neutral configuration containing mask, generationVersion, isletDensity, riverDensity, worldBorder, heightLayer, spawn, and biomeSeed.
 
-#### `OmniIsleEditorScreen.java`
-* **Purpose:** The primary interactive full-screen GUI.
-* **Layout Geometry:**
-  * Left: 192x192 preview viewport scaled dynamically to screen dimensions.
-  * Middle: Controls panel (Preset, Island Size Slider, Tool selector [Land/Eraser/Smooth], Brush Slider, Relief, Theme, Shape/Biomes/Clear action buttons).
-  * Right: Biome & Structure checklist panel with real-time category filtering (All, Land, Shore, Ocean, Rivers, Caves) and `+ All` / `- None` batch controls.
-* **Rendering & Textures:**
-  * Generates an in-memory `DynamicTexture` uploaded directly to the GPU via `NativeImage`.
-  * Upload throttling: Max 60 FPS update interval (`now - lastPreviewUpload >= 16ms`) to eliminate frame stutter during painting.
-* **Interactive Tooltip (Inspector):**
-  * Calculates inverse-projection from screen coordinates `(mouseX, mouseY)` to draft pixel `(px, pz)` and Minecraft world coordinate `(worldX, worldZ)`.
-  * Evaluates local terrain continentalness and queries `selectBiome()` to render a live HUD tooltip showing hovered biome name, color swatch, coordinates, and Land/Water status.
-* **Shortcuts & Input:**
-  * `Ctrl+Z`: Undo.
-  * `Ctrl+Y` or `Ctrl+Shift+Z`: Redo.
-  * Right Click: Eraser shortcut regardless of selected active tool.
-  * Mouse Wheel: Smooth list scrolling and slider adjustment.
+### 4.3. Worldgen Layer (`com.hack337.omniisle.worldgen`)
+* **`IslandDensityFunction.java`:** Mojang DensityFunction registered as `omniisle:island_continents`, compiled with 2D column caching.
+* **`OmniBiomeSource.java`:** Mojang BiomeSource registered as `omniisle:island_biomes`, resolving surface, shore, ocean, river, and cave biomes using `IslandClimate` and `IslandRivers`.
+* **`SpawnSavedData.java`:** World-saved data ensuring one-time world spawn initialization on first load.
+* **`SingleStructurePlacement.java`:** Custom structure placement type guaranteeing 1-per-world single structure positioning.
+* **`RiverLife.java`:** Injects fish mob spawns into river biomes.
 
-#### `BiomeSelectionScreen.java`
-* **Purpose:** Compact modal dialog used when GUI scale or low display resolution (`width < 640 || height < 320`) leaves insufficient horizontal room for the 3-column editor layout.
-* **Features:** Full category filtering, batch toggle buttons, scrollbar, and live sync with `IslandDraft`.
-
-#### `BiomePreview.java`
-* **Purpose:** High-speed client-side climate evaluator. Mimics `OmniBiomeSource` logic without loading server world registries or chunk generation pipelines.
-* **Biome Categories:** `LAND`, `SHORE`, `OCEAN`, `RIVER`, `CAVE`.
-* **Biome Family Mapping:** 18 distinct land families (0 to 17), ensuring variants (e.g. Flower Forest, Dappled Forest, Birch Forest) cluster naturally into compatible climatic zones.
-
-#### `WorldPackBuilder.java`
-* **Purpose:** Datapack compiler. Builds `omniisle-generated.zip` in UTF-8 encoding.
-* **Outputs:**
-  1. `pack.mcmeta`: Formatted with target `pack_format = 121` (Minecraft 26.3 standard).
-  2. `continents.json`: JSON payload containing the Base64 mask, bounding boxes (`min_x, max_x, min_z, max_z`), and `coast_width` determined by the selected `Relief`.
-  3. `omniisle.json`: Customized world preset with `enabled_land_biomes`, `enabled_shore_biomes`, `enabled_ocean_biomes`, `enabled_river_biomes`, `enabled_cave_biomes`.
-  4. `structure_set/*.json`: Procedural structure placement constraints mapped to suitable land coordinates.
+### 4.4. Commands & Lifecycle (`com.hack337.omniisle.command`)
+* **`OmniCommands.java`:** Registers `/omniisle info` (worldgen statistics), `/omniisle verify` (biome/surface probe), `/omniisle debug <mode> [radius] [step]` (PNG map exporter using real server-side sampler), and `/omniisle import <preset|code>` (dedicated server preset loader).
 
 ---
 
-### 4.2. World Generation & Math Layer (`com.hack337.omniisle.worldgen` & `continent`)
+## 5. Minecraft 26.3 API Mappings & Conventions
 
-#### `IslandMask.java` (Signed Distance Field)
-* **Mathematical Core:**
-  Converts the discrete 192x192 binary raster mask into a smooth, continuous 2D Euclidean Distance Transform (Signed Distance Field).
-* **Algorithm:**
-  * Runs a two-pass 8-neighbor distance transform algorithm (`O(N)` linear time) initializing inside land with distance to closest water, and outside land with negative distance to closest coast.
-  * Bilinearly interpolates distances across sub-pixel coordinates `(worldX, worldZ)`.
-  * Computes final continentalness:
-    $$\text{continentalness} = -0.08 + \frac{\text{worldDistance} \times 0.70}{\text{coastWidth}} \quad (\text{for land})$$
-    $$\text{continentalness} = -0.08 + \frac{\text{worldDistance} \times 0.92}{\text{oceanTransitionWidth}} \quad (\text{for ocean})$$
-  * Resulting value is clamped to `[-1.0, 0.70]`.
-
-#### `IslandDensityFunction.java`
-* Implements vanilla Minecraft `net.minecraft.world.level.levelgen.densityfunction.DensityFunction`.
-* Registered under ID `omniisle:island_continents`.
-* Replaces vanilla continentalness in the Overworld 3D noise router with the `IslandMask` continuous field.
-
-#### `OmniBiomeSource.java`
-* Extends vanilla `BiomeSource`, registered as `omniisle:island_biomes`.
-* **Resolver Pipeline:**
-  1. If `continentalness < -0.30`: Ocean biome (Warm, Lukewarm, Deep Ocean, Cold, Frozen based on temperature noise).
-  2. If `continentalness < 0.02`: Shoreline / Beach shelf (Sandy Beach, Stony Shore, Snowy Beach based on elevation Y and temperature).
-  3. If `isRiverValley(continentalness, erosion, weirdness)` and $Y \ge 0$: River / Frozen River.
-  4. If $Y < 0$ and underground: Cave biome (Deep Dark, Sulfur Caves, Lush Caves, Dripstone Caves).
-  5. Otherwise: Surface land biome mapped to nearest compatible climatic temperature/humidity cluster.
-* **Resilience:**
-  Constructor automatically falls back to baseline defaults if any `enabled_*` list passed from the datapack is empty.
-
----
-
-## 5. Minecraft 26.3 Specific Technical Adaptations
-
-| Component | Vanilla Pre-26.3 | Minecraft 26.3 Specification |
+| Concept | Legacy (<= 1.21.1) | Modern 26.3 Standard |
 | :--- | :--- | :--- |
-| **GUI Graphics** | `net.minecraft.client.gui.GuiGraphics` | `net.minecraft.client.gui.GuiGraphicsExtractor` |
-| **Mouse Event** | Direct coordinate doubles `(double x, double y, int button)` | `net.minecraft.client.input.MouseButtonEvent` (access via `event.x()`, `event.y()`, `event.button()`) |
+| **Identifier Parsing** | `new Identifier(namespace, path)` | `Identifier.fromNamespaceAndPath(namespace, path)` |
+| **Default Namespace** | `new Identifier(path)` | `Identifier.withDefaultNamespace(path)` |
+| **Density Function Type** | `Registry.register(BuiltInRegistries.DENSITY_FUNCTION_TYPE, ...)` | Same (Must register `MapCodec<? extends DensityFunction>`) |
+| **Density Function Cache** | `flat_cache`, `cache_2d` | `"type": "minecraft:cache"` (compiles as 2D column cache when $Y$ axis omitted) |
 | **Mouse Button Left** | 0 | `InputConstants.MOUSE_BUTTON_LEFT` (GLFW button 0) |
 | **Mouse Button Right**| 1 | `InputConstants.MOUSE_BUTTON_RIGHT` (GLFW button 1) |
-| **Keyboard Event** | `keyPressed(int keyCode, int scanCode, int modifiers)` | `net.minecraft.client.input.KeyEvent` (implements `InputWithModifiers`) |
+| **Keyboard Event** | `keyPressed(int, int, int)` | `net.minecraft.client.input.KeyEvent` |
 | **Pack Format** | Format 48 / 61 | Format `121` (`TargetPlatform.PACK_FORMAT`) |
 | **New Biomes** | N/A | `minecraft:dappled_forest` (Family 3), `minecraft:sulfur_caves` (Cave) |
 | **New Structures**| N/A | `minecraft:abandoned_camp` (Forest, Birch, Taiga, Jungle variants) |
-
-> [!NOTE]
-> In GLFW, mouse buttons are 0-indexed: `GLFW_MOUSE_BUTTON_1 = 0` (Left), `GLFW_MOUSE_BUTTON_2 = 1` (Right), `GLFW_MOUSE_BUTTON_3 = 2` (Middle). Always use Mojang's `InputConstants.MOUSE_BUTTON_LEFT` and `InputConstants.MOUSE_BUTTON_RIGHT` rather than hardcoded integer literals.
 
 ---
 
 ## 6. Datapack Schema & Presets Reference
 
-### World Preset Injection (`omniisle:island_biomes`):
-```json
-{
-  "type": "omniisle:island_biomes",
-  "climate_scale": 720,
-  "biome_seed": 123456789,
-  "land_biomes": [
-    "minecraft:snowy_plains", "minecraft:taiga", "minecraft:birch_forest",
-    "minecraft:forest", "minecraft:plains", "minecraft:meadow",
-    "minecraft:cherry_grove", "minecraft:dark_forest", "minecraft:swamp",
-    "minecraft:mangrove_swamp", "minecraft:jungle", "minecraft:savanna",
-    "minecraft:desert", "minecraft:badlands", "minecraft:stony_peaks",
-    "minecraft:jagged_peaks", "minecraft:mushroom_fields", "minecraft:pale_garden"
-  ],
-  "enabled_land_biomes": [ ... ],
-  "shore_biomes": [ "minecraft:beach", "minecraft:stony_shore", "minecraft:snowy_beach" ],
-  "enabled_shore_biomes": [ ... ],
-  "ocean_biomes": [ "minecraft:ocean", "minecraft:deep_ocean", ... ],
-  "enabled_ocean_biomes": [ ... ],
-  "river_biomes": [ "minecraft:river", "minecraft:frozen_river" ],
-  "enabled_river_biomes": [ ... ],
-  "cave_biomes": [
-    "minecraft:lush_caves", "minecraft:dripstone_caves",
-    "minecraft:deep_dark", "minecraft:sulfur_caves"
-  ],
-  "enabled_cave_biomes": [ ... ]
-}
-```
-
----
-
-## 7. Guidelines & Invariants for Future AI Modifications
-1. **Preserve Fallbacks:** Never assume `enabledBiomes` contains elements in any given category. Always maintain fallback paths in `IslandDraft.compatibleChoices` and `IslandDraft.enabledBiomes` to prevent runtime crashes during JSON compilation.
-2. **Preserve NativeImage LifeCycle:** When creating or destroying textures on `DynamicTexture`, always release via `minecraft.getTextureManager().release(previewId)` inside `removed()` to prevent OpenGL texture handle leaks.
-3. **Respect GLFW Button Identifiers:** In 26.3, do not use raw numeric literals for mouse buttons; always reference `InputConstants.MOUSE_BUTTON_LEFT` and `InputConstants.MOUSE_BUTTON_RIGHT`.
-4. **Encoding Invariance:** All text resources, ZIP entries, and JSON payloads must strictly use `StandardCharsets.UTF_8` to guarantee cross-platform compatibility between Windows, Linux, and macOS.
-5. **Preserve Mod Jar Targets:** Output builds must be mirrored to Prism Launcher instance mods (`C:\Game\prism\instances\Vulkan Optimization\minecraft\mods`) for immediate in-game test validation.
-
----
-
-## 8. Advanced Technical Deep Dive & Next-Gen Implementation Guide
-
-### 8.1. Eliminating SDF Discretization & Terracing on Slopes
-
-#### The Root Cause
-At an island size of $4000$ blocks across a $192 \times 192$ raster grid:
-$$\text{Pixel Scale} = \frac{4000 \times 1.36}{192} \approx 28.33 \text{ blocks per pixel}$$
-At an island size of $8000$ blocks:
-$$\text{Pixel Scale} = \frac{8000 \times 1.36}{192} \approx 56.66 \text{ blocks per pixel}$$
-When `coast_width` ranges between $110.0$ and $320.0$ blocks, the entire coastal gradient spans only $2$ to $7$ pixels. Bilinear interpolation across a coarse grid produces:
-1. Octagonal contour lines (distance artifacts from discrete grids).
-2. Quantization terraces (artificial horizontal plateaus on mountain slopes).
-
-#### Three-Pronged Algorithmic Solution
-```
-[World Coordinates (X, Z)]
-            │
-            ▼
-[1. Domain Warping Noise] ───> Shifts (X, Z) by ±30..70 blocks
-            │
-            ▼
-[2. Exact EDT on 2x Super-sampled Grid] ───> Continuous sub-pixel distance
-            │
-            ▼
-[3. Coastal fBM Anti-Terrace Perturbation] ───> Adds natural fine roughness
-            │
-            ▼
-[Smooth Continentalness Router]
-```
-
-#### Mathematical Formulation & Java Implementation
-
-##### 1. Continuous Domain Warping
-Before projecting world coordinates into grid pixel space, perturb them using a dual-frequency simplex or value noise field:
-```java
-// Low-frequency organic warp: amplitude 45.0 blocks, frequency 1/520
-double warpX = fbm(worldX / 520.0, worldZ / 520.0, seed ^ 0x9E3779B9L) * 45.0;
-double warpZ = fbm((worldX + 31.7) / 520.0, (worldZ + 73.1) / 520.0, seed ^ 0x6A09E667L) * 45.0;
-double warpedWorldX = worldX + warpX;
-double warpedWorldZ = worldZ + warpZ;
-```
-
-##### 2. Exact Euclidean Distance Transform (Felzenszwalb-Huttenlocher)
-`IslandMask` already implements the $O(N)$ parabolic lower-envelope algorithm. To achieve sub-pixel smoothness, upsample the mask by $2\times$ ($384 \times 384$) before running `edt1d`:
-$$\mathcal{D}(p) = \min_{q} \left( (p_x - q_x)^2 + (p_y - q_y)^2 + I(q) \right)$$
-Where $I(q) = 0$ if $q \in \text{Target}$, and $\infty$ otherwise.
-
-##### 3. Near-Coast fBM Anti-Terrace Perturbation
-In `sampleTerrainValue()`, modulate continentalness within the transition band $|c| < 0.22$:
-```java
-double baseContinentalness = worldDistance >= 0.0
-    ? -0.08 + worldDistance * 0.70 / coastWidth
-    : -0.08 + worldDistance * 0.92 / oceanTransitionWidth;
-
-// Attenuate perturbation to zero outside the coastal band [-0.22, 0.22]
-double transitionWeight = Math.max(0.0, 1.0 - Math.abs(baseContinentalness) / 0.22);
-if (transitionWeight > 0.0) {
-    double microRoughness = fbm(worldX / 72.0, worldZ / 72.0, seed ^ 0xDEADBEEFL) * 0.045;
-    baseContinentalness += microRoughness * transitionWeight;
-}
-return Math.max(-1.0, Math.min(0.70, baseContinentalness));
-```
-
----
-
-### 8.2. Breaking the Conical Relief: Ridged Mountains & Heightmaps
-
-#### The "Cone Problem"
-Because continentalness is strictly derived from distance-to-coast, any circular or elliptical island naturally produces a conical mountain in the center.
-
-#### Architectural Solutions
-
-##### Approach A: Procedural Ridged Mountain Spines
-Inject a ridged multifractal noise term into inland continentalness and erosion:
-```java
-if (worldDistance > 60.0) {
-    // Distance factor fades from 0 at 60 blocks from coast to 1 at 250 blocks inland
-    double inlandFactor = Math.min(1.0, (worldDistance - 60.0) / 190.0);
-    
-    // Ridged noise: peaks at zero crossings, sharp crests
-    double ridge = 1.0 - 2.0 * Math.abs(fbm(worldX / 750.0, worldZ / 750.0, seed ^ 0x4B3A9C11L));
-    ridge = Math.max(-0.5, Math.min(1.0, ridge));
-    
-    // Modulate continentalness: creates valleys and mountain ridges instead of a monotonic cone
-    baseContinentalness += ridge * 0.25 * inlandFactor;
-}
-```
-
-##### Approach B: 4-Tier Heightmap Layer (Dual-Layer Editor)
-* **Editor Integration:** Add a "Height Layer" toggle in `OmniIsleEditorScreen` allowing users to paint elevation tiers:
-  * Tier 0: Lowland / Plains (Erosion $+0.50$, Continentalness $+0.12$)
-  * Tier 1: Normal / Rolling Hills (Default SDF)
-  * Tier 2: Elevated Plateaus (Erosion $-0.20$, Continentalness $+0.35$)
-  * Tier 3: Alpine Peaks (Erosion $-0.65$, Continentalness $+0.55$)
-* **Data Packaging:** Stored as `data/omniisle/worldgen/height_layer.bin` (packed 2 bits per pixel $\to 4608$ bytes) inside `omniisle-generated.zip`.
-
----
-
-### 8.3. Bathymetry, Satellite Islets & Seamounts
-
-#### Eliminating the Flat Ocean Floor
-When `worldDistance < -oceanTransitionWidth`, continentalness currently locks hard at $-1.0$. In Minecraft vanilla worldgen:
-* $-1.0$ produces a featureless flat bedrock plane.
-* Ocean Monuments require Deep Ocean ($-0.65 \le c \le -0.45$).
-* Shipwrecks and Ocean Ruins generate on slopes and trenches.
-
-#### Procedural Ocean Floor Formulation
-Replace the flat $-1.0$ clamp with organic seafloor topography:
-```java
-if (worldDistance < 0.0) {
-    double oceanDist = -worldDistance;
-    double baseOcean = -0.08 - Math.min(0.55, oceanDist * 0.92 / oceanTransitionWidth);
-    
-    // Low-frequency underwater terrain variation: trenches (-0.85) to seamounts (-0.35)
-    double seamountNoise = fbm(worldX / 1100.0, worldZ / 1100.0, seed ^ 0x8837AC7FL) * 0.18;
-    double trenchNoise = fbm(worldX / 450.0, worldZ / 450.0, seed ^ 0x110294FEL) * 0.12;
-    
-    double finalOcean = baseOcean + seamountNoise - trenchNoise;
-    return Math.max(-0.85, Math.min(-0.25, finalOcean));
-}
-```
-
-#### Satellite Islet Generator
-Introduce an "Islets" (Островки) slider in `OmniIsleEditorScreen` ($0.0 \dots 1.0$):
-* Uses thresholded Voronoi cellular noise:
-$$\text{IsletPeak}(x, z) = \max\left(0, \frac{\text{cellular}(x / 800, z / 800) - 0.85}{0.15}\right) \times \text{isletStrength}$$
-* Adds scattered small islands, rocky arches, and coral reefs in the outer ocean without cluttering the main mask.
-
----
-
-### 8.4. Mask Versioning & Forward Compatibility Specification
-
-#### Updated `continents.json` Schema
+### Continents Density Function (`data/omniisle/worldgen/density_function/overworld/continents.json`):
 ```json
 {
   "type": "minecraft:cache",
   "input": {
     "type": "omniisle:island_continents",
     "config": {
+      "generation_version": 2,
+      "islet_density": 0.25,
+      "river_density": 0.35,
+      "world_border": false,
+      "world_border_margin": 1000,
+      "height_layer": {
+        "bits_per_pixel": 2,
+        "data": "<base64>"
+      },
+      "spawn": {
+        "x": 128,
+        "z": -64
+      },
+      "entries": [],
       "mask": {
         "version": 1,
         "resolution": 192,
@@ -361,7 +150,7 @@ $$\text{IsletPeak}(x, z) = \max\left(0, \frac{\text{cellular}(x / 800, z / 800) 
         "max_z": 2720.0,
         "coast_width": 192.0,
         "ocean_transition_width": 400.0,
-        "data": "..."
+        "data": "<base64>"
       },
       "biome_seed": 123456789
     }
@@ -369,81 +158,63 @@ $$\text{IsletPeak}(x, z) = \max\left(0, \frac{\text{cellular}(x / 800, z / 800) 
 }
 ```
 
-#### Codec Implementation in `IslandMask.java`
-```java
-public static final Codec<IslandMask> CODEC = RecordCodecBuilder.create(instance -> instance.group(
-    Codec.INT.optionalFieldOf("version", 1).forGetter(m -> m.version),
-    Codec.INT.optionalFieldOf("resolution", 192).forGetter(m -> m.resolution),
-    Codec.intRange(2, 4096).fieldOf("width").forGetter(m -> m.width),
-    Codec.intRange(2, 4096).fieldOf("height").forGetter(m -> m.height),
-    Codec.DOUBLE.fieldOf("min_x").forGetter(m -> m.minX),
-    Codec.DOUBLE.fieldOf("max_x").forGetter(m -> m.maxX),
-    Codec.DOUBLE.fieldOf("min_z").forGetter(m -> m.minZ),
-    Codec.DOUBLE.fieldOf("max_z").forGetter(m -> m.maxZ),
-    Codec.DOUBLE.optionalFieldOf("coast_width", 192.0).forGetter(m -> m.coastWidth),
-    Codec.DOUBLE.optionalFieldOf("ocean_transition_width", 400.0).forGetter(m -> m.oceanTransitionWidth),
-    Codec.STRING.fieldOf("data").forGetter(m -> m.data)
-).apply(instance, IslandMask::new));
-```
+---
+
+## 7. Hard Invariants (I1 – I6)
+
+1. **I1. Backward Compatibility:** Worlds created with OmniIsle 0.5.0 (`generation_version = 1`) must load in 0.6.0 and produce bit-for-bit identical terrain, biomes, and structures in newly generated chunks (verified by `GoldenV1Test`).
+2. **I2. Spec §7 Invariants:** Fallbacks for empty biome categories; `DynamicTexture` released via `getTextureManager().release(previewId)` in `removed()`; use `InputConstants.MOUSE_BUTTON_LEFT/RIGHT`; UTF-8 encoding across all files; release JAR mirrored to Prism instance.
+3. **I3. Server/Preview Parity:** The terrain sampler used by the server (`IslandDensityFunction`) and client editor preview/inspector (`BiomePreview`) is the *exact same code* in the side-neutral `com.hack337.omniisle.continent` package.
+4. **I4. Determinism & Thread Safety:** Worldgen samplers are pure functions of `(x, z, seed, config)`: no shared `Random` across threads, no mutable static state, no per-call allocation in hot paths, double arithmetic without platform variance.
+5. **I5. Graceful Failure:** Corrupt or short mask data, unknown future `generation_version`, or missing optional JSON fields log warnings and fall back gracefully without crashing.
+6. **I6. Bilingual Localization:** Every UI string has translation keys in both `en_us.json` and `ru_ru.json`.
 
 ---
 
-### 8.5. Biome Scaling & Latitudinal Climate Gradient
+## 8. OmniIsle 0.6.0 Architecture & Modern Worldgen Pipeline (v2)
 
-#### 1. Biome Scale Slider (`climate_scale`)
-* Exposed in `OmniIsleEditorScreen` as a slider from $384$ to $1536$ blocks (default $720$).
-* Directly passed into `OmniBiomeSource` via `omniisle.json`:
-```json
-"climate_scale": 720
-```
+### 8.1. Eliminating SDF Terracing & Stepping
+* **Exact Felzenszwalb-Huttenlocher EDT on Native Grid:** Computes parabolic lower envelope $O(N)$ Euclidean distance on native grid (192, 256, 384). Sub-pixel distance convention: inside land $= d_{\text{in}} - 0.5$ px, outside $= -(d_{\text{out}} - 0.5)$ px.
+* **Catmull-Rom Bicubic Interpolation with Neighborhood Clamping:** Resamples the continuous SDF with Catmull-Rom bicubic interpolation. Values are strictly clamped to the $[min, max]$ of their $4 \times 4$ neighborhood to eliminate overshoot and prevent sign flipping.
+* **Flat Float Array Cache:** Precomputed once per config during initialization, avoiding per-sample EDT overhead.
+* **Domain Warping on Mask Lookup Only:** Shifts $(x, z)$ with low-frequency noise (frequency $1/520$, amplitude 45 blocks, plus second octave at $1/190$, amplitude 12 blocks) applied *only* to the mask/SDF coordinate projection.
+* **Shoreline Micro-Roughness:** Centered at the actual shoreline value of **$-0.08$** (rather than 0.0): $t = \max(0, 1 - |c - (-0.08)| / 0.22)$, adding fine fBm noise with smoothstep falloff without displacing the painted coast.
 
-#### 2. Latitudinal Temperature Gradient
-In Minecraft: $-Z$ is North (Arctic), $+Z$ is South (Equatorial).
-Implement realistic global climate zonation across the island:
-```java
-public static double temperatureAt(double x, double z, double halfSpan, double scale, long seed, boolean gradient) {
-    double warpX = fbm(x / scale, z / scale, seed + 101) * scale * 0.30;
-    double warpZ = fbm(x / scale, z / scale, seed + 211) * scale * 0.30;
-    double wz = z + warpZ;
-    
-    double baseTemp = 0.50;
-    if (gradient) {
-        // Linear latitudinal gradient: North (-halfSpan) is -0.45, South (+halfSpan) is +0.45
-        double latitudinal = (wz / halfSpan) * 0.45;
-        baseTemp += latitudinal;
-    }
-    
-    double noise = fbm((x + warpX) / (scale * 1.35), wz / (scale * 1.35), seed + 307) * 0.18;
-    return Math.max(0.0, Math.min(1.0, baseTemp + noise));
-}
-```
-* **Result:** Setting Theme to "Nordic" naturally clusters glaciers, snowy peaks, and frozen oceans in the North, while "Tropical" clusters lush jungles and warm waters in the South.
+### 8.2. Breaking the Conical Relief: Mountain Spines & 4-Tier Height Layer
+* **Compressed Coastal Rise:** Base continentalness is formulated as $\text{base} = -0.08 + 0.48 \cdot \tanh(d \cdot 1.25 / \text{coastWidth})$, leveling off to $\approx 0.40$ inland and leaving dynamic range ($0.40 \dots 0.95$) for mountain relief.
+* **Procedural Ridged Mountain Spines:** Adds low-frequency ridged noise $\text{ridge} = 1 - 2 \cdot |\text{fbm}(x/750, z/750)|$ inland ($d > 60$ blocks) modulated by relief scale and mountain bias.
+* **Soft Saturation:** Replaces hard clamping with smooth hyperbolic saturation: for $c > 0.55$, $c = 0.55 + 0.40 \cdot \tanh((c - 0.55)/0.40)$, allowing summits up to $0.95$.
+* **4-Tier Height Layer:** Painted 2-bit height layer (0: Lowland, 1: Normal, 2: Plateau/Hills, 3: Alpine Peaks). Stored as Base64 in `continents.json`. Treated as a continuous float field, smoothed with a 3x3 kernel and bilinear sampled to prevent vertical walls. Also modulates erosion bias.
+* **Hillshade Preview Shading:** Northwest illumination (azimuth 315°, altitude 45°) blended 35% over biome colors.
 
----
+### 8.3. Bathymetry, Guaranteed Deep Band & Satellite Islets
+* **Soft Floor at $-0.80$:** Replaces flat $-1.0$ lock, leaving headroom for oceanic trenches (down to $-1.0$) and seamounts (up to $-0.50$).
+* **Seabed Noise:** Continuous combination of fBm seabed and ridged trenches with weight $w = \text{smoothstep}(s / (0.5 \cdot W_o))$ that is strictly 0 at the coast.
+* **Guaranteed Deep Band:** For offshore distance $s \in [0.4 W_o, 1.0 W_o]$, positive seabed noise is forbidden, guaranteeing a continuous deep ocean band for Ocean Monument generation.
+* **Satellite Islets:** Jittered cellular noise with density slider ($0.0 \dots 1.0$). Islets generate $\ge 350$ blocks from the main island with bell-shaped smoothstep profiles, receiving beaches, local climate, and vanilla ocean structures.
 
-### 8.6. Guaranteed Structure Placement & Editor Spawn Marker
+### 8.4. Climate System & Latitudinal Gradients
+* **Biome Scale Slider:** Configurable `climate_scale` ($384 \dots 1536$, default 720) controlling biome size.
+* **Latitudinal Temperature Gradient:** Gradient options (Off, North-South, East-West, Radial-from-center). Gradient amplitude is theme-aware: narrow themes (Nordic, Desert, Tropical) compress the gradient amplitude to stay within thematic limits.
+* **Noise-Jittered Blending:** Neighbouring climate cells are blended with value noise jitter to prevent straight-line biome borders.
+* **Slope-Based Stony Shore:** Coastlines where local slope $\ge 0.35$ generate dramatic stony shore cliffs rather than sandy beaches.
 
-#### Small Island (2500 Blocks) Structure Safety Matrix
+### 8.5. Structure Placement & Inland Spawn Selector
+* **Stronghold Ring Scaling:** Stronghold placement ring `distance` is dynamically scaled by island size ($d = \text{clamp}(8, 32, \text{round}(32 \cdot \text{islandSize} / 8000))$), ensuring strongholds generate reliably on land even on 2500-block islands.
+* **Ancient City & Deep Dark:** Deep dark underground conditions are decoupled from mountain surface peaks, guaranteeing underground Ancient Cities where depth permits.
+* **Largest-SDF Spawn Selector:** Automatically selects the inland pixel with the largest positive SDF within 40% of the island radius, guaranteeing spawn on solid land.
+* **First-Load Relocation:** On first world load, a spiral land search relocates the player to the nearest safe column if in water.
 
-| Structure | Critical Biome Requirement | Risk on 2500 Island | Mitigation Strategy |
-| :--- | :--- | :--- | :--- |
-| **Ancient City** | `deep_dark` AND (`stony_peaks` or `jagged_peaks`) | High (Mountain peaks may not exist at $Y < 0$) | Relax fallback: allow any land biome below $Y=0$ where deep dark noise triggers. |
-| **Ocean Monument** | `deep_ocean` / `deep_cold_ocean` | Medium (Offshore shelf may be shallow) | Fallback bathymetry: guarantee deep ocean trench at $> 120\text{ blocks}$ offshore. |
-| **Stronghold** | `plains` | Low | Automatically re-targets to any enabled land biome. |
-| **Trial Chambers** | `plains` (inland, underground) | Low | Disallow deep dark overlap, allow any solid stone stratum. |
-| **Abandoned Camp** | Forest / Taiga / Savanna variants | Zero | Selects matching camp variant for the specific biome sampled. |
+### 8.6. Advanced Editor Features & Deflate Share Codes
+* **Multi-Resolution Draft Architecture:** Selectable resolutions (192, 256, 384) with bilinear resampling of land and height layers upon canvas resize.
+* **Share Codes:** Compact `OMNI2-<base64url(deflate(payload))>-<crc16>` format with CRC16 validation and 256 KiB decompressed payload cap.
+* **Drawing Tools & Symmetry:** Fill (flood fill), Line (Bresenham), Rectangle, Ellipse (Shift for square/circle, fill/outline toggle), and 6 symmetry modes (Off, Mirror-X, Mirror-Z, 4-way, 6-way, 8-way).
+* **Procedural Shape Presets:** 12 presets total (Natural, Round, Long, Crescent, Archipelago, Atoll, Volcano, Fjords, Twin Islands, Inland Sea, Horseshoe Bay, Ridge Island).
+* **PNG Import/Export:** Import mask with grayscale threshold and invert; import heightmaps to land + height tiers; export mask, height layer, color biome map, and hillshade.
 
-#### Editor Spawn Crosshair Marker
-In `OmniIsleEditorScreen.extractBackground`:
-```java
-// World spawn is at (0, 0). Calculate pixel location on preview canvas:
-int spawnScreenX = previewX + previewSize / 2;
-int spawnScreenY = previewY + previewSize / 2;
-
-// Draw gold spawn crosshair
-int gold = 0xFFFFD700;
-context.horizontalLine(spawnScreenX - 4, spawnScreenX + 4, spawnScreenY, gold);
-context.verticalLine(spawnScreenX, spawnScreenY - 4, spawnScreenY + 4, gold);
-context.outline(spawnScreenX - 2, spawnScreenY - 2, 5, 5, 0xFFFFAA00);
-```
-Displays an unmistakable spawn compass marker right on the editor preview canvas!
+### 8.7. Physically Carved Rivers & Stretch Features
+* **Deterministic River Network:** Derived at world load from `(mask, height layer, seed, riverDensity)` in $< 25$ ms. Uses Priority-Flood depression filling to eliminate pits, D8 flow routing, and flow accumulation.
+* **$C^1$ Continuous River Carving:** River channels are carved using smoothstep falloff $\text{carve} = 0.14 \cdot \text{smoothstep}(1 - d_r / W)$, maintaining exact continuity across chunk boundaries without terrace artifacts.
+* **Dynamic Biome Registry:** Discovers modded biomes from `WorldCreationContext` and assigns climate families dynamically.
+* **World Border:** Centers vanilla `WorldBorder` on the island with a configurable margin ($500 \dots 4000$ blocks).
+* **Dedicated Server Support:** Automatically builds `omniisle-generated.zip` from `config/omniisle.json` on dedicated server startup, with `/omniisle import` for live preset loading.
