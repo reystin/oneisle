@@ -203,10 +203,10 @@ uses the generated pack (log order: preLaunch export 21:58:12 → world creation
 - [x] **9.8.4** `OmniBiomeSource` per-thread 512-slot column cache removes per-Y slope/distance/shore recomputation; `BiomeSourceV2V3RegressionTest` locks 29 282 v2/v3 lookups (v2 `13456651134697231961`, v3 `7583129763709705084` unsigned) and passes; pre/post output hashes identical
 - [x] **9.8.5** Real dedicated-server timing: 25×25 inland chunks, fresh world/run, RCON forceload + 25 row probes, 3 interleaved rounds. Medians v1 14.891 s / v2 14.231 s (−4.43 %) / v3 14.557 s (−2.24 %); worst-case +2.54 %/+6.71 % vs fastest v1 — inside +15 %
 - [x] **9.8.6** Offshore diagnostic (+22.0 %/+38.7 %) separated from the verdict; `ModernTerrainV2` cache experiment reverted (15.128/15.081 s vs 15.17 s, no gain); sequential-run drift documented
-- [x] **9.8.7** Final `./gradlew build` green: 96 tests, 0 failures, 2 assumption-gated skips; jar `OmniIsle-26.3-Fabric-0.7.0+mc26.3.jar`; mirrored to PrismLauncher mods and `~/Downloads`
+- [x] **9.8.7** Final `./gradlew build` green: 97 tests, 0 failures, 2 assumption-gated skips; jar `OmniIsle-26.3-Fabric-0.7.0+mc26.3.jar`; mirrored to PrismLauncher mods and `~/Downloads`
 - [x] **9.8.8** Final report follows Section 11, preserving structure matrix PARTIAL 15/45 and 9.6 screenshots NOT DONE
 
 Measured: v2 golden 180 000/180 000 exact; biome cache medians v2 19.432 → 15.251 s and
 v3 20.534 → 14.209 s; final inland medians v1 14.891 / v2 14.231 / v3 14.557 s; build
-96 tests, 0 failures. Evidence: `docs/evidence/perf/`, `FINDINGS.md` §15, `DECISIONS.md`
+97 tests, 0 failures. Evidence: `docs/evidence/perf/`, `FINDINGS.md` §15, `DECISIONS.md`
 034–038, `src/test/resources/golden/v2/`.

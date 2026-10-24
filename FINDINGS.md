@@ -454,7 +454,7 @@ file. (3) spawn initialization sets the world respawn data; it does not teleport
 players. `OMNIISLE_AI_SPEC.md`, `CHANGELOG.md` and `README.md` now state the actual
 0.7.0 behavior.
 
-**Final build:** `./gradlew build` succeeds; 96 tests, 0 failures, 0 errors, 2
+**Final build:** `./gradlew build` succeeds; 97 tests, 0 failures, 0 errors, 2
 conditional skips (`GoldenV1Test.regenerateGoldenIfRequested`,
 `Phase9HarnessPacksTest.exportHarnessPacks`, both assumption-gated). Jar:
 `build/libs/OmniIsle-26.3-Fabric-0.7.0+mc26.3.jar`, `fabric.mod.json` version
