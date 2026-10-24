@@ -67,7 +67,8 @@
 - [x] **7.7** Inspector hover tooltip upgrade
 
 ### Phase 8 — Stretch Goals
-- [ ] **8.1** Physically carved rivers & lakes
-- [ ] **8.2** Registry-driven biome list
-- [ ] **8.3** World border option
-- [ ] **8.4** `/omniisle debug` visual exporters
+- [x] **8.1** Physically carved rivers & lakes
+- [x] **8.2** Registry-driven biome list
+- [x] **8.3** World border option
+- [x] **8.4** `/omniisle debug` visual exporters
+- [x] **8.5** Dedicated server support

@@ -55,6 +55,9 @@ public class IslandShapeConfig {
         instance -> instance.group(
             Codec.INT.optionalFieldOf("generation_version", 1).forGetter(d -> d.generationVersion),
             Codec.DOUBLE.optionalFieldOf("islet_density", 0.25).forGetter(d -> d.isletDensity),
+            Codec.DOUBLE.optionalFieldOf("river_density", 0.0).forGetter(d -> d.riverDensity),
+            Codec.BOOL.optionalFieldOf("world_border", false).forGetter(d -> d.worldBorder),
+            Codec.INT.optionalFieldOf("world_border_margin", 1000).forGetter(d -> d.worldBorderMargin),
             HeightLayer.CODEC.optionalFieldOf("height_layer").forGetter(d -> java.util.Optional.ofNullable(d.heightLayer)),
             SpawnPos.CODEC.optionalFieldOf("spawn").forGetter(d -> java.util.Optional.ofNullable(d.spawn)),
             IslandShapeConfig.Entry.CODEC.listOf().fieldOf("entries").orElseGet(ArrayList::new).forGetter(d -> d.entries),
@@ -65,6 +68,9 @@ public class IslandShapeConfig {
 
     public int generationVersion;
     public double isletDensity = 0.25;
+    public double riverDensity = 0.35;
+    public boolean worldBorder = false;
+    public int worldBorderMargin = 1000;
     public HeightLayer heightLayer;
     public SpawnPos spawn;
     public byte[] unpackedHeight;
@@ -72,7 +78,9 @@ public class IslandShapeConfig {
     public IslandMask mask;
     public long biomeSeed;
 
-    public IslandShapeConfig(int generationVersion, double isletDensity, java.util.Optional<HeightLayer> heightLayer,
+    public IslandShapeConfig(int generationVersion, double isletDensity, double riverDensity,
+                             boolean worldBorder, int worldBorderMargin,
+                             java.util.Optional<HeightLayer> heightLayer,
                              java.util.Optional<SpawnPos> spawn,
                              List<IslandShapeConfig.Entry> entries, java.util.Optional<IslandMask> mask, long biomeSeed) {
         if (generationVersion > MAX_SUPPORTED_GENERATION_VERSION) {
@@ -84,6 +92,9 @@ public class IslandShapeConfig {
             this.generationVersion = Math.max(1, generationVersion);
         }
         this.isletDensity = Math.max(0.0, Math.min(1.0, isletDensity));
+        this.riverDensity = Math.max(0.0, Math.min(1.0, riverDensity));
+        this.worldBorder = worldBorder;
+        this.worldBorderMargin = Math.max(500, Math.min(4000, worldBorderMargin));
         this.heightLayer = heightLayer.orElse(null);
         this.spawn = spawn.orElse(null);
         this.entries = new ArrayList<>(entries);
@@ -96,6 +107,12 @@ public class IslandShapeConfig {
         } else {
             this.unpackedHeight = null;
         }
+    }
+
+    public IslandShapeConfig(int generationVersion, double isletDensity, java.util.Optional<HeightLayer> heightLayer,
+                             java.util.Optional<SpawnPos> spawn,
+                             List<IslandShapeConfig.Entry> entries, java.util.Optional<IslandMask> mask, long biomeSeed) {
+        this(generationVersion, isletDensity, 0.0, false, 1000, heightLayer, spawn, entries, mask, biomeSeed);
     }
 
     public IslandShapeConfig(int generationVersion, double isletDensity, java.util.Optional<HeightLayer> heightLayer,

@@ -186,11 +186,20 @@ public final class OmniBiomeSource extends BiomeSource {
             return selectEnabled(enabledShoreBiomes, shoreBiomes, res.subType());
         }
 
-        double erosion = net.minecraft.world.level.biome.Climate.unquantizeCoord(point.erosion());
-        double weirdness = net.minecraft.world.level.biome.Climate.unquantizeCoord(point.weirdness());
-        if (y >= 0 && !riverBiomes.isEmpty() && isRiverValley(continentalness, erosion, weirdness)) {
-            return selectEnabled(enabledRiverBiomes, riverBiomes,
-                res.temperature() < 0.26 ? "frozen_river" : "river");
+        if (y >= 0 && !riverBiomes.isEmpty()) {
+            boolean river = false;
+            if (activeDf != null && activeDf.terrain() != null && activeDf.terrain().rivers() != null && activeDf.terrain().rivers().isEnabled()) {
+                river = activeDf.terrain().rivers().isRiver(x, z);
+            }
+            if (!river) {
+                double erosion = net.minecraft.world.level.biome.Climate.unquantizeCoord(point.erosion());
+                double weirdness = net.minecraft.world.level.biome.Climate.unquantizeCoord(point.weirdness());
+                river = isRiverValley(continentalness, erosion, weirdness);
+            }
+            if (river) {
+                return selectEnabled(enabledRiverBiomes, riverBiomes,
+                    res.temperature() < 0.26 ? "frozen_river" : "river");
+            }
         }
 
         if (y < 0 && shouldUseCaveBiome(x, y, z, point)) {

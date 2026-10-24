@@ -59,6 +59,9 @@ public final class ShareCode {
         root.addProperty("climate_scale", draft.climateScale());
         root.addProperty("gradient_mode", draft.gradientMode().name());
         root.addProperty("gradient_strength", draft.gradientStrength());
+        root.addProperty("river_density", draft.riverDensity());
+        root.addProperty("world_border", draft.isWorldBorderEnabled());
+        root.addProperty("world_border_margin", draft.worldBorderMargin());
         if (draft.hasExplicitSpawn()) {
             root.addProperty("spawn_px", draft.explicitSpawnPx());
             root.addProperty("spawn_pz", draft.explicitSpawnPz());
@@ -163,13 +166,20 @@ public final class ShareCode {
         }
 
         String json = baos.toString(StandardCharsets.UTF_8);
+        return decodeJson(json);
+    }
+
+    public static IslandDraft decodeJson(String json) {
         JsonObject root;
         try {
             root = JsonParser.parseString(json).getAsJsonObject();
         } catch (Exception e) {
             throw new IllegalArgumentException("Failed to parse share code JSON: " + e.getMessage(), e);
         }
+        return decodeJsonObject(root);
+    }
 
+    public static IslandDraft decodeJsonObject(JsonObject root) {
         int res = root.has("resolution") ? root.get("resolution").getAsInt() : IslandDraft.RESOLUTION;
         int islandSize = root.has("island_size") ? root.get("island_size").getAsInt() : IslandDraft.DEFAULT_ISLAND_SIZE;
         long shapeSeed = root.has("shape_seed") ? root.get("shape_seed").getAsLong() : 0L;
@@ -215,6 +225,15 @@ public final class ShareCode {
         }
         if (root.has("gradient_strength")) {
             draft.setGradientStrength(root.get("gradient_strength").getAsDouble());
+        }
+        if (root.has("river_density")) {
+            draft.setRiverDensity(root.get("river_density").getAsDouble());
+        }
+        if (root.has("world_border")) {
+            draft.setWorldBorderEnabled(root.get("world_border").getAsBoolean());
+        }
+        if (root.has("world_border_margin")) {
+            draft.setWorldBorderMargin(root.get("world_border_margin").getAsInt());
         }
         if (root.has("mask")) {
             draft.unpackMask(root.get("mask").getAsString());

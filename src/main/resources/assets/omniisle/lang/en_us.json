@@ -163,5 +163,11 @@
   "omniisle.editor.png_mode.heightmap": "Land + Height",
   "omniisle.editor.png_invert": "Invert",
   "omniisle.editor.png_threshold": "Threshold: %s",
-  "omniisle.editor.png_import_button": "Import PNG"
+  "omniisle.editor.png_import_button": "Import PNG",
+  "omniisle.editor.rivers": "Rivers: %s",
+  "omniisle.editor.rivers.tooltip": "Controls river frequency and carving intensity across the island.",
+  "omniisle.editor.world_border": "World Border",
+  "omniisle.editor.world_border.tooltip": "Limits the world border to the island dimensions plus margin.",
+  "omniisle.editor.border_margin": "Border Margin: %d",
+  "omniisle.editor.border_margin.tooltip": "Distance from the island edge to the world border in blocks."
 }

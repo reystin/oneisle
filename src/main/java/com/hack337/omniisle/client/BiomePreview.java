@@ -132,8 +132,25 @@ public final class BiomePreview {
                                int climateScale, com.hack337.omniisle.continent.IslandClimate.GradientMode gradientMode,
                                double gradientStrength, IslandDraft.BiomeTheme theme, double slope, int version,
                                double islandHalfSpan) {
+        return surface(continentalness, x, z, seed, climateScale, gradientMode, gradientStrength, theme, slope, version, islandHalfSpan, null);
+    }
+
+    /** Modern v2 surface biome preview with carved rivers support. */
+    public static Type surface(double continentalness, double x, double z, long seed,
+                               int climateScale, com.hack337.omniisle.continent.IslandClimate.GradientMode gradientMode,
+                               double gradientStrength, IslandDraft.BiomeTheme theme, double slope, int version,
+                               double islandHalfSpan, com.hack337.omniisle.continent.IslandRivers rivers) {
         if (version <= 1) {
             return surface(continentalness, x, z, seed);
+        }
+        if (rivers != null && rivers.isEnabled() && rivers.isRiver(x, z)) {
+            com.hack337.omniisle.continent.IslandClimate.SampleResult res =
+                com.hack337.omniisle.continent.IslandClimate.sample(
+                    continentalness, x, z, 64.0, slope, climateScale, seed,
+                    gradientMode, gradientStrength, theme != null ? theme.name() : "standard",
+                    islandHalfSpan, version
+                );
+            return res.temperature() < 0.26 ? Type.FROZEN_RIVER : Type.RIVER;
         }
         com.hack337.omniisle.continent.IslandClimate.SampleResult res =
             com.hack337.omniisle.continent.IslandClimate.sample(

@@ -34,6 +34,7 @@ public final class ModernTerrainV2 implements IslandTerrain {
 
     private final float[] sdfGrid;
     private final float[] heightGrid;
+    private final IslandRivers rivers;
 
     public ModernTerrainV2(IslandShapeConfig config) {
         this.config = config;
@@ -53,6 +54,7 @@ public final class ModernTerrainV2 implements IslandTerrain {
 
         this.sdfGrid = buildSdfGrid();
         this.heightGrid = buildHeightGrid(config != null ? config.unpackedHeight : null);
+        this.rivers = new IslandRivers(config, this.mask, this.sdfGrid, this.heightGrid);
     }
 
     public IslandShapeConfig config() {
@@ -69,6 +71,11 @@ public final class ModernTerrainV2 implements IslandTerrain {
 
     public double isletDensity() {
         return isletDensity;
+    }
+
+    @Override
+    public IslandRivers rivers() {
+        return rivers;
     }
 
     @Override
@@ -141,6 +148,13 @@ public final class ModernTerrainV2 implements IslandTerrain {
                 double roughness = IslandNoise.fbm2(worldX / 72.0, worldZ / 72.0, seed + 911L, 3, 2.0, 0.5)
                     * 0.045 * IslandNoise.smoothstep(t);
                 c += roughness;
+            }
+
+            if (rivers != null && rivers.isEnabled()) {
+                double riverCarve = rivers.riverCarveContinentalness(worldX, worldZ);
+                if (riverCarve > 0.0) {
+                    c -= riverCarve;
+                }
             }
 
             return Math.max(-1.0, Math.min(0.95, c));
@@ -323,7 +337,30 @@ public final class ModernTerrainV2 implements IslandTerrain {
 
     @Override
     public double erosionBias(double x, double z) {
-        return 0.0;
+        double worldDistance = computeSignedDistance(x, z, true);
+        if (worldDistance < 0.0) {
+            return 0.0;
+        }
+        double bias = 0.0;
+        if (heightGrid != null) {
+            double px = ((Math.max(minX, Math.min(maxX, x)) - minX) / (maxX - minX)) * width - 0.5;
+            double pz = ((Math.max(minZ, Math.min(maxZ, z)) - minZ) / (maxZ - minZ)) * height - 0.5;
+            double tierVal = sampleHeight(px, pz);
+            if (tierVal <= 1.0) {
+                double u = Math.max(0.0, tierVal);
+                bias = 0.50 * (1.0 - u);
+            } else if (tierVal <= 2.0) {
+                double u = tierVal - 1.0;
+                bias = -0.20 * u;
+            } else {
+                double u = Math.min(1.0, tierVal - 2.0);
+                bias = -0.20 - 0.45 * u;
+            }
+        }
+        if (rivers != null && rivers.isEnabled()) {
+            bias += rivers.riverCarveErosionBias(x, z);
+        }
+        return Math.max(-1.0, Math.min(1.0, bias));
     }
 
     /**

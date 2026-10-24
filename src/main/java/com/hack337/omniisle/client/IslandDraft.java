@@ -150,6 +150,9 @@ public final class IslandDraft {
     private com.hack337.omniisle.continent.IslandClimate.GradientMode gradientMode =
         com.hack337.omniisle.continent.IslandClimate.GradientMode.NORTH_SOUTH;
     private double gradientStrength = 0.50;
+    private double riverDensity = 0.35;
+    private boolean worldBorder = false;
+    private int worldBorderMargin = 1000;
     private EnumSet<BiomePreview.Type> enabledBiomes;
     private EnumSet<StructureOption> enabledStructures;
 
@@ -343,6 +346,21 @@ public final class IslandDraft {
     public double gradientStrength() { return gradientStrength; }
     public void setGradientStrength(double strength) {
         this.gradientStrength = Math.max(0.0, Math.min(1.0, strength));
+    }
+
+    public double riverDensity() { return riverDensity; }
+    public void setRiverDensity(double density) {
+        this.riverDensity = Math.max(0.0, Math.min(1.0, density));
+    }
+
+    public boolean isWorldBorderEnabled() { return worldBorder; }
+    public void setWorldBorderEnabled(boolean enabled) {
+        this.worldBorder = enabled;
+    }
+
+    public int worldBorderMargin() { return worldBorderMargin; }
+    public void setWorldBorderMargin(int margin) {
+        this.worldBorderMargin = Math.max(500, Math.min(4000, margin));
     }
 
     /**

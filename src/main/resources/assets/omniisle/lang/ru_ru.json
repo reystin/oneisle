@@ -163,5 +163,11 @@
   "omniisle.editor.png_mode.heightmap": "Суша + Высоты",
   "omniisle.editor.png_invert": "Инверсия",
   "omniisle.editor.png_threshold": "Порог: %s",
-  "omniisle.editor.png_import_button": "Импорт PNG"
+  "omniisle.editor.png_import_button": "Импорт PNG",
+  "omniisle.editor.rivers": "Реки: %s",
+  "omniisle.editor.rivers.tooltip": "Настройка плотности рек и их глубины врезания в остров.",
+  "omniisle.editor.world_border": "Граница мира",
+  "omniisle.editor.world_border.tooltip": "Ограничивает границу мира размером острова с отступом.",
+  "omniisle.editor.border_margin": "Отступ границы: %d",
+  "omniisle.editor.border_margin.tooltip": "Расстояние от береговой линии острова до границы мира в блоках."
 }

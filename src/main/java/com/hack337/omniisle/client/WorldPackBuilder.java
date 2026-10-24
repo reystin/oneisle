@@ -104,6 +104,9 @@ public final class WorldPackBuilder {
         JsonObject config = new JsonObject();
         config.addProperty("generation_version", state.generationVersionNumber());
         config.addProperty("islet_density", state.isletDensity());
+        config.addProperty("river_density", state.riverDensity());
+        config.addProperty("world_border", state.isWorldBorderEnabled());
+        config.addProperty("world_border_margin", state.worldBorderMargin());
         if (state.hasCustomHeight()) {
             JsonObject heightObj = new JsonObject();
             heightObj.addProperty("bits_per_pixel", 2);
@@ -160,9 +163,12 @@ public final class WorldPackBuilder {
 
     private static void exportStructureSets(ZipOutputStream zip, IslandDraft state,
                                            IslandMask mask, double halfSpan) throws IOException {
+        int[] sp = state.effectiveSpawnPx();
         com.hack337.omniisle.continent.IslandShapeConfig terrainConfig = new com.hack337.omniisle.continent.IslandShapeConfig(
-            state.generationVersionNumber(), state.isletDensity(),
+            state.generationVersionNumber(), state.isletDensity(), state.riverDensity(),
+            state.isWorldBorderEnabled(), state.worldBorderMargin(),
             state.hasCustomHeight() ? java.util.Optional.of(new com.hack337.omniisle.continent.IslandShapeConfig.HeightLayer(2, state.packedHeight())) : java.util.Optional.empty(),
+            java.util.Optional.of(new com.hack337.omniisle.continent.IslandShapeConfig.SpawnPos((int)Math.round(state.worldX(sp[0])), (int)Math.round(state.worldZ(sp[1])))),
             List.of(), java.util.Optional.of(mask), state.biomeSeed()
         );
         com.hack337.omniisle.continent.IslandTerrain terrain = com.hack337.omniisle.continent.IslandTerrain.create(terrainConfig);

@@ -34,6 +34,13 @@ public abstract class WorldTypeEditorMixin {
     private void omniisle$openEditor(CallbackInfo ci) {
         if (isIsland(this$0.getUiState())) {
             this$0.getUiState().onChanged();
+            try {
+                var context = this$0.getUiState().getSettings();
+                if (context != null && context.worldgenLoadContext() != null) {
+                    var biomeRegistry = context.worldgenLoadContext().lookupOrThrow(net.minecraft.core.registries.Registries.BIOME);
+                    com.hack337.omniisle.client.DynamicBiomeRegistry.updateFromRegistry(biomeRegistry);
+                }
+            } catch (Exception ignored) {}
             com.hack337.omniisle.client.ClientScreenNavigator.open(
                 net.minecraft.client.Minecraft.getInstance(), new OmniIsleEditorScreen(this$0));
             ci.cancel();

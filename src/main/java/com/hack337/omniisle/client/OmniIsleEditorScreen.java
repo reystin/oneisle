@@ -566,12 +566,17 @@ public final class OmniIsleEditorScreen extends Screen {
         int resolution = state.resolution();
 
         double halfSpan = state.worldSpan() / 2.0;
+        int[] sp = state.effectiveSpawnPx();
         com.hack337.omniisle.continent.IslandShapeConfig cfg = new com.hack337.omniisle.continent.IslandShapeConfig(
             state.generationVersionNumber(),
             state.isletDensity(),
+            state.riverDensity(),
+            state.isWorldBorderEnabled(),
+            state.worldBorderMargin(),
             state.hasCustomHeight()
                 ? java.util.Optional.of(new com.hack337.omniisle.continent.IslandShapeConfig.HeightLayer(2, state.packedHeight()))
                 : java.util.Optional.empty(),
+            java.util.Optional.of(new com.hack337.omniisle.continent.IslandShapeConfig.SpawnPos((int)Math.round(state.worldX(sp[0])), (int)Math.round(state.worldZ(sp[1])))),
             java.util.Collections.emptyList(),
             java.util.Optional.of(new com.hack337.omniisle.continent.IslandMask(
                 resolution, resolution,
@@ -615,7 +620,8 @@ public final class OmniIsleEditorScreen extends Screen {
                 BiomePreview.Type preferred = BiomePreview.surface(
                     c, wx, wz, state.biomeSeed(),
                     state.climateScale(), state.gradientMode(), state.gradientStrength(),
-                    state.theme(), slope, state.generationVersionNumber(), halfSpan
+                    state.theme(), slope, state.generationVersionNumber(), halfSpan,
+                    currentTerrain != null ? currentTerrain.rivers() : null
                 );
                 baseColors[z * resolution + x] = state.selectBiome(preferred, wx, wz).color;
 
@@ -797,7 +803,8 @@ public final class OmniIsleEditorScreen extends Screen {
         BiomePreview.Type preferred = BiomePreview.surface(
             continentalness, worldX, worldZ, state.biomeSeed(),
             state.climateScale(), state.gradientMode(), state.gradientStrength(),
-            state.theme(), slope, state.generationVersionNumber(), state.worldSpan() / 2.0
+            state.theme(), slope, state.generationVersionNumber(), state.worldSpan() / 2.0,
+            currentTerrain != null ? currentTerrain.rivers() : null
         );
         BiomePreview.Type biome = state.selectBiome(preferred, worldX, worldZ);
 

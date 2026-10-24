@@ -24,6 +24,13 @@ public interface IslandTerrain {
     double signedDistance(double x, double z);
 
     /**
+     * Carved river system, or null if rivers are disabled / v1.
+     */
+    default IslandRivers rivers() {
+        return null;
+    }
+
+    /**
      * Estimated surface elevation in Minecraft Y coordinates corresponding to the given
      * continentalness value. Calibrated against vanilla 1.18+ / 26.3 overworld surface generation.
      */

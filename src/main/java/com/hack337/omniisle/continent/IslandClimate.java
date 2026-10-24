@@ -212,6 +212,32 @@ public final class IslandClimate {
         return continentalness < 0.32 ? 9 : 10;
     }
 
+    public static int familyFor(double temp, double hum) {
+        if (temp < 0.26) return hum < 0.58 ? 0 : 1;
+        if (temp < 0.43) {
+            if (hum < 0.48) return 5;
+            if (hum < 0.72) return 2;
+            return 1;
+        }
+        if (temp < 0.68) {
+            if (hum < 0.46) return 4;
+            if (hum < 0.53) return 3;
+            if (hum < 0.58) return 17;
+            if (hum < 0.62) return 7;
+            return 8;
+        }
+        if (temp < 0.80) {
+            if (hum < 0.25) return 13;
+            if (hum < 0.48) return 11;
+            if (hum < 0.58) return 10;
+            return 9;
+        }
+        if (hum < 0.40) return 12;
+        if (hum < 0.58) return 13;
+        if (hum < 0.72) return 11;
+        return 10;
+    }
+
     public static int saltedSeed(long biomeSeed, int salt) {
         if (biomeSeed == 0L) return salt;
         long mixed = biomeSeed + 0x9E3779B97F4A7C15L * salt;
