@@ -102,9 +102,10 @@ Evidence: `docs/evidence/phase9_before/README.md`.
 - [x] **9.2.4** 30-island acceptance (61,440 contour points), density sweep, bay/headland ratio, 100 % preview/server parity, continuity, line-fit border check, before/after PNGs
 - [x] **9.2.5** v3 coastal terrain easing: beach pockets flattened (×0.62 relief), no-beach coasts steepened (×1.18); max continuity delta 0.0109 < 0.015
 
-Measured (defaults): sand 22.1 %, stony 3.9 %, none 74.0 %; longest run failures 0;
-density 0→0 %, 1→71.2 % monotone; bays/headlands sand ratio 2.51; widest line-fit-straight
-border 56 blocks (longest border 155 blocks, 7.1 block deviation). Evidence: `docs/evidence/shore/`.
+Measured (defaults): sand 22.7 %, stony 4.1 %, none 73.3 %; longest run 384.3 blocks
+(<500), 0 run failures; density 0→0 %, 1→72.4 % monotone; bays/headlands sand ratio
+3.98; widest line-fit-straight border 56 blocks (longest border 156.2 blocks, 7.1 block
+deviation). Evidence: `docs/evidence/shore/`.
 
 ### Phase 9.3 — Ocean floor and deep-ocean band [v3] (completed)
 - [x] **9.3.1** v3-only smooth ocean ramp `base = -0.08 - 0.54·smoothstep(s/0.4Wo) - 0.18·smoothstep(s/Wo)` with zero slope at the coastline; soft floor −0.80; v1/v2 linear ramp untouched (I1)

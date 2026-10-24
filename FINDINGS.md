@@ -127,12 +127,12 @@ This document records the empirical verification of Minecraft 26.3 worldgen inte
 - v3 thresholds: `d` from `intertidalLimit(x,z)` (noise, −18…0) to local `inlandWidth` (≤ 29.9 by construction, hard guard `MAX_INLAND = 34`); sand and stony share the same pocket; `none` is the default.
 
 **Measured acceptance (5 presets × 3 seeds × sizes 2500/4000, defaults; 30 islands, 61,440 contour points sampled 6 blocks inland):**
-- sand 0.2214, stony 0.0390, none 0.7396 (targets 15–35 %, 3–10 %, ≥55 %).
-- Run constraints: 0 failures (longest ≤500 blocks, median ≤200, ≥10 runs per island); width CV ≥0.35 passed.
-- Density sweep: 0.0→0 %, 0.2→5.0 %, 0.4→50.6 %, 0.6→71.0 %, 0.8→71.2 %, 1.0→71.2 % (monotone, 70–90 % at 1.0).
-- Bay/headland: 282 bay points sand 0.3227 vs 497 headland points sand 0.1288, ratio 2.51 (≥2 required).
-- Preview/server parity: 18,382/18,382 = 100 %, 1,044 samples in the shore zone.
-- Border line-fit (tolerance 2.5 blocks): longest straight segment 56 blocks; longest border 155 blocks with 7.07 max deviation / 2.85 RMS (curved, not straight).
+- sand 0.226807, stony 0.040625, none 0.732568 (targets 15–35 %, 3–10 %, ≥55 %).
+- Run constraints: 0 failures; longest run 384.3 blocks (≤500), largest median run 21.8 (≤200), 14–110 runs per island (≥10); minimum width CV 0.678 (≥0.35).
+- Density sweep: 0.0→0 %, 0.2→5.13 %, 0.4→51.61 %, 0.6→71.97 %, 0.8→72.36 %, 1.0→72.36 % (non-decreasing, 70–90 % at 1.0).
+- Bay/headland: 152 bay points sand 0.3355 vs 237 headland points sand 0.0844, ratio 3.98 (≥2 required).
+- Preview/server parity: 18,403/18,403 = 100 %, 1,016 samples in the shore zone.
+- Border line-fit (tolerance 2.5 blocks): longest straight segment 56 blocks; longest border 156.2 blocks with 7.127 max deviation / 3.504 RMS (curved, not straight).
 - Continuity: max |Δc| = 0.0109 per block near the coast (<0.015), including v3 relief easing.
 - Before/after PNGs: uniform v1/v2 ribbon vs v3 pockets for NATURAL, ROUND, CRESCENT.
 
