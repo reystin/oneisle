@@ -326,6 +326,7 @@ public final class OmniIsleEditorScreen extends Screen {
         this.currentTerrain = com.hack337.omniisle.continent.IslandTerrain.create(cfg);
 
         float[] elevations = new float[resolution * resolution];
+        float[] continentalnessGrid = new float[resolution * resolution];
         int[] baseColors = new int[resolution * resolution];
 
         for (int z = 0; z < resolution; z++) {
@@ -333,9 +334,8 @@ public final class OmniIsleEditorScreen extends Screen {
                 double wx = state.worldX(x);
                 double wz = state.worldZ(z);
                 double c = currentTerrain.continentalness(wx, wz);
+                continentalnessGrid[z * resolution + x] = (float) c;
                 elevations[z * resolution + x] = (float) com.hack337.omniisle.continent.IslandTerrain.continentalnessToElevation(c);
-                BiomePreview.Type preferred = BiomePreview.surface(c, wx, wz, state.biomeSeed());
-                baseColors[z * resolution + x] = state.selectBiome(preferred, wx, wz).color;
             }
         }
 
@@ -343,15 +343,26 @@ public final class OmniIsleEditorScreen extends Screen {
 
         for (int z = 0; z < resolution; z++) {
             for (int x = 0; x < resolution; x++) {
+                int xPrev = Math.max(0, x - 1);
+                int xNext = Math.min(resolution - 1, x + 1);
+                int zPrev = Math.max(0, z - 1);
+                int zNext = Math.min(resolution - 1, z + 1);
+                double dx = (elevations[z * resolution + xNext] - elevations[z * resolution + xPrev]) / ((xNext - xPrev) * blockSize);
+                double dz = (elevations[zNext * resolution + x] - elevations[zPrev * resolution + x]) / ((zNext - zPrev) * blockSize);
+                double slope = Math.hypot(dx, dz);
+
+                double wx = state.worldX(x);
+                double wz = state.worldZ(z);
+                double c = continentalnessGrid[z * resolution + x];
+                BiomePreview.Type preferred = BiomePreview.surface(
+                    c, wx, wz, state.biomeSeed(),
+                    state.climateScale(), state.gradientMode(), state.gradientStrength(),
+                    state.theme(), slope, state.generationVersionNumber(), halfSpan
+                );
+                baseColors[z * resolution + x] = state.selectBiome(preferred, wx, wz).color;
+
                 int color = baseColors[z * resolution + x];
                 if (reliefShading) {
-                    int xPrev = Math.max(0, x - 1);
-                    int xNext = Math.min(resolution - 1, x + 1);
-                    int zPrev = Math.max(0, z - 1);
-                    int zNext = Math.min(resolution - 1, z + 1);
-                    double dx = (elevations[z * resolution + xNext] - elevations[z * resolution + xPrev]) / ((xNext - xPrev) * blockSize);
-                    double dz = (elevations[zNext * resolution + x] - elevations[zPrev * resolution + x]) / ((zNext - zPrev) * blockSize);
-
                     // Light vector from NW (azimuth 315, altitude 45): L = (-0.5, 0.7071, -0.5)
                     // Normal N = (-dx, 1, -dz) / sqrt(dx^2 + dz^2 + 1)
                     double norm = Math.sqrt(dx * dx + dz * dz + 1.0);
@@ -498,8 +509,19 @@ public final class OmniIsleEditorScreen extends Screen {
         int elev = (int) Math.round(com.hack337.omniisle.continent.IslandTerrain.continentalnessToElevation(continentalness));
         byte tier = state.tier(px, pz);
 
+        double slope = 0.0;
+        if (currentTerrain != null) {
+            double cE = currentTerrain.continentalness(worldX + 8, worldZ);
+            double cW = currentTerrain.continentalness(worldX - 8, worldZ);
+            double cS = currentTerrain.continentalness(worldX, worldZ + 8);
+            double cN = currentTerrain.continentalness(worldX, worldZ - 8);
+            slope = Math.hypot((cE - cW) / 16.0, (cS - cN) / 16.0) * 64.0;
+        }
         BiomePreview.Type preferred = BiomePreview.surface(
-            continentalness, worldX, worldZ, state.biomeSeed());
+            continentalness, worldX, worldZ, state.biomeSeed(),
+            state.climateScale(), state.gradientMode(), state.gradientStrength(),
+            state.theme(), slope, state.generationVersionNumber(), state.worldSpan() / 2.0
+        );
         BiomePreview.Type biome = state.selectBiome(preferred, worldX, worldZ);
 
         Component biomeName = Component.translatable(biome.translationKey());

@@ -135,6 +135,11 @@ public final class WorldPackBuilder {
                 JsonObject biomeSource = root.getAsJsonObject("dimensions").getAsJsonObject("minecraft:overworld")
                     .getAsJsonObject("generator").getAsJsonObject("biome_source");
                 biomeSource.addProperty("biome_seed", state.biomeSeed());
+                biomeSource.addProperty("climate_scale", state.climateScale());
+                biomeSource.addProperty("generation_version", state.generationVersionNumber());
+                biomeSource.addProperty("gradient_mode", state.gradientMode().name().toLowerCase(java.util.Locale.ROOT));
+                biomeSource.addProperty("gradient_strength", state.gradientStrength());
+                biomeSource.addProperty("biome_theme", state.theme().name().toLowerCase(java.util.Locale.ROOT));
                 addEnabledBiomes(biomeSource, "enabled_land_biomes", state, BiomePreview.Category.LAND);
                 addEnabledBiomes(biomeSource, "enabled_shore_biomes", state, BiomePreview.Category.SHORE);
                 addEnabledBiomes(biomeSource, "enabled_ocean_biomes", state, BiomePreview.Category.OCEAN);

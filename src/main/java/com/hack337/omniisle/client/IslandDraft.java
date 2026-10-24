@@ -124,6 +124,10 @@ public final class IslandDraft {
     private GenerationVersion generationVersion = GenerationVersion.V2;
     private double isletDensity = 0.25;
     private double structureDensity = 1.0;
+    private int climateScale = 720;
+    private com.hack337.omniisle.continent.IslandClimate.GradientMode gradientMode =
+        com.hack337.omniisle.continent.IslandClimate.GradientMode.NORTH_SOUTH;
+    private double gradientStrength = 0.50;
     private EnumSet<BiomePreview.Type> enabledBiomes;
     private EnumSet<StructureOption> enabledStructures;
 
@@ -181,6 +185,9 @@ public final class IslandDraft {
         draft.generationVersion = this.generationVersion;
         draft.isletDensity = this.isletDensity;
         draft.structureDensity = this.structureDensity;
+        draft.climateScale = this.climateScale;
+        draft.gradientMode = this.gradientMode;
+        draft.gradientStrength = this.gradientStrength;
         draft.spawnPx = this.spawnPx;
         draft.spawnPz = this.spawnPz;
         return draft;
@@ -237,6 +244,21 @@ public final class IslandDraft {
 
     public void setStructureDensity(double structureDensity) {
         this.structureDensity = Math.max(0.5, Math.min(2.0, structureDensity));
+    }
+
+    public int climateScale() { return climateScale; }
+    public void setClimateScale(int scale) {
+        this.climateScale = Math.max(384, Math.min(1536, Math.round(scale / 48.0f) * 48));
+    }
+
+    public com.hack337.omniisle.continent.IslandClimate.GradientMode gradientMode() { return gradientMode; }
+    public void setGradientMode(com.hack337.omniisle.continent.IslandClimate.GradientMode mode) {
+        this.gradientMode = mode != null ? mode : com.hack337.omniisle.continent.IslandClimate.GradientMode.NORTH_SOUTH;
+    }
+
+    public double gradientStrength() { return gradientStrength; }
+    public void setGradientStrength(double strength) {
+        this.gradientStrength = Math.max(0.0, Math.min(1.0, strength));
     }
 
     /**

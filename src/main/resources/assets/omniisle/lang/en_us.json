@@ -108,5 +108,15 @@
   "omniisle.editor.spawn.tooltip": "Left-click on land to set spawn; right-click resets to auto",
   "omniisle.editor.spawn.water_error": "Spawn point must be on land!",
   "omniisle.editor.structure_density": "Structures: %s",
-  "omniisle.editor.structure_density.tooltip": "Density multiplier for structures (0.5x, 1.0x, 2.0x)"
+  "omniisle.editor.structure_density.tooltip": "Density multiplier for structures (0.5x, 1.0x, 2.0x)",
+  "omniisle.editor.climate_scale": "Biome Scale: %s",
+  "omniisle.editor.climate_scale.tooltip": "Scale of climate and biome regions (384 to 1536 blocks)",
+  "omniisle.editor.gradient": "Gradient: %s",
+  "omniisle.editor.gradient.tooltip": "Directional temperature gradient across the island",
+  "omniisle.editor.gradient_strength": "Gradient Strength: %s",
+  "omniisle.editor.gradient_strength.tooltip": "Strength of the temperature gradient (0% to 100%)",
+  "omniisle.gradient.off": "Off",
+  "omniisle.gradient.north_south": "North-South",
+  "omniisle.gradient.east_west": "East-West",
+  "omniisle.gradient.radial": "Radial"
 }

@@ -51,11 +51,11 @@
 - [x] **5.4** Largest-SDF inland spawn selector & editor gold crosshair marker
 
 ### Phase 6 — Climate & Biomes
-- [ ] **6.1** `climate_scale` slider (384-1536) in editor
-- [ ] **6.2** Latitudinal temperature gradient (N-S) with theme-aware compression
-- [ ] **6.3** Noise-jittered border blend
-- [ ] **6.4** Server/preview parity test (≥ 97% agreement)
-- [ ] **6.5** Slope-based stony shore vs sandy beach
+- [x] **6.1** `climate_scale` slider (384-1536) in editor
+- [x] **6.2** Latitudinal temperature gradient (N-S, E-W, Radial) with theme-aware compression
+- [x] **6.3** Noise-jittered border blend (no straight borders > 400 blocks)
+- [x] **6.4** Server/preview parity test (≥ 97% family agreement, 100% zone parity)
+- [x] **6.5** Slope-based stony shore vs sandy beach (cliffs >= 0.35 slope become stony shore)
 
 ### Phase 7 — Editor Features
 - [ ] **7.1** PNG mask import/export

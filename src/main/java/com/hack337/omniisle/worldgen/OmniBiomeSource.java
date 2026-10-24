@@ -4,6 +4,7 @@ import com.mojang.serialization.Codec;
 import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import com.hack337.omniisle.OmniIsleIds;
+import com.hack337.omniisle.continent.IslandClimate;
 import java.util.List;
 import java.util.stream.Stream;
 import net.minecraft.core.Holder;
@@ -36,7 +37,11 @@ public final class OmniBiomeSource extends BiomeSource {
         Biome.CODEC.listOf().fieldOf("cave_biomes").forGetter(s -> s.caveBiomes),
         Biome.CODEC.listOf().optionalFieldOf("enabled_cave_biomes", List.of()).forGetter(s -> s.enabledCaveBiomes),
         Codec.intRange(384, 2048).optionalFieldOf("climate_scale", 720).forGetter(s -> s.climateScale),
-        Codec.LONG.optionalFieldOf("biome_seed", 0L).forGetter(s -> s.biomeSeed)
+        Codec.LONG.optionalFieldOf("biome_seed", 0L).forGetter(s -> s.biomeSeed),
+        Codec.INT.optionalFieldOf("generation_version", 1).forGetter(s -> s.generationVersion),
+        Codec.STRING.optionalFieldOf("gradient_mode", "north_south").forGetter(s -> s.gradientModeStr),
+        Codec.DOUBLE.optionalFieldOf("gradient_strength", 0.5).forGetter(s -> s.gradientStrength),
+        Codec.STRING.optionalFieldOf("biome_theme", "standard").forGetter(s -> s.biomeThemeStr)
     ).apply(instance, OmniBiomeSource::new));
 
     private final List<Holder<Biome>> landBiomes;
@@ -51,19 +56,45 @@ public final class OmniBiomeSource extends BiomeSource {
     private final List<Holder<Biome>> enabledCaveBiomes;
     private final int climateScale;
     private final long biomeSeed;
+    private final int generationVersion;
+    private final String gradientModeStr;
+    private final double gradientStrength;
+    private final String biomeThemeStr;
+    private final IslandClimate.GradientMode gradientMode;
 
     public OmniBiomeSource(List<Holder<Biome>> landBiomes,
-                             List<Holder<Biome>> enabledLandBiomes,
-                             List<Holder<Biome>> shoreBiomes,
-                             List<Holder<Biome>> enabledShoreBiomes,
-                             List<Holder<Biome>> oceanBiomes,
-                             List<Holder<Biome>> enabledOceanBiomes,
-                             List<Holder<Biome>> riverBiomes,
-                             List<Holder<Biome>> enabledRiverBiomes,
-                             List<Holder<Biome>> caveBiomes,
-                             List<Holder<Biome>> enabledCaveBiomes,
-                             int climateScale,
-                             long biomeSeed) {
+                           List<Holder<Biome>> enabledLandBiomes,
+                           List<Holder<Biome>> shoreBiomes,
+                           List<Holder<Biome>> enabledShoreBiomes,
+                           List<Holder<Biome>> oceanBiomes,
+                           List<Holder<Biome>> enabledOceanBiomes,
+                           List<Holder<Biome>> riverBiomes,
+                           List<Holder<Biome>> enabledRiverBiomes,
+                           List<Holder<Biome>> caveBiomes,
+                           List<Holder<Biome>> enabledCaveBiomes,
+                           int climateScale,
+                           long biomeSeed) {
+        this(landBiomes, enabledLandBiomes, shoreBiomes, enabledShoreBiomes, oceanBiomes, enabledOceanBiomes,
+            riverBiomes, enabledRiverBiomes, caveBiomes, enabledCaveBiomes, climateScale, biomeSeed,
+            1, "off", 0.5, "standard");
+    }
+
+    public OmniBiomeSource(List<Holder<Biome>> landBiomes,
+                           List<Holder<Biome>> enabledLandBiomes,
+                           List<Holder<Biome>> shoreBiomes,
+                           List<Holder<Biome>> enabledShoreBiomes,
+                           List<Holder<Biome>> oceanBiomes,
+                           List<Holder<Biome>> enabledOceanBiomes,
+                           List<Holder<Biome>> riverBiomes,
+                           List<Holder<Biome>> enabledRiverBiomes,
+                           List<Holder<Biome>> caveBiomes,
+                           List<Holder<Biome>> enabledCaveBiomes,
+                           int climateScale,
+                           long biomeSeed,
+                           int generationVersion,
+                           String gradientModeStr,
+                           double gradientStrength,
+                           String biomeThemeStr) {
         if (landBiomes.size() < 18 || shoreBiomes.size() < 3 || oceanBiomes.size() < 6
             || (!riverBiomes.isEmpty() && riverBiomes.size() < 2) || caveBiomes.size() < 3) {
             throw new IllegalArgumentException("OmniIsle biome palette is incomplete");
@@ -80,6 +111,11 @@ public final class OmniBiomeSource extends BiomeSource {
         this.enabledCaveBiomes = enabledCaveBiomes.isEmpty() ? this.caveBiomes : List.copyOf(enabledCaveBiomes);
         this.climateScale = climateScale;
         this.biomeSeed = biomeSeed;
+        this.generationVersion = generationVersion;
+        this.gradientModeStr = gradientModeStr != null ? gradientModeStr : "north_south";
+        this.gradientStrength = gradientStrength;
+        this.biomeThemeStr = biomeThemeStr != null ? biomeThemeStr : "standard";
+        this.gradientMode = IslandClimate.GradientMode.fromString(this.gradientModeStr);
     }
 
     @Override
@@ -105,29 +141,66 @@ public final class OmniBiomeSource extends BiomeSource {
         int x = biomeX << 2;
         int y = biomeY << 2;
         int z = biomeZ << 2;
-        Climate climate = climateAt(x, z, climateScale, biomeSeed);
 
-        if (continentalness < OCEAN_START) return oceanBiome(climate, continentalness);
-        if (continentalness < INLAND_START) {
-            if (y > ROCKY_COAST_MAX_Y) return landBiome(climate, continentalness, x, z);
-            if (y > SANDY_BEACH_MAX_Y) return elevatedCoast(climate, continentalness, x, z);
-            return shoreBiome(climate);
+        if (this.generationVersion <= 1) {
+            Climate climate = climateAt(x, z, climateScale, biomeSeed);
+
+            if (continentalness < OCEAN_START) return oceanBiome(climate, continentalness);
+            if (continentalness < INLAND_START) {
+                if (y > ROCKY_COAST_MAX_Y) return landBiome(climate, continentalness, x, z);
+                if (y > SANDY_BEACH_MAX_Y) return elevatedCoast(climate, continentalness, x, z);
+                return shoreBiome(climate);
+            }
+            double erosion = net.minecraft.world.level.biome.Climate.unquantizeCoord(point.erosion());
+            double weirdness = net.minecraft.world.level.biome.Climate.unquantizeCoord(point.weirdness());
+            if (y >= 0 && !riverBiomes.isEmpty() && isRiverValley(continentalness, erosion, weirdness)) {
+                return selectEnabled(enabledRiverBiomes, riverBiomes,
+                    climate.temperature < 0.26 ? "frozen_river" : "river");
+            }
+            if (y < 0 && shouldUseCaveBiome(x, y, z, point)) return caveBiome(climate, x, y, z);
+            return landBiome(climate, continentalness, x, z);
         }
+
+        // Modern generation (v2)
+        double cE = net.minecraft.world.level.biome.Climate.unquantizeCoord(sampler.sample(biomeX + 1, biomeY, biomeZ).continentalness());
+        double cW = net.minecraft.world.level.biome.Climate.unquantizeCoord(sampler.sample(biomeX - 1, biomeY, biomeZ).continentalness());
+        double cS = net.minecraft.world.level.biome.Climate.unquantizeCoord(sampler.sample(biomeX, biomeY, biomeZ + 1).continentalness());
+        double cN = net.minecraft.world.level.biome.Climate.unquantizeCoord(sampler.sample(biomeX, biomeY, biomeZ - 1).continentalness());
+        double slope = Math.hypot((cE - cW) / 8.0, (cS - cN) / 8.0) * 64.0;
+        double halfSpan = 2000.0;
+        IslandDensityFunction activeDf = IslandDensityFunction.getActive();
+        if (activeDf != null && activeDf.shapeConfig() != null && activeDf.shapeConfig().mask().isPresent()) {
+            var m = activeDf.shapeConfig().mask().get();
+            halfSpan = (m.maxX - m.minX) / 2.0;
+        }
+
+        IslandClimate.SampleResult res = IslandClimate.sample(
+            continentalness, x, z, y, slope, climateScale, biomeSeed,
+            gradientMode, gradientStrength, biomeThemeStr, halfSpan, generationVersion
+        );
+
+        if (res.zone() == IslandClimate.SurfaceZone.OCEAN) {
+            return selectEnabled(enabledOceanBiomes, oceanBiomes, res.subType());
+        }
+        if (res.zone() == IslandClimate.SurfaceZone.SHORE) {
+            return selectEnabled(enabledShoreBiomes, shoreBiomes, res.subType());
+        }
+
         double erosion = net.minecraft.world.level.biome.Climate.unquantizeCoord(point.erosion());
         double weirdness = net.minecraft.world.level.biome.Climate.unquantizeCoord(point.weirdness());
         if (y >= 0 && !riverBiomes.isEmpty() && isRiverValley(continentalness, erosion, weirdness)) {
             return selectEnabled(enabledRiverBiomes, riverBiomes,
-                climate.temperature < 0.26 ? "frozen_river" : "river");
+                res.temperature() < 0.26 ? "frozen_river" : "river");
         }
-        // Several surface structures probe their biome at a low placeholder Y before
-        // selecting terrain height. Keep Y >= 0 surface-stable; caves remain below zero.
-        if (y < 0 && shouldUseCaveBiome(x, y, z, point)) return caveBiome(climate, x, y, z);
-        return landBiome(climate, continentalness, x, z);
+
+        if (y < 0 && shouldUseCaveBiome(x, y, z, point)) {
+            return caveBiome(new Climate(res.temperature(), res.humidity(), res.mountains(), 0, 0), x, y, z);
+        }
+
+        return enabledLand(res.landFamily(), x, z);
     }
 
     private static boolean isRiverValley(double continentalness, double erosion, double weirdness) {
-        // Vanilla rivers occupy the narrow valley band around zero weirdness.
-        // Low-erosion inland valleys are mountain gullies, not rivers.
         return Math.abs(weirdness) <= 0.05 && (erosion >= -0.375 || continentalness < 0.05);
     }
 
@@ -156,16 +229,15 @@ public final class OmniBiomeSource extends BiomeSource {
     }
 
     private Holder<Biome> landBiome(Climate c, double continentalness, int x, int z) {
-        // One small special district instead of repeating bright mushroom polygons everywhere.
         double mushroomX = x + 560.0 + c.warpX * 0.35;
         double mushroomZ = z - 320.0 + c.warpZ * 0.35;
         if (mushroomX * mushroomX + mushroomZ * mushroomZ < 190.0 * 190.0) return enabledLand(16, x, z);
 
         if (continentalness > 0.18 && c.mountains > 0.68) {
-            if (c.temperature < 0.30) return enabledLand(15, x, z); // jagged peaks
-            if (c.temperature > 0.68) return enabledLand(14, x, z); // stony peaks
-            if (c.humidity > 0.45) return enabledLand(6, x, z);     // cherry grove
-            return enabledLand(5, x, z);                            // meadow
+            if (c.temperature < 0.30) return enabledLand(15, x, z);
+            if (c.temperature > 0.68) return enabledLand(14, x, z);
+            if (c.humidity > 0.45) return enabledLand(6, x, z);
+            return enabledLand(5, x, z);
         }
 
         if (c.temperature < 0.26) return c.humidity < 0.58 ? enabledLand(0, x, z) : enabledLand(1, x, z);
@@ -177,7 +249,7 @@ public final class OmniBiomeSource extends BiomeSource {
         if (c.temperature < 0.68) {
             if (c.humidity < 0.46) return enabledLand(4, x, z);
             if (c.humidity < 0.53) return enabledLand(3, x, z);
-            if (c.humidity < 0.58) return enabledLand(17, x, z); // pale garden
+            if (c.humidity < 0.58) return enabledLand(17, x, z);
             if (c.humidity < 0.62) return enabledLand(7, x, z);
             return enabledLand(8, x, z);
         }
@@ -232,8 +304,8 @@ public final class OmniBiomeSource extends BiomeSource {
     }
 
     private Holder<Biome> selectEnabled(List<Holder<Biome>> enabled,
-                                                List<Holder<Biome>> fallback,
-                                                String preferredPath) {
+                                        List<Holder<Biome>> fallback,
+                                        String preferredPath) {
         String[] priorities = switch (preferredPath) {
             case "deep_frozen_ocean" -> new String[] {"deep_frozen_ocean", "frozen_ocean", "deep_cold_ocean", "cold_ocean"};
             case "deep_cold_ocean" -> new String[] {"deep_cold_ocean", "cold_ocean", "deep_ocean", "ocean"};
@@ -264,7 +336,7 @@ public final class OmniBiomeSource extends BiomeSource {
         return entry.unwrapKey().map(key -> key.identifier().getPath()).orElse("");
     }
 
-    private static int landFamily(String path) {
+    public static int landFamily(String path) {
         return switch (path) {
             case "snowy_plains", "ice_spikes" -> 0;
             case "taiga", "snowy_taiga", "old_growth_pine_taiga", "old_growth_spruce_taiga" -> 1;

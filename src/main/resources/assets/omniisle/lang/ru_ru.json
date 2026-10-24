@@ -108,5 +108,15 @@
   "omniisle.editor.spawn.tooltip": "ЛКМ по суше для выбора спавна; ПКМ для сброса на авто",
   "omniisle.editor.spawn.water_error": "Точка спавна должна быть на суше!",
   "omniisle.editor.structure_density": "Структуры: %s",
-  "omniisle.editor.structure_density.tooltip": "Множитель плотности структур (0.5x, 1.0x, 2.0x)"
+  "omniisle.editor.structure_density.tooltip": "Множитель плотности структур (0.5x, 1.0x, 2.0x)",
+  "omniisle.editor.climate_scale": "Размер биомов: %s",
+  "omniisle.editor.climate_scale.tooltip": "Масштаб климатических зон и биомов (от 384 до 1536 блоков)",
+  "omniisle.editor.gradient": "Градиент: %s",
+  "omniisle.editor.gradient.tooltip": "Температурный градиент по направлению острова",
+  "omniisle.editor.gradient_strength": "Сила градиента: %s",
+  "omniisle.editor.gradient_strength.tooltip": "Интенсивность температурного градиента (от 0% до 100%)",
+  "omniisle.gradient.off": "Выкл",
+  "omniisle.gradient.north_south": "Север-Юг",
+  "omniisle.gradient.east_west": "Запад-Восток",
+  "omniisle.gradient.radial": "Радиальный"
 }

@@ -87,6 +87,7 @@ public final class BiomePreview {
 
     private BiomePreview() {}
 
+    /** Legacy 0.5.0 surface biome preview. */
     public static Type surface(double continentalness, double x, double z, long seed) {
         Climate c = climateAt(x, z, 720.0, seed);
         if (continentalness < OCEAN_START) return ocean(c, continentalness);
@@ -124,6 +125,73 @@ public final class BiomePreview {
         if (c.humidity < 0.58) return Type.BADLANDS;
         if (c.humidity < 0.72) return Type.SAVANNA;
         return continentalness < 0.32 ? Type.MANGROVE_SWAMP : Type.JUNGLE;
+    }
+
+    /** Modern v2 surface biome preview using shared IslandClimate logic. */
+    public static Type surface(double continentalness, double x, double z, long seed,
+                               int climateScale, com.hack337.omniisle.continent.IslandClimate.GradientMode gradientMode,
+                               double gradientStrength, IslandDraft.BiomeTheme theme, double slope, int version,
+                               double islandHalfSpan) {
+        if (version <= 1) {
+            return surface(continentalness, x, z, seed);
+        }
+        com.hack337.omniisle.continent.IslandClimate.SampleResult res =
+            com.hack337.omniisle.continent.IslandClimate.sample(
+                continentalness, x, z, 64.0, slope, climateScale, seed,
+                gradientMode, gradientStrength, theme != null ? theme.name() : "standard",
+                islandHalfSpan, version
+            );
+        return switch (res.zone()) {
+            case OCEAN -> oceanTypeFromId(res.subType());
+            case SHORE -> shoreTypeFromId(res.subType());
+            case LAND -> landTypeFromFamily(res.landFamily());
+        };
+    }
+
+    public static Type landTypeFromFamily(int family) {
+        return switch (family) {
+            case 0 -> Type.SNOWY_PLAINS;
+            case 1 -> Type.TAIGA;
+            case 2 -> Type.BIRCH_FOREST;
+            case 3 -> Type.FOREST;
+            case 4 -> Type.PLAINS;
+            case 5 -> Type.MEADOW;
+            case 6 -> Type.CHERRY_GROVE;
+            case 7 -> Type.DARK_FOREST;
+            case 8 -> Type.SWAMP;
+            case 9 -> Type.MANGROVE_SWAMP;
+            case 10 -> Type.JUNGLE;
+            case 11 -> Type.SAVANNA;
+            case 12 -> Type.DESERT;
+            case 13 -> Type.BADLANDS;
+            case 14 -> Type.STONY_PEAKS;
+            case 15 -> Type.JAGGED_PEAKS;
+            case 16 -> Type.MUSHROOM_FIELDS;
+            case 17 -> Type.PALE_GARDEN;
+            default -> Type.PLAINS;
+        };
+    }
+
+    public static Type shoreTypeFromId(String id) {
+        return switch (id) {
+            case "snowy_beach" -> Type.SNOWY_BEACH;
+            case "stony_shore" -> Type.STONY_SHORE;
+            default -> Type.BEACH;
+        };
+    }
+
+    public static Type oceanTypeFromId(String id) {
+        return switch (id) {
+            case "deep_frozen_ocean" -> Type.DEEP_FROZEN_OCEAN;
+            case "frozen_ocean" -> Type.FROZEN_OCEAN;
+            case "deep_cold_ocean" -> Type.DEEP_COLD_OCEAN;
+            case "cold_ocean" -> Type.COLD_OCEAN;
+            case "warm_ocean" -> Type.WARM_OCEAN;
+            case "deep_lukewarm_ocean" -> Type.DEEP_LUKEWARM_OCEAN;
+            case "lukewarm_ocean" -> Type.LUKEWARM_OCEAN;
+            case "deep_ocean" -> Type.DEEP_OCEAN;
+            default -> Type.OCEAN;
+        };
     }
 
     public static boolean isDeepDark(double x, double z, long seed) {
