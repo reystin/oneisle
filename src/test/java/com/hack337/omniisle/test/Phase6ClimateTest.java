@@ -292,39 +292,34 @@ public class Phase6ClimateTest {
     @Test
     @DisplayName("6.3 Border Quality: No straight border segment longer than 400 blocks")
     void testNoStraightBorderLongerThan400Blocks() {
-        int islandSize = 4000;
-        long seed = 9999L;
-        int climateScale = 720;
-        double halfSpan = 2000.0;
-
-        // Sample along horizontal and vertical lines across the island at 16-block intervals
-        int maxConsecutiveSameBorder = 0;
-        int step = 16;
-        int range = 1800;
-
-        // Check horizontal slices
-        for (int z = -range; z <= range; z += 128) {
-            int currentFamily = -1;
-            int runLength = 0;
-            for (int x = -range; x <= range; x += step) {
-                IslandClimate.SampleResult res = IslandClimate.sample(
-                    0.25, x, z, 64.0, 0.0, climateScale, seed,
-                    IslandClimate.GradientMode.NORTH_SOUTH, 0.5, "standard", halfSpan, 2
-                );
-                int fam = res.landFamily();
-                if (fam == currentFamily) {
-                    runLength += step;
-                } else {
-                    currentFamily = fam;
-                    runLength = step;
+        int step = 10;
+        double radius = 1200.0;
+        int n = (int) (2 * radius / step) + 1;
+        short[][] families = new short[n][n];
+        for (int gz = 0; gz < n; gz++) {
+            double z = -radius + gz * step;
+            for (int gx = 0; gx < n; gx++) {
+                double x = -radius + gx * step;
+                if (x * x + z * z > radius * radius) {
+                    families[gz][gx] = -1;
+                    continue;
                 }
+                IslandClimate.SampleResult res = IslandClimate.sample(
+                    0.25, x, z, 64.0, 0.0, 720, 9999L,
+                    IslandClimate.GradientMode.NORTH_SOUTH, 0.5, "standard", 2000.0, 2
+                );
+                families[gz][gx] = (short) res.landFamily();
             }
         }
-
-        // Check that jitter creates variation: valueNoise jitter is non-zero
-        double jitter1 = IslandClimate.valueNoise(10.0, 10.0, 777);
-        double jitter2 = IslandClimate.valueNoise(10.5, 10.5, 777);
-        assertNotEquals(jitter1, jitter2);
+        for (boolean horizontal : new boolean[]{true, false}) {
+            ClimateBorderMetrics.Segment best = ClimateBorderMetrics.longestStraight(
+                families, horizontal, step, radius, 4.0);
+            assertTrue(best.length() <= 400.0,
+                (horizontal ? "horizontal" : "vertical") + " straight family border "
+                    + best.length() + " blocks");
+            System.out.println("6.3 v2 border " + (horizontal ? "horizontal" : "vertical")
+                + " longest straight=" + best.length() + " blocks");
+        }
     }
 
     @Test

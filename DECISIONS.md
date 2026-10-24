@@ -186,6 +186,24 @@ This log records every design choice, trade-off, and architectural resolution ma
 * **Reason:** The editor cannot evaluate vanilla ridge/erosion noise, so no client-side chunk score can predict the footprint's lowest block; the hard gate is the only blocker. The relaxed types use the same `DesertPyramidPiece` / `JungleTemplePiece`, keep `minecraft:desert_pyramid` / `minecraft:jungle_pyramid` registry IDs for `/locate` and the report, and only change the placement height rule. The override is written only when `generation_version >= 3`, so v1/v2 packs remain byte-identical in behavior (I1). The earlier `DRY_SURFACE_MIN_ELEVATION` workaround is removed because it also pushed the desert pyramid into forest chunks without fixing the gate.
 * **Evidence:** `NATURAL_8000_101` real-server log: before, `desert_pyramid found=false` at chunk 2,-140 (footprint corner water y=63) and `jungle_pyramid found=false` at -14,166 (three corners y=63 water); after, both found (desert y=61, jungle y=64) and all 20 structure rows in that config report `found=true`. The reduced full sweep is PARTIAL: 15/45 configs in `docs/evidence/structures/STRUCTURE_REPORT_after_v2.csv`; strongholds are checked on all 45 in `stronghold_validation.csv`.
 
+### Decision 023: explicit theme temperature spans, no climate behavior change
+* **Question:** The 9.1 audit reported that the latitudinal gradient ignored the selected theme's temperature span (ALL and STANDARD produced identical fractions). The 9.5 requirement is that amplitude be a fraction of the selected theme's span.
+* **Options:**
+  1. Narrow STANDARD's span to make ALL and STANDARD differ.
+  2. Keep the measured spans (ALL/STANDARD 0.90, MYSTIC 0.44, NORDIC 0.32, TROPICAL/DESERT 0.28) and make the formula explicit: `offset = u · 0.5 · span · strength`, default strength 0.5.
+* **Choice:** Option 2.
+* **Reason:** Both ALL and STANDARD palettes contain the full snowy→desert temperature range, so sharing the 0.90 span is correct; Nordic/Tropical/Desert are narrower. Changing STANDARD only to manufacture a difference would alter existing worlds and invalidate the Phase 9.4 real-server evidence without a physical reason. The 9.1 audit sentence was too broad: Nordic, Desert and Tropical already produced different fractions; only ALL/STANDARD alias. The formula is now a table plus `IslandClimate.temperatureSpan`/`gradientAmplitude`, and `0.5 · span · s` equals the old `maxSpread · s` for every theme, so v1/v2/v3 temperatures are unchanged.
+* **Evidence:** `docs/evidence/climate/climate_family_fractions_v3.csv` (theme × gradient off/on/max), `theme_families_6000.png`; `Phase9ClimateTest.themeTemperatureSpansAreFractionsOfTheSelectedPalette`.
+
+### Decision 024: keep the existing family-border jitter, measure it for real
+* **Question:** Requirement 9.5.2 asks for ±8 % family-border jitter so no straight border exceeds 400 blocks. The 0.6.0 code already adds ±0.04 temperature / ±0.032 humidity value noise at a 96-block cell, but the old "6.3" test computed a run counter and never asserted it.
+* **Options:**
+  1. Increase the jitter blindly.
+  2. Keep the existing jitter (v2 and v3 contain it; changing it would break I1 for v2 and invalidate the Phase 9.4 evidence for v3) and replace the vacuous test with a real border-chain + line-fit measurement of the current sampler.
+* **Choice:** Option 2.
+* **Reason:** A 4-block line-fit over family borders sampled every 10 blocks finds a longest straight segment of 230 blocks on v3 (limit 400, all six themes × both gradient modes) and 130 blocks on the v2 sampler, so the existing jitter is sufficient. ±0.04 is 8 % of the 0.5 neutral climate axis, so the documented amplitude matches the requirement. Any increase would change existing v2/v3 worlds without a measured need.
+* **Evidence:** `docs/evidence/climate/climate_straight_borders_v3.csv`, the regenerated v2 measurement printed by `Phase6ClimateTest` step 6.3, and `Phase9ClimateTest.v3StraightFamilyBordersStayUnder400Blocks`.
+
 ### Decision 025: reduced Phase 9.4 measurement matrix (PARTIAL)
 * **Question:** The plan asks for a 45-config full 20-structure sweep and 90 spawn configs, but a real 26.3 server config costs roughly a minute (fresh world, boot, force-loaded locates).
 * **Options:**

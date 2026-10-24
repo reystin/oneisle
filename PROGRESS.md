@@ -136,3 +136,19 @@ Measured: stronghold spawn distances 526.0–551.9 (2500, requirement 150), 868.
 (threshold 250); all 135 starts on land; 45/45 eyes target a start. Full-sweep 300/300
 structure rows found. Spawn: 45/45 match/land/dry. Evidence:
 `docs/evidence/structures/`, `docs/evidence/spawn/`.
+
+### Phase 9.5 — Theme-aware climate and family borders (completed)
+- [x] **9.5.1** Explicit per-theme temperature spans (`ALL`/`STANDARD` 0.90, `MYSTIC` 0.44, `NORDIC` 0.32, `DESERT`/`TROPICAL` 0.28) and `gradientAmplitude = 0.5 · span · clamp01(strength)`; default strength 0.5; `0.5 · span · s` equals the old `maxSpread · s`, so v1/v2/v3 temperatures are unchanged (I1)
+- [x] **9.5.2** Rejected the plan's ±0.75 amplitude: it would clamp most of an ALL island at both extremes; the measured peak is ±0.45
+- [x] **9.5.3** Kept the existing ±0.04 temperature / ±0.032 humidity border jitter (8 % of the neutral axis) for `generation_version ≥ 2`; replaced the vacuous 6.3 run counter with a real border-chain + 4-block line-fit measurement
+- [x] **9.5.4** Slope-aware shore interplay stays in 9.2; no duplicate work
+- [x] **9.5.5** Evidence: family fractions for six themes × off/on/max (CSV), 6 × 3 montage PNG, gradient-delta CSV, straight-border CSV; README with measured Results
+
+Measured: gradient south−north differential at strength 0.5 is exactly 2 × amplitude for
+every theme (0.450 ALL/STANDARD, 0.220 MYSTIC, 0.160 NORDIC, 0.140 DESERT/TROPICAL;
+delta error 0.000). Longest straight family border on v3 is **230 blocks** (limit 400;
+TROPICAL, gradient off, vertical at z=1100); v2 measures 130 blocks. ALL and STANDARD
+share the full snowy→desert palette and therefore identical fractions; at default
+strength NORDIC stays 71.9 % snowy_plains+taiga (91.4 % off), ALL gains 2.5 %
+snowy_plains+taiga (up to 21.5 % at strength 1.0) and 12.1 % warm families. Evidence:
+`docs/evidence/climate/`.

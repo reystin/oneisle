@@ -34,6 +34,19 @@ public final class IslandClimate {
 
     public enum SurfaceZone { OCEAN, SHORE, LAND }
 
+    /**
+     * Temperature range of a theme palette. The latitudinal gradient covers
+     * {@code 0.5 * span} at strength 1, so ALL/STANDARD reach the full range while
+     * Nordic, Desert and Tropical stay inside their narrower climate.
+     */
+    private record ThemeClimate(double centerTemp, double temperatureSpan, double noiseScale) {}
+
+    private static final ThemeClimate THEME_STANDARD = new ThemeClimate(0.50, 0.90, 0.17);
+    private static final ThemeClimate THEME_NORDIC = new ThemeClimate(0.22, 0.32, 0.08);
+    private static final ThemeClimate THEME_TROPICAL = new ThemeClimate(0.78, 0.28, 0.08);
+    private static final ThemeClimate THEME_DESERT = new ThemeClimate(0.82, 0.28, 0.08);
+    private static final ThemeClimate THEME_MYSTIC = new ThemeClimate(0.52, 0.44, 0.12);
+
     public record ClimateValues(double temperature, double humidity, double mountains, double warpX, double warpZ) {}
 
     public record SampleResult(
@@ -44,6 +57,31 @@ public final class IslandClimate {
         double humidity,
         double mountains
     ) {}
+
+    public static double temperatureSpan(String themeName) {
+        return themeClimate(themeName).temperatureSpan();
+    }
+
+    /** Peak offset at |u| = 1: half the theme span, scaled by the UI strength. */
+    public static double gradientAmplitude(String themeName, double gradientStrength) {
+        return amplitude(themeClimate(themeName), gradientStrength);
+    }
+
+    private static double amplitude(ThemeClimate theme, double gradientStrength) {
+        return 0.5 * theme.temperatureSpan()
+            * Math.max(0.0, Math.min(1.0, gradientStrength));
+    }
+
+    private static ThemeClimate themeClimate(String themeName) {
+        String t = themeName != null ? themeName.toLowerCase(Locale.ROOT) : "standard";
+        return switch (t) {
+            case "nordic" -> THEME_NORDIC;
+            case "tropical" -> THEME_TROPICAL;
+            case "desert" -> THEME_DESERT;
+            case "mystic" -> THEME_MYSTIC;
+            default -> THEME_STANDARD;
+        };
+    }
 
     public static ClimateValues climateAt(double x, double z, double scale, long biomeSeed,
                                           GradientMode gradientMode, double gradientStrength,
@@ -79,41 +117,10 @@ public final class IslandClimate {
             }
         };
 
-        String t = themeName != null ? themeName.toLowerCase(Locale.ROOT) : "standard";
-        double centerTemp;
-        double maxSpread;
-        double noiseScale;
-        switch (t) {
-            case "nordic" -> {
-                centerTemp = 0.22;
-                maxSpread = 0.16;
-                noiseScale = 0.08;
-            }
-            case "tropical" -> {
-                centerTemp = 0.78;
-                maxSpread = 0.14;
-                noiseScale = 0.08;
-            }
-            case "desert" -> {
-                centerTemp = 0.82;
-                maxSpread = 0.14;
-                noiseScale = 0.08;
-            }
-            case "mystic" -> {
-                centerTemp = 0.52;
-                maxSpread = 0.22;
-                noiseScale = 0.12;
-            }
-            default -> {
-                centerTemp = 0.50;
-                maxSpread = 0.45;
-                noiseScale = 0.17;
-            }
-        }
-
-        double gradOffset = u * (maxSpread * Math.max(0.0, Math.min(1.0, gradientStrength)));
-        double baseNoise = fbm(wx / (scale * 1.35), wz / (scale * 1.35), saltedSeed(biomeSeed, 307)) * noiseScale;
-        double temperature = clamp01(centerTemp + gradOffset + baseNoise);
+        ThemeClimate theme = themeClimate(themeName);
+        double gradOffset = u * amplitude(theme, gradientStrength);
+        double baseNoise = fbm(wx / (scale * 1.35), wz / (scale * 1.35), saltedSeed(biomeSeed, 307)) * theme.noiseScale();
+        double temperature = clamp01(theme.centerTemp() + gradOffset + baseNoise);
 
         double humidity = clamp01(0.50 + fbm(wx / scale, wz / scale, saltedSeed(biomeSeed, 401)) * 0.46);
         double ridge = 1.0 - Math.abs(fbm(wx / (scale * 0.82), wz / (scale * 0.82), saltedSeed(biomeSeed, 503)));

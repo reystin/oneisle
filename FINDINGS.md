@@ -234,3 +234,47 @@ records the fixed result.
   spawn fields (`mismatches=0`).
 - `/omniisle query structure` matches a start only by its chunk; it is a debug helper
   for the harness and is always queried at the located start chunk.
+
+## 12. [VERIFY] Phase 9.5 — Theme Temperature Spans and Family Borders
+
+**Gradient:** the 9.1 audit was only half right. The gradient already used a per-theme
+`maxSpread`, but the code did not expose the theme's palette span and the constants were
+implicit. 9.5 re-expresses the same numbers as `ThemeClimate(centre, span, noise)` and
+computes `offset = u · 0.5 · span · clamp01(strength)`. Comparing `0.5 · span · s` with
+the old `maxSpread · s` gives 0.45/0.22/0.16/0.14 at s=1 for ALL/STANDARD, MYSTIC,
+NORDIC and DESERT/TROPICAL, i.e. exactly the pre-9.5 constants, so no v1/v2/v3 world
+changes (I1). ALL and STANDARD legitimately share the 0.90 full-palette span; only that
+pair aliases. Nordic/Desert/Tropical spans are narrower and now exposed through
+`temperatureSpan`/`gradientAmplitude`.
+
+**Measured formula (`climate_gradient_summary_v3.csv`):** for each theme and strength
+0/0.5, 128 x positions are sampled at z = ±4000 (outside the island, so `u` saturates)
+and the gradient-on minus gradient-off temperature is averaged; noise cancels exactly.
+The measured south−north delta equals `2 · gradientAmplitude` at 1e-9 for all 12 rows
+(0.450, 0.220, 0.160, 0.140 at strength 0.5). The old ±0.75 suggestion is rejected:
+`centre ± 0.75` would leave `[0,1]` for most of an ALL map and clamp both extremes; the
+kept formula peaks at ±0.45.
+
+**Family fractions (`climate_family_fractions_v3.csv`, 128² inland samples):** ALL and
+STANDARD are identical. At the default 0.5, NORDIC snowy_plains+taiga falls from 91.4 %
+(gradient off) to 71.9 %, while ALL rises from 0.0 % to 2.5 % and gains 12.1 % warm
+families; at strength 1.0 ALL reaches 21.5 % cold and 15.3 % desert+badlands. Hot themes
+move the other way: DESERT desert+badlands 57.0 → 48.3 → 41.5 %, TROPICAL 16.8 → 27.9 →
+32.0 %. At strength 1.0 the coldest edge of DESERT/TROPICAL crosses the 0.68 temperature
+branch after jitter, producing small temperate fractions (1.5 % / 9.7 %); the editor
+default stays 0.5. The fixed mushroom district is 0.74 % everywhere.
+
+**Borders:** `selectLandFamily` applies value noise on a 96-block cell: temperature
+±0.04, humidity ±0.032 for `generation_version ≥ 2`. The old 6.3 test had counted a run
+but never asserted the requirement. `ClimateBorderMetrics` now traces family changes
+across 10-block scanlines and reports the longest chord whose intermediate points stay
+within 4 blocks of the chord line (chords capped at 46 points, so any straight run over
+400 blocks contains a detectable chord). Across six themes × gradient off/on × both
+orientations the longest is **230 blocks** (TROPICAL off, vertical z=1100, x −1000→−770),
+and the regenerated v2 measurement is 130 blocks in both orientations. The existing
+jitter is therefore sufficient; growing it would alter existing v2/v3 worlds.
+
+**Test:** `Phase9ClimateTest` asserts the spans/amplitudes, the exact on/off differential,
+non-empty land fractions, and the ≤400-block border on the shared side-neutral sampler
+(`IslandClimate`); `Phase6ClimateTest` 6.3 now measures the v2 sampler instead of
+counting a loop with no assertion.
