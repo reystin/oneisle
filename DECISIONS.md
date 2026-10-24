@@ -76,3 +76,13 @@ This log records every design choice, trade-off, and architectural resolution ma
   2. Derive rivers deterministically at load via Priority-Flood depression filling and D8 flow routing with $C^1$ continuous `smoothstep` carving falloff; discover biomes dynamically from `WorldCreationContext` with 56-biome fallback; and configure vanilla `WorldBorder` on world load when enabled.
 * **Choice:** Option 2.
 * **Reason:** Deriving rivers at load requires 0 extra bytes in `continents.json`. Using `smoothstep(1.0 - dr / width)` eliminates step discontinuities across cell boundaries and preserves the $< 0.015$ per-block continuity invariant. In `IslandShapeConfig.CODEC`, defaulting `river_density` to `0.0` when absent guarantees that pre-existing worlds without a river slider keep generating 100% bit-for-bit identically (Invariant I1). The dynamic biome registry allows modded biomes (e.g. Terralith) to be used while maintaining robust fallbacks for headless tests.
+
+### Decision 010: Phase 9 baseline normalization and deterministic evidence
+* **Question:** The checkout arrived from Windows with CRLF and quarantine attributes; prior test CSVs are regenerated on every build with random island seeds. How should the baseline be committed?
+* **Choice:** Normalize text files to LF via `.gitattributes`, keep generated CSVs out of the phase commits, and replace the random-seed harness with deterministic seeded evidence in Phase 9.1/9.4.
+* **Reason:** A build must not mutate tracked deliverables, and structure claims must be reproducible. Line-ending churn is isolated in one baseline commit so later phase diffs stay reviewable.
+
+### Decision 011: Windows target paths on this macOS host
+* **Question:** The task asks to mirror the final jar to `C:\Game\prism\...\mods` and `c:\Users\reystin\Downloads`, but the build host is macOS.
+* **Choice:** Map them to `~/Library/Application Support/PrismLauncher/instances/Vulkan Optimization/minecraft/mods` and `~/Downloads` respectively.
+* **Reason:** Those are the native macOS equivalents and the prompt permits documenting path mappings. Both destination files and hashes will be reported in the final report.
