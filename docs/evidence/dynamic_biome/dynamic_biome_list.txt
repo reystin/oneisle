@@ -1,0 +1,7 @@
+pack,phase97_biome_pack
+registry_biomes,2
+list_source,DynamicBiomeRegistry.updateFromRegistry(real RegistryDataLoader)
+entry,omniisle_test:custom_beach,SHORE,temperature=0.8
+entry,omniisle_test:custom_caves,CAVE,temperature=0.8
+custom_beach_category,SHORE
+custom_caves_category,CAVE

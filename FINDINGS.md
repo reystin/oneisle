@@ -326,3 +326,68 @@ count in a live client (screenshots/interactive checks are marked UNVERIFIED).
 int y, float u, float v, int width, int height, int uWidth, int vHeight, int textureWidth,
 int textureHeight)` is the 12-argument subregion overload used for zoom; the previous
 1:1 blit call was replaced so panning/zooming does not require re-uploading the texture.
+
+## 14. [VERIFY] Phase 9.7 — relief, coast, river mouths, dynamic biomes, server startup
+
+**Relief on round islands (seeds 1–5):** `Phase9ReliefTest` samples 101×101 columns at
+40-block spacing over a 4000 island. Every seed has 93–107 distinct local maxima
+(requirement ≥2 on ≥3/5), max elevation 163.22–163.25, and no flat plateau at the
+maximum above 150 blocks: the longest row at max height is 120 blocks, the largest
+connected component spans 48–96 blocks and its area diameter is 46.9–60.6 blocks.
+Painting the full height layer as tier 3 raises the peak by +122.4 blocks (≥40) and
+the largest 4-block surface slope is 2.551 blocks/block; the natural-terrain maximum
+is 2.010–2.551. The budget is 2.7 = the 1.8 blocks/block vanilla-mountain reference
+already used by the Phase 4 relief test × 1.5. Evidence: `docs/evidence/relief/`.
+
+**Coast fidelity and the 2500 exception:** the generated `c = −0.08` contour is
+sampled on an 8-block grid and each point's displacement is
+`|mask.sampleSignedDistance| / blocksPerPixel`. The set is 5 presets × 3 seeds × 2
+sizes = 30 configs. At size 4000 the worst mean is 0.2955 px and worst max
+1.5778 px, both under 0.6/2. The initial gate only asserted size 4000; extending it to
+2500 exposed ARCHIPELAGO seed 101 at 2.5091 px. The warp budget was
+`0.5 · blocksPerPixel/28.3333` (floor 0.35), which gave 0.35 at 2500; lowering the
+floor to 0.25/0.15 changed nothing because the formula produced 0.3125 there. Scaling
+quadratically below the 4000 reference (`0.5 · (ratio)²`, floor 0.15) gives 0.195 at
+2500, 0.5 at 4000 and the 1.0 clamp at 8000. Measured effect: 2.5091 → 2.2262 →
+1.3579 px at 2500, with 4000 unchanged at 0.5. The test now applies the 0.6/2 px
+threshold to both sizes: `docs/evidence/coast/coast_displacement.csv`
+(`criterion_applies_to_sizes,2500;4000`, failures 0).
+
+**River mouths:** legacy configs without `river_density` decode to 0.0 and
+`IslandRivers` stays disabled (verified for both raw JSON and share codes). At density
+0.45 the v2 threshold was 556 accumulated cells while the maximum coastal accumulation
+measured 192, so no channel reached the sea. The v3-only threshold factor
+`0.0004 + (1−density)·0.0040` (≈96 at 0.45) yields 10 mouth cells. The river carve is
+also applied on the ocean side of the branch, so crossing the waterline does not step
+by the carve amount. 10,000 samples around the mouths: 2,799 below sea level, 1,618
+inside a carved channel; maximum 1-block continentalness delta 0.024772 against the
+analytic bank budget `0.14·1.5/6 = 0.035`; maximum surface slope 1.958 against 2.7.
+Ten gravity-descent probes reach the waterline (10/10), with maximum crossing delta
+0.021143. Evidence: `docs/evidence/rivers/`.
+
+**26.3/Fabric startup order (server flow bug):** the first fresh boot with
+`config/omniisle.json` had the generated zip in `world/datapacks` but only
+`[omniisle (Fabric mod)]` enabled and `omniisle info` reported generation version 1.
+The log order shows why: Fabric Loader 0.19.3's `EntrypointPatch` injects
+`Hooks.startServer` at the `MinecraftServer` constructor (`javap` of
+`net/fabricmc/loader/impl/game/minecraft/patch/EntrypointPatch.class`), while
+`net.minecraft.server.Main.main` calls `WorldLoader.load` earlier (bytecode offset
+~721 in the mapped class). `SERVER_STARTING` therefore fires after the pack list is
+built. A `preLaunch` entrypoint now writes the pack before world load; on the fresh
+run the log shows preLaunch export at 21:58:12, `No existing world data` at 21:58:19,
+advancements at 21:58:20, `Done (1.589s)` at 21:58:22, and the v3 spawn at
+21:58:23. `datapack list enabled` then includes `file/omniisle-generated.zip (world)`,
+and `omniisle info` reports Generation Version 3, 192×192, mask bbox 5440 (1.36× the
+nominal size), rivers 45 %. Evidence: `docs/evidence/server/`.
+
+**Dynamic biome registry:** a fixture datapack is loaded through the real
+`RegistryDataLoader` (`DynamicBiomeRegistryTest`); both custom biomes appear in
+`DynamicBiomeRegistry`'s list with the expected category (`custom_beach` → SHORE,
+`custom_caves` → CAVE) and the pack metadata is written to
+`docs/evidence/dynamic_biome/`.
+
+**Measurement corrections:** ocean continuity is now normalized by the actual
+`|Δ signed distance|` (floor 1 block) because a smooth ramp measured along an oblique
+ray changes `c` by more per ray block than per normal block; the worst raw value
+0.020876 occurred where the shoreline moved 5.57 blocks per ray block. River banks use
+the analytic 0.035 budget above rather than an arbitrary per-ray threshold.

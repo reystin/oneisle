@@ -1,0 +1,9 @@
+thresholds
+mean_px_max,0.600
+max_px_max,2.000
+criterion_applies_to_sizes,2500;4000
+worst_mean_px,0.2955
+worst_max_px,1.5778
+failures,0
+blocks_per_px_4000,28.3333
+method,generated c=-0.08 contour sampled on an 8-block grid; displacement = |mask.sampleSignedDistance| / blocksPerPixel

@@ -1,0 +1,3 @@
+codec_absent_river_density,0.0
+legacy_rivers_enabled,false
+sharecode_absent_river_density,0.0

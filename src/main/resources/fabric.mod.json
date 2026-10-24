@@ -15,6 +15,9 @@
   "icon": "assets/omniisle/icon.png",
   "environment": "*",
   "entrypoints": {
+    "preLaunch": [
+      "com.hack337.omniisle.OmniIslePreLaunch"
+    ],
     "main": [
       "com.hack337.omniisle.OmniIsleMod"
     ]

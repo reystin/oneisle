@@ -42,7 +42,14 @@ public final class DynamicBiomeRegistry {
     }
 
     public static void updateFromRegistry(Registry<Biome> registry) {
-        if (registry == null) return;
+        List<BiomeEntry> list = buildEntries(registry);
+        if (!list.isEmpty()) {
+            activeBiomes = Collections.unmodifiableList(list);
+        }
+    }
+
+    static List<BiomeEntry> buildEntries(Registry<Biome> registry) {
+        if (registry == null) return List.of();
         List<BiomeEntry> list = new ArrayList<>();
         for (Holder.Reference<Biome> holder : registry.listElements().toList()) {
             Identifier id = holder.key().identifier();
@@ -95,9 +102,11 @@ public final class DynamicBiomeRegistry {
 
             list.add(new BiomeEntry(id, id.getPath(), category, familyIndex, color, biome.getBaseTemperature(), structures));
         }
-        if (!list.isEmpty()) {
-            activeBiomes = Collections.unmodifiableList(list);
-        }
+        return list;
+    }
+
+    static void resetCache() {
+        activeBiomes = null;
     }
 
     public static List<BiomeEntry> defaultBiomes() {

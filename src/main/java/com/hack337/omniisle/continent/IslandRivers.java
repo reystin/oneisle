@@ -155,7 +155,12 @@ public final class IslandRivers {
 
         // 5. River mask and channel widths
         double density = Math.max(0.01, Math.min(1.0, config.riverDensity));
-        int threshold = (int) (res * res * (0.003 + (1.0 - density) * 0.022));
+        // v2's threshold marks only the largest inland trunks and lakes; v3 scales it to the
+        // observed drainage so channels reach the waterline and real river mouths exist.
+        double thresholdFactor = config.generationVersion >= 3
+            ? 0.0004 + (1.0 - density) * 0.0040
+            : 0.003 + (1.0 - density) * 0.022;
+        int threshold = (int) (res * res * thresholdFactor);
         boolean[] isRiverCell = new boolean[res * res];
         this.channelWidth = new float[res * res];
 

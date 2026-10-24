@@ -1,10 +1,10 @@
 grid_step,5
 linefit_tolerance_blocks,2.5
 longest_straight_border_blocks,56
-orientation,vertical
-line_from,528
-line_to,539
-max_deviation,2.131082
-longest_border_blocks,154.8920015529519
-longest_border_max_deviation,7.066226
-longest_border_rms,2.854242
+orientation,horizontal
+line_from,517
+line_to,528
+max_deviation,2.185771
+longest_border_blocks,156.22131191878873
+longest_border_max_deviation,7.127163
+longest_border_rms,3.503779

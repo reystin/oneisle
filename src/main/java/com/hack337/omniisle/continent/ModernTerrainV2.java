@@ -35,6 +35,7 @@ public final class ModernTerrainV2 implements IslandTerrain {
     private final double isletDensity;
     private final double isletClearance;
     private final boolean v3Ocean;
+    private final double v3WarpScale;
     private final ShoreSettings shoreSettings;
 
     private final float[] sdfGrid;
@@ -57,6 +58,14 @@ public final class ModernTerrainV2 implements IslandTerrain {
         this.coastWarp = 45.0;
         this.isletDensity = config != null ? config.isletDensity : 0.25;
         this.v3Ocean = config != null && config.generationVersion >= 3;
+        // v3 keeps coast warp and roughness inside the editor-pixel displacement budget so
+        // the generated shoreline follows the painted mask. The quadratic size factor
+        // reduces warp on sub-4000 masks, where one editor pixel is fewer blocks and the
+        // same block-space wobble costs more pixels. v2 math stays untouched (I1).
+        double v3SizeRatio = blocksPerPixel / 28.3333;
+        this.v3WarpScale = v3Ocean
+            ? Math.max(0.15, Math.min(1.0, 0.5 * v3SizeRatio * v3SizeRatio))
+            : 1.0;
         // 80 blocks covers the maximum domain warp (45 + 12 amplitudes) so islets placed
         // by unwarped distance still start beyond 1.0*Wo in the warped field.
         this.isletClearance = v3Ocean ? this.oceanTransitionWidth + 80.0 : 350.0;
@@ -156,7 +165,7 @@ public final class ModernTerrainV2 implements IslandTerrain {
             if (diff < 0.22) {
                 double t = 1.0 - diff / 0.22;
                 double roughness = IslandNoise.fbm2(worldX / 72.0, worldZ / 72.0, seed + 911L, 3, 2.0, 0.5)
-                    * 0.045 * IslandNoise.smoothstep(t);
+                    * 0.045 * v3WarpScale * IslandNoise.smoothstep(t);
                 c += roughness;
             }
 
@@ -206,8 +215,17 @@ public final class ModernTerrainV2 implements IslandTerrain {
         if (diff < 0.22) {
             double t = 1.0 - diff / 0.22;
             double roughness = IslandNoise.fbm2(worldX / 72.0, worldZ / 72.0, seed + 911L, 3, 2.0, 0.5)
-                * 0.045 * IslandNoise.smoothstep(t);
+                * 0.045 * v3WarpScale * IslandNoise.smoothstep(t);
             cBase += roughness;
+        }
+
+        // v3 only: the carve must cross the waterline, or a river mouth becomes a
+        // 0.14-continentalness step exactly at the land/ocean branch switch.
+        if (v3Ocean && rivers != null && rivers.isEnabled()) {
+            double riverCarve = rivers.riverCarveContinentalness(worldX, worldZ);
+            if (riverCarve > 0.0) {
+                cBase -= riverCarve;
+            }
         }
 
         double b = Math.max(cBase, -0.80); // soft floor at -0.80
@@ -413,7 +431,7 @@ public final class ModernTerrainV2 implements IslandTerrain {
         double targetZ = worldZ;
 
         if (applyWarp && coastWarp > 0.0) {
-            double warpFactor = coastWarp / 45.0;
+            double warpFactor = coastWarp / 45.0 * v3WarpScale;
             double wx = (IslandNoise.fbm2(worldX / 520.0, worldZ / 520.0, seed + 101L, 3, 2.0, 0.5) * 45.0
                 + IslandNoise.fbm2(worldX / 190.0, worldZ / 190.0, seed + 307L, 2, 2.0, 0.5) * 12.0) * warpFactor;
             double wz = (IslandNoise.fbm2(worldX / 520.0, worldZ / 520.0, seed + 211L, 3, 2.0, 0.5) * 45.0

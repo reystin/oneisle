@@ -1,0 +1,13 @@
+>>> datapack list enabled
+There are 5 data pack(s) enabled: [vanilla (built-in)], [fabric-convention-tags-v2 (Fabric mod)], [fabric-gametest-api-v1 (Fabric mod)], [omniisle (Fabric mod)], [file/omniisle-generated.zip (world)]
+
+>>> omniisle info
+=== OmniIsle World Info ===
+Generation Version: 3 (modern)
+Resolution: 192x192
+Island Size: 5440 blocks
+Bounding Box: [-2720, -2720] to [2720, 2720]
+World Spawn: 14, 128, -1062
+World Border: Disabled
+Enabled Layers: Land (Mask), Rivers (45%)
+

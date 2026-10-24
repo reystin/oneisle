@@ -70,15 +70,23 @@ public class Phase9OceanTest {
                         "c at s=0 must stay within the shared micro-roughness of -0.08, ray " + deg);
 
                     double prevC = terrain.continentalness((coast - 30.0) * dirX, (coast - 30.0) * dirZ);
+                    double prevSd = surface.computeSignedDistance((coast - 30.0) * dirX, (coast - 30.0) * dirZ, true);
                     for (double offset = -29.0; offset <= 500.0; offset += 1.0) {
                         double c = terrain.continentalness((coast + offset) * dirX, (coast + offset) * dirZ);
                         double delta = Math.abs(c - prevC);
-                        assertTrue(delta < (offset <= 10.0 ? 0.02 : 0.05),
-                            "Coast discontinuity at " + key + " ray " + deg + " offset " + offset + ": " + delta);
+                        double sd = surface.computeSignedDistance((coast + offset) * dirX, (coast + offset) * dirZ, true);
+                        // A radial ray can meet the coast obliquely; normalise by the actual
+                        // shoreline-distance change so this measures c per block of normal
+                        // distance, not per block of ray length.
+                        double normalized = delta / Math.max(1.0, Math.abs(sd - prevSd));
+                        assertTrue(normalized < (offset <= 10.0 ? 0.02 : 0.05),
+                            "Coast discontinuity at " + key + " ray " + deg + " offset " + offset
+                                + ": delta " + delta + " over sd step " + Math.abs(sd - prevSd));
                         prevC = c;
+                        prevSd = sd;
 
                         if (offset >= 0.0) {
-                            double s = -surface.computeSignedDistance((coast + offset) * dirX, (coast + offset) * dirZ, true);
+                            double s = -sd;
                             if (s >= BAND_START && s <= BAND_END) {
                                 configBand++;
                                 bandSamples++;

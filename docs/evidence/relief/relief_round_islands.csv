@@ -1,0 +1,6 @@
+preset,size,seed,samples,distinct_peaks,max_elevation,max_plateau_span_blocks,plateau_area_diameter_blocks,plateau_component_span_blocks
+ROUND,4000,1,10201,102,163.245,120,60.555,96
+ROUND,4000,2,10201,99,163.232,120,60.555,96
+ROUND,4000,3,10201,107,163.236,72,60.555,48
+ROUND,4000,4,10201,99,163.250,72,46.906,48
+ROUND,4000,5,10201,93,163.223,48,46.906,48

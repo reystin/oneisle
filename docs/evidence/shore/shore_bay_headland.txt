@@ -1,5 +1,5 @@
-bay_points,282
-bay_sand,0.32269503546099293
-headland_points,497
-headland_sand,0.12877263581488935
-ratio,2.505928634751773
+bay_points,152
+bay_sand,0.3355263157894737
+headland_points,237
+headland_sand,0.08438818565400844
+ratio,3.975986842105263

@@ -174,3 +174,22 @@ writes 5/5 files; shore palette on ROUND at density 1.0 is 37.85 % land, 61.33 %
 tiers 0/1/2/3 exactly; flat maps import as tier 1. Layout content bottom/panel
 bottom/Done bottom at 480×270 = 216/222/250. Texture lifecycle: 50/50
 registrations/releases. Evidence: `docs/evidence/editor/`, `UI_CHECKLIST.md`.
+
+### Phase 9.7 — Relief, coast, rivers, dynamic biome, dedicated server (completed)
+- [x] **9.7.1** Relief on ROUND 4000 seeds 1–5: 93–107 distinct local maxima on every seed (requirement: ≥2 on ≥3/5); max elevation 163.22–163.25; no max-height plateau over 150 blocks (longest plateau row 120, connected component span 48–96, area diameter 46.9–60.6); tier-3 painting boosts the peak by +122.4 blocks (requirement ≥40); max 4-block surface slope 2.010–2.551, below the 2.7 budget (vanilla 1.8 × 1.5)
+- [x] **9.7.2** Coast fidelity on 5 presets × 3 seeds × sizes 2500/4000: worst mean 0.2955 px (limit 0.6), worst max 1.5778 px (limit 2), 0 failures; the threshold is now enforced at **both** sizes, not only 4000
+- [x] **9.7.3** The 2500 outlier that the old 4000-only gate missed (ARCHIPELAGO seed 101, 2.5091 px) is fixed by scaling v3 coast warp quadratically below 4000 (`0.5 · (blocksPerPixel/28.3333)²`): 2500 max is now 1.3579 px, 4000/8000 warp is unchanged
+- [x] **9.7.4** Rivers are disabled for configs without `river_density` (legacy codec and share code both default 0.0); v3 density 0.45 produces 10 river-mouth cells in the mouth test
+- [x] **9.7.5** v3 river threshold follows the observed drainage (v2 threshold 556 vs v3 ≈96 at density 0.45) so channels reach the sea; the ocean-side carve crosses the waterline instead of stepping at the land/ocean branch
+- [x] **9.7.6** River-mouth sampling at 10,000 points: 2,799 below sea, 1,618 carved; max 1-block continentalness delta 0.024772 (bank budget 0.035), max surface slope 1.958 (<2.7); 10/10 gravity-descended waterline crossings, max crossing delta 0.021143 (<0.035). No floating-water or bank-step artifact in the sampled mouths
+- [x] **9.7.7** Dynamic biome registry fixture loaded through the real `RegistryDataLoader`: 2 custom biomes appear in the biome list under `SHORE` and `CAVE` with their pack metadata
+- [x] **9.7.8** Dedicated-server config flow: `preLaunch` writes `omniisle-generated.zip` before `WorldLoader` scans packs; a fresh boot enables `file/omniisle-generated.zip (world)`, `omniisle info` reports v3 / 192 / bbox 5440 / rivers 45 %, and the v3 spawn is applied at 14,128,-1062
+- [x] **9.7.9** Ocean continuity measurement normalizes by the actual SDF change along oblique rays; bank/waterline budgets are derived analytically instead of using an arbitrary per-ray threshold
+
+Measured: relief peaks 93–107, plateau component ≤96 blocks, tier-3 +122.4; coast
+worst 0.2955/1.5778 px at 4000 and 0.2462/1.3579 px at 2500; rivers max delta
+0.024772 and max slope 1.958; dynamic biome list has 2/2 entries; server first boot
+uses the generated pack (log order: preLaunch export 21:58:12 → world creation
+21:58:19 → advancements 21:58:20 → Done 21:58:22 → v3 spawn 21:58:23). Evidence:
+`docs/evidence/relief/`, `docs/evidence/coast/`, `docs/evidence/rivers/`,
+`docs/evidence/dynamic_biome/`, `docs/evidence/server/`.

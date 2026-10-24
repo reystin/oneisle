@@ -248,3 +248,39 @@ This log records every design choice, trade-off, and architectural resolution ma
 * **Choice:** Option 2.
 * **Reason:** At 1080p, GUI scale 4 gives 480×270 logical pixels. Compact mode uses 16-px rows/18-px steps, a 140-px preview and a 184-px control panel; content bottom 216, panel bottom 222, Done bottom 250. The biome/structure side list is hidden in compact mode; the existing `BiomeSelectionScreen` buttons remain the path to the full lists. Real screenshots were not captured in this environment (no automated client screenshot harness), so the screenshot acceptance item is explicitly NOT DONE rather than claimed.
 * **Evidence:** `EditorLayout`, `Phase9EditorTest.layoutFitsGuiScales`, `UI_CHECKLIST.md`, `docs/screens/README.md`.
+
+### Decision 030: coast warp scales quadratically below the 4000 reference
+* **Question:** The first coast gate only enforced the 2 px maximum at size 4000. Measuring size 2500 too revealed ARCHIPELAGO seed 101 at 2.5091 px, above the requirement, because one editor pixel is 17.71 blocks at 2500 versus 28.33 at 4000 and the same block-space warp costs more pixels.
+* **Options:**
+  1. Keep the gate at 4000 and report the 2500 measurement as out of scope.
+  2. Scale the v3 warp by `0.5 · (blocksPerPixel / 28.3333)²` with a 0.15 floor, leave 4000/8000 at their existing factors, and enforce the threshold at both measured sizes.
+* **Choice:** Option 2.
+* **Reason:** The quadratic gives 0.195 at 2500 while keeping 0.5 at 4000 and the 1.0 clamp at 8000, so no previously accepted world changes at the reference sizes. Measured max displacement: 2.5091 px at warp 0.35, 2.2262 px at 0.3125, 1.3579 px at 0.195. The 4000 worst stays 1.5778 px. Lowering only the floor did nothing below 0.3125 because the size formula, not the floor, was binding — that is why the exponent changed.
+* **Evidence:** `docs/evidence/coast/coast_displacement.csv` (30 configs), `coast_displacement_summary.txt` (`criterion_applies_to_sizes,2500;4000`, worst mean 0.2955, worst max 1.5778, failures 0), `Phase9CoastFidelityTest`.
+
+### Decision 031: v3 river threshold follows drainage; carve continues into the ocean branch
+* **Question:** With the v2 flow-accumulation threshold, no river reached the waterline: the maximum coastal accumulation was 192 cells while the density-0.45 threshold was 556, so every river cell was an inland lake. Even after lowering the threshold, a river crossing the coast would step by the full 0.14 carve at the land/ocean branch.
+* **Options:**
+  1. Keep the v2 threshold and accept rivers that stop inland.
+  2. For `generation_version >= 3` only, use `thresholdFactor = 0.0004 + (1−density)·0.0040` (≈96 cells at 0.45) and subtract the same river carve on the ocean side of the branch.
+* **Choice:** Option 2.
+* **Reason:** The v3 threshold scales with the measured drainage instead of an arbitrary factor 5.8× larger; v2 stays bit-identical for I1. The ocean-side carve removes the discontinuity exactly where the code switches from land to ocean formulas, without changing the carve shape inland. The mouth test now sees 10 mouths, 2,799 below-sea samples and 1,618 carved samples.
+* **Evidence:** `docs/evidence/rivers/river_mouth_summary.txt`, `river_mouth_samples.csv`, `river_waterline_crossings.csv`; `Phase9RiversTest`.
+
+### Decision 032: river bank and ocean continuity budgets are analytic, not per-ray
+* **Question:** A first version flagged a 0.0248 continentalness delta per block as a "step" and flagged an oblique ocean ray whose `c` changed 0.02 while the shoreline distance changed 5.57 blocks per ray block. Both were smooth fields measured along the wrong axis.
+* **Options:**
+  1. Flatten the carve/ramp until the raw per-ray deltas fit an arbitrary threshold.
+  2. Derive a bank budget from the carve shape (`0.14 × 1.5 / 6 = 0.035 c/block`), measure river banks in the normal direction and at gravity-descended waterline crossings, and normalize ocean deltas by `max(1, |Δ signed distance|)`.
+* **Choice:** Option 2.
+* **Reason:** The budget is per block of normal shoreline distance, and a radial ray can meet the coast obliquely. Flattening the fields would remove real relief to satisfy a measurement artifact. Measured maxima: river bank 0.024772, waterline 0.021143 (budget 0.035); ocean normalized delta within the 0.02/0.05 bands; river surface slope 1.958 < 2.7.
+* **Evidence:** `Phase9RiversTest` (`BANK_DELTA_BUDGET`, `WATERLINE_DELTA_BUDGET`), `Phase9OceanTest` normalized continuity assertions, `docs/evidence/rivers/`.
+
+### Decision 033: dedicated-server pack export runs at preLaunch
+* **Question:** With the export in `ServerLifecycleEvents.SERVER_STARTING`, the first boot of a fresh world enabled only the mod's built-in pack; the generated zip existed in `world/datapacks` but was not in `datapack list enabled`, and `omniisle info` reported legacy v1. Fabric invokes main entrypoints when `MinecraftServer` is constructed, which is after `WorldLoader` has already scanned the pack list.
+* **Options:**
+  1. Require the pack to be copied into the world before the first start.
+  2. Add a `preLaunch` entrypoint that writes `<universe>/<level-name>/datapacks/omniisle-generated.zip` from `config/omniisle.json` before `WorldLoader` scans, keeping the `SERVER_STARTING` handler as an integrated-server fallback.
+* **Choice:** Option 2.
+* **Reason:** Only pre-launch is early enough while still reading the normal config file. The world folder is resolved the same way the server does: working directory + optional `--universe` (both `--universe X` and `--universe=X`) + `level-name` from `server.properties` (default `world`). The generated classes used by the exporter are Minecraft-free, so they load safely before the game. No manual copy is needed and the pack can shape the very first spawn chunks.
+* **Evidence:** `docs/evidence/server/README.md`, `server_startup.log` (preLaunch export 21:58:12, world creation 21:58:19, advancements 21:58:20, Done 21:58:22), `rcon_world_info.txt` (`file/omniisle-generated.zip (world)`, Generation Version 3, Rivers 45 %), `rcon_verify.txt`; `OmniIslePreLaunch`.

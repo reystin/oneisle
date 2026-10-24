@@ -235,6 +235,9 @@ public final class ShareCode {
         }
         if (root.has("river_density")) {
             draft.setRiverDensity(root.get("river_density").getAsDouble());
+        } else {
+            // Old share codes and config/omniisle.json files predate rivers; keep them river-free.
+            draft.setRiverDensity(0.0);
         }
         if (root.has("world_border")) {
             draft.setWorldBorderEnabled(root.get("world_border").getAsBoolean());
