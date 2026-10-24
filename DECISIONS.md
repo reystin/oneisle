@@ -140,3 +140,57 @@ This log records every design choice, trade-off, and architectural resolution ma
 * **Choice:** Option 2.
 * **Reason:** For pack formats above 81 the 26.3 `PackFormat`/`PackMetadataSection` codec requires `min_format`/`max_format`; a bare `pack_format` is accepted by the parser only as a legacy integer but the pack is flagged incompatible. The server log no longer shows the warning after the change. No version constants were changed (`PACK_FORMAT` stays 121).
 * **Evidence:** `docs/evidence/ocean/pack_metadata.txt` (version.json + server log excerpt) and the `v3OceanMonumentTargetsDeepBand` export test.
+
+### Decision 018: v3 spawn plateau as a density-function wrapper
+* **Question:** The editor marker can fall in a basin whose real terrain floods, because inland height is driven by vanilla erosion/ridge noise that the editor mask cannot evaluate.
+* **Options:**
+  1. Raise terrain in the mask/terrain sampler and accept an island-shape side effect for every version.
+  2. Wrap the v3 `final_density` in `omniisle:spawn_plateau`, which only lifts the top ~26 blocks inside an 80-block radius dome around the marker; leave v1/v2 density untouched.
+* **Choice:** Option 2.
+* **Reason:** The plateau is a local, dry guarantee at the exact editor marker while preserving the painted island and v1/v2 bit-identity (I1). The dome rim drops below sea level, so it reads as a small headland rather than a floating disc; the density wrapper delegates caves and deep terrain to the original function. `final_density_base.json` holds the vanilla-derived function so the wrapper does not self-reference; the override is written only for `generation_version = 3`.
+* **Evidence:** 45-config spawn sweep (`docs/evidence/spawn/spawn_evidence_45.csv`) and `ROUND_4000_101` probe output in `docs/evidence/spawn/`.
+
+### Decision 019: Fixed stronghold list instead of concentric rings for v3
+* **Question:** How can the three first-ring strongholds satisfy land, spawn-distance, pairwise-distance and Eyes-of-Ender requirements on an arbitrary painted island?
+* **Options:**
+  1. Keep vanilla `concentric_rings` and hope the preferred-biome filter finds land.
+  2. Choose three exact chunks at export time, enforce `min spawn distance` (300 for ≥4000, 150 otherwise) and pairwise ≥250, prefer main-island land with a shore fallback, and encode them as an ordered `omniisle:fixed_multi` placement.
+* **Choice:** Option 2.
+* **Reason:** Concentric rings cannot guarantee the constraints on an island of arbitrary shape and can place starts outside the locate radius. `fixed_multi` extends `RandomSpreadStructurePlacement` with spacing 1 and restricts candidates to the exact list, so 26.3's locate scan (which ignores other placement classes) sees all three starts; the eye-of-ender path uses the same `findNearestMapStructure` machinery. The three chunks are sorted by spawn distance for stable CSV ordering.
+* **Evidence:** `docs/evidence/structures/stronghold_validation.csv`, `stronghold_placement.csv`, and real-server `/locate` + `omniisle query eye` rows in the structure report.
+
+### Decision 020: Fixed placements use a presence tag, not a distribution filter
+* **Question:** Three fixed structures were missing in real worlds because the preview biome at the chosen chunk differed from the runtime biome source (river vs swamp, cherry grove vs taiga, meadow vs plains).
+* **Options:**
+  1. Report the three misses as honest failures.
+  2. For fixed placements, list every enabled biome in the `has_structure` tag while still pinning the placement to one chunk, and report the real biome at the start in the CSV.
+* **Choice:** Option 2.
+* **Reason:** A fixed placement has exactly one candidate chunk, so the biome tag cannot spread the structure elsewhere; it only gates presence. The editor preview and the runtime source can disagree by one family at a structure start that shifts within the chunk. Listing all enabled biomes guarantees the enabled structure exists and lets the report state its actual biome; it does not alter random-spread village/trial tags. The broadened tag is written for v3 only: a review caught the first cut applying it to v1/v2 too, which would have changed legacy worlds; v1/v2 now keep the 0.6.0 single-preview-biome tag JSON byte-for-byte (I1), and `Phase9StructureTest.legacyV1AndV2KeepSingleBiomeFixedStructureTags` locks that in.
+* **Evidence:** `STRUCTURE_REPORT_after_v2.csv` — three previously missing rows found; the biome column records river/cherry_grove/plains as generated.
+
+### Decision 021: Structure measurements force-load and wait before locate/query
+* **Question:** First harness runs produced `y = 90` for ocean structures and different `y` values for the same seed between fresh worlds.
+* **Options:**
+  1. Trust the first `/locate`/query result immediately.
+  2. Force-load a 65×65-block area around the target, wait 1 s for the structure start to finish generating, then run `/locate` and `omniisle query structure`; report `y_min`/`y_max` from the real `StructureStart` pieces.
+* **Choice:** Option 2.
+* **Reason:** The first query could observe a partial `StructureStart` (ocean monuments reported the sea surface instead of their actual pieces). All 15 full-sweep configs use the stabilized protocol; the repeatability run was dropped from the reduced measurement plan, so no repeatability claim is made. `StructureStart#getBoundingBox()` is adjusted by the structure, so `y_min`/`y_max` are the physical piece extents.
+* **Evidence:** `docs/evidence/structures/STRUCTURE_REPORT_after_v2.csv` (each row stores `y_min`, `y_max`, `start_chunk` and the locate chunk) and `stronghold_validation.csv`.
+
+### Decision 022: v3 pyramids override the vanilla single-piece sea-level gate
+* **Question:** The fixed desert and jungle pyramids disappeared on lowland islands even when the chosen chunk sat far inland: 26.3's `SinglePieceStructure#findGenerationPoint` rejects the start when `getLowestY(21×21) < seaLevel`, and OmniIsle's c≈0.6 lowlands routinely have 21×21 footprint corners at y 58–63 because of vanilla ridge/erosion noise.
+* **Options:**
+  1. Report the misses and keep vanilla structure codecs.
+  2. For v3 packs only, override `minecraft:desert_pyramid` and `minecraft:jungle_pyramid` with `omniisle:relaxed_desert_pyramid` / `omniisle:relaxed_jungle_temple`, reusing the vanilla pieces, biome tags, structure IDs and `afterPlace` (desert loot/suspicious sand) but placing them with `onTopOfChunkCenterWithoutBiomeCheck`.
+* **Choice:** Option 2.
+* **Reason:** The editor cannot evaluate vanilla ridge/erosion noise, so no client-side chunk score can predict the footprint's lowest block; the hard gate is the only blocker. The relaxed types use the same `DesertPyramidPiece` / `JungleTemplePiece`, keep `minecraft:desert_pyramid` / `minecraft:jungle_pyramid` registry IDs for `/locate` and the report, and only change the placement height rule. The override is written only when `generation_version >= 3`, so v1/v2 packs remain byte-identical in behavior (I1). The earlier `DRY_SURFACE_MIN_ELEVATION` workaround is removed because it also pushed the desert pyramid into forest chunks without fixing the gate.
+* **Evidence:** `NATURAL_8000_101` real-server log: before, `desert_pyramid found=false` at chunk 2,-140 (footprint corner water y=63) and `jungle_pyramid found=false` at -14,166 (three corners y=63 water); after, both found (desert y=61, jungle y=64) and all 20 structure rows in that config report `found=true`. The reduced full sweep is PARTIAL: 15/45 configs in `docs/evidence/structures/STRUCTURE_REPORT_after_v2.csv`; strongholds are checked on all 45 in `stronghold_validation.csv`.
+
+### Decision 025: reduced Phase 9.4 measurement matrix (PARTIAL)
+* **Question:** The plan asks for a 45-config full 20-structure sweep and 90 spawn configs, but a real 26.3 server config costs roughly a minute (fresh world, boot, force-loaded locates).
+* **Options:**
+  1. Run the full 45-config, 20-structure matrix and the 90-config spawn extension.
+  2. Measure the full 20-structure set on 15 configs (5 presets × 3 sizes × seed 101), run the stronghold-only real locate on all 45 configs (seeds 101/202/303) for the distance/land/eye thresholds, produce spawn evidence from the same 45, and skip the ROUND_4000_101 repeat.
+* **Choice:** Option 2.
+* **Reason:** The stronghold acceptance gates (spawn distance, mutual distance, on land, Eyes of Ender) are checked on all 45 configs; the other 17 structures are measured on 15. The matrix is marked PARTIAL (15/45 full) in `PROGRESS.md` and the final report, and the 30 configs without a full sweep carry no claim about the other structures. The repeatability run was dropped, so no repeatability claim is made; the 15 overlapping configs are used as a consistency check instead.
+* **Evidence:** `docs/evidence/structures/STRUCTURE_REPORT_after_v2.csv` (300 rows, 15 configs), `stronghold_validation.csv` (45/45 pass), `docs/evidence/spawn/spawn_evidence_45.csv`; the overlap check reports 0 mismatches and two feature-dependent `spawn_y` Y-NOTEs.

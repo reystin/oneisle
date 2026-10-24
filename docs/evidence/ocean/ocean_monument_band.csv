@@ -1,4 +1,4 @@
-config,chunk_x,chunk_z,center_x,center_z,c_center,c_max_surround,biome_tag
+config,chunk_x,chunk_z,center_x,center_z,c_center,c_max_surround,preview_biome
 NATURAL_4000_s101,7,-127,120,-2024,-0.719411,-0.676915,minecraft:deep_ocean
 NATURAL_4000_s202,3,-128,56,-2040,-0.725379,-0.657586,minecraft:deep_ocean
 NATURAL_4000_s303,-35,-118,-552,-1880,-0.724305,-0.642836,minecraft:deep_ocean

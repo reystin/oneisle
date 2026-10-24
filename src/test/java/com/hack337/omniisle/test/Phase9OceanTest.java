@@ -290,7 +290,7 @@ public class Phase9OceanTest {
     @Test
     void v3OceanMonumentTargetsDeepBand() throws IOException {
         StringBuilder csv = new StringBuilder(
-            "config,chunk_x,chunk_z,center_x,center_z,c_center,c_max_surround,biome_tag\n");
+            "config,chunk_x,chunk_z,center_x,center_z,c_center,c_max_surround,preview_biome\n");
         int configs = 0;
         for (IslandDraft.Preset preset : PRESETS) {
             for (long seed : SEEDS) {
@@ -301,7 +301,6 @@ public class Phase9OceanTest {
                     String key = preset.name() + "_4000_s" + seed;
                     int chunkX;
                     int chunkZ;
-                    String biomeTag;
                     try (java.util.zip.ZipFile zf = new java.util.zip.ZipFile(
                         tmp.resolve(com.hack337.omniisle.client.WorldPackBuilder.FILE_NAME).toFile())) {
                         String setJson = new String(zf.getInputStream(
@@ -311,11 +310,6 @@ public class Phase9OceanTest {
                             .getAsJsonObject("placement");
                         chunkX = placement.get("chunk_x").getAsInt();
                         chunkZ = placement.get("chunk_z").getAsInt();
-                        String tagJson = new String(zf.getInputStream(
-                            zf.getEntry("data/minecraft/tags/worldgen/biome/has_structure/ocean_monument.json")).readAllBytes(),
-                            StandardCharsets.UTF_8);
-                        biomeTag = com.google.gson.JsonParser.parseString(tagJson).getAsJsonObject()
-                            .getAsJsonArray("values").get(0).getAsString();
                     }
 
                     IslandTerrain terrain = terrain(draft, 0.25);
@@ -330,19 +324,30 @@ public class Phase9OceanTest {
                                 terrain.continentalness(centerX + dx, centerZ + dz));
                         }
                     }
+                    double halfSpan = draft.worldSpan() * 0.5;
+                    double slope = Math.hypot(
+                        (terrain.continentalness(centerX + 8, centerZ) - terrain.continentalness(centerX - 8, centerZ)) / 16.0,
+                        (terrain.continentalness(centerX, centerZ + 8) - terrain.continentalness(centerX, centerZ - 8)) / 16.0) * 64.0;
+                    boolean shoreAllowed = !draft.enabledBiomes(com.hack337.omniisle.client.BiomePreview.Category.SHORE).isEmpty();
+                    String biome = draft.selectBiome(
+                        com.hack337.omniisle.client.BiomePreview.surfaceV3(cCenter, (int) centerX, (int) centerZ,
+                            draft.biomeSeed(), draft.climateScale(), draft.gradientMode(), draft.gradientStrength(),
+                            draft.theme(), slope, draft.generationVersionNumber(), halfSpan,
+                            terrain.rivers(), terrain, draft.shoreSettings(), shoreAllowed),
+                        (int) centerX, (int) centerZ).biomeId();
 
                     assertTrue(cCenter <= -0.62,
                         key + " monument center is not in the deep band: c=" + cCenter);
                     assertTrue(maxSurround < DEEP - 0.02,
                         key + " monument surroundings are not all deep water: max c=" + maxSurround);
-                    assertTrue(biomeTag.contains("ocean"),
-                        key + " monument biome tag is not an ocean: " + biomeTag);
+                    assertTrue(biome.contains("ocean"),
+                        key + " monument biome is not an ocean: " + biome);
                     csv.append(key).append(',').append(chunkX).append(',').append(chunkZ).append(',')
                         .append(String.format(Locale.ROOT, "%.0f", centerX)).append(',')
                         .append(String.format(Locale.ROOT, "%.0f", centerZ)).append(',')
                         .append(String.format(Locale.ROOT, "%.6f", cCenter)).append(',')
                         .append(String.format(Locale.ROOT, "%.6f", maxSurround)).append(',')
-                        .append(biomeTag).append('\n');
+                        .append(biome).append('\n');
                     configs++;
                 } finally {
                     try (var walk = Files.walk(tmp)) {

@@ -222,6 +222,9 @@ public final class IslandDraft {
         draft.shoreDensity = this.shoreDensity;
         draft.shoreVariety = this.shoreVariety;
         draft.shoreRocky = this.shoreRocky;
+        draft.riverDensity = this.riverDensity;
+        draft.worldBorder = this.worldBorder;
+        draft.worldBorderMargin = this.worldBorderMargin;
         draft.spawnPx = this.spawnPx;
         draft.spawnPz = this.spawnPz;
         return draft;

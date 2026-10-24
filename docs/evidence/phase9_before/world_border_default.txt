@@ -1,4 +1,5 @@
 IslandDraft.worldBorder default: false
 IslandShapeConfig.worldBorder default (codec fallback): false
-copy() result for a draft with border enabled: false
-Conclusion: border is OFF by default; copy() silently drops border and river settings in 0.6.0.
+copy() result for a draft with border enabled: true
+copy() result for riverDensity 0.42: 0.42
+Conclusion: border is OFF by default; Phase 9.4 makes copy() preserve river and border settings.

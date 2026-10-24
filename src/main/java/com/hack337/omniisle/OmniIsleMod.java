@@ -5,9 +5,12 @@ import com.hack337.omniisle.client.ShareCode;
 import com.hack337.omniisle.client.WorldPackBuilder;
 import com.hack337.omniisle.continent.IslandShapeConfig;
 import com.hack337.omniisle.continent.IslandTerrain;
+import com.hack337.omniisle.worldgen.FixedMultiStructurePlacement;
 import com.hack337.omniisle.worldgen.IslandDensityFunction;
 import com.hack337.omniisle.worldgen.OmniBiomeSource;
+import com.hack337.omniisle.worldgen.RelaxedPyramids;
 import com.hack337.omniisle.worldgen.SingleStructurePlacement;
+import com.hack337.omniisle.worldgen.SpawnPlateauDensity;
 import com.hack337.omniisle.worldgen.RiverLife;
 import com.hack337.omniisle.worldgen.SpawnSavedData;
 import com.hack337.omniisle.command.OmniCommands;
@@ -35,8 +38,11 @@ public class OmniIsleMod implements ModInitializer {
     @Override
     public void onInitialize() {
         IslandDensityFunction.registerCodec();
+        SpawnPlateauDensity.registerCodec();
         OmniBiomeSource.registerCodec();
         SingleStructurePlacement.registerType();
+        FixedMultiStructurePlacement.registerType();
+        RelaxedPyramids.register();
         RiverLife.installSpawns();
         OmniCommands.registerCommands();
 
@@ -78,23 +84,15 @@ public class OmniIsleMod implements ModInitializer {
             IslandShapeConfig config = activeDf.shapeConfig();
             if (config == null) return;
 
-            SpawnSavedData spawnData = world.getDataStorage().computeIfAbsent(SpawnSavedData.TYPE);
-            if (!spawnData.initialized) {
-                int targetX = 0;
-                int targetZ = 0;
-                if (config.spawn().isPresent()) {
-                    targetX = config.spawn().get().x();
-                    targetZ = config.spawn().get().z();
-                } else if (config.mask().isPresent()) {
-                    var mask = config.mask().get();
-                    targetX = (int) Math.round((mask.minX + mask.maxX) / 2.0);
-                    targetZ = (int) Math.round((mask.minZ + mask.maxZ) / 2.0);
+            if (config.generationVersion < 3) {
+                SpawnSavedData spawnData = world.getDataStorage().computeIfAbsent(SpawnSavedData.TYPE);
+                if (!spawnData.initialized) {
+                    int[] target = spawnTarget(config);
+                    BlockPos safePos = findSafeSpawn(world, target[0], target[1]);
+                    world.setRespawnData(LevelData.RespawnData.of(world.dimension(), safePos, 0.0f, 0.0f));
+                    spawnData.initialized = true;
+                    spawnData.setDirty();
                 }
-
-                BlockPos safePos = findSafeSpawn(world, targetX, targetZ);
-                world.setRespawnData(LevelData.RespawnData.of(world.dimension(), safePos, 0.0f, 0.0f));
-                spawnData.initialized = true;
-                spawnData.setDirty();
             }
 
             if (config.worldBorder && config.mask().isPresent()) {
@@ -109,6 +107,87 @@ public class OmniIsleMod implements ModInitializer {
                 LOGGER.info("OmniIsle: Set world border centered at [{}, {}] with size {}", cx, cz, borderSize);
             }
         });
+
+        // Vanilla picks the global spawn while loading levels, after ServerLevelEvents.LOAD,
+        // so v3 spawns must be reconciled once the server has fully started.
+        ServerLifecycleEvents.SERVER_STARTED.register(server -> {
+            ServerLevel overworld = server.overworld();
+            if (overworld == null) return;
+            IslandDensityFunction activeDf = IslandDensityFunction.getActive();
+            if (activeDf == null) return;
+            IslandShapeConfig config = activeDf.shapeConfig();
+            if (config == null || config.generationVersion < 3) return;
+
+            int[] target = spawnTarget(config);
+            BlockPos safePos = findModernSpawn(overworld, target[0], target[1]);
+            SpawnSavedData spawnData = overworld.getDataStorage().computeIfAbsent(SpawnSavedData.TYPE);
+            BlockPos current = overworld.getRespawnData().pos();
+            boolean mismatch = !current.equals(safePos);
+            if (!spawnData.initialized || mismatch) {
+                overworld.setRespawnData(LevelData.RespawnData.of(overworld.dimension(), safePos, 0.0f, 0.0f));
+                spawnData.initialized = true;
+                spawnData.setDirty();
+                LOGGER.info("OmniIsle: Applied world spawn at {} (previous {}, marker {}), land={}",
+                    safePos, current, "[" + target[0] + ", " + target[1] + "]",
+                    activeDf.terrain() == null || activeDf.terrain().signedDistance(safePos.getX(), safePos.getZ()) > 0.0);
+            }
+        });
+    }
+
+    private static int[] spawnTarget(IslandShapeConfig config) {
+        int targetX = 0;
+        int targetZ = 0;
+        if (config.spawn().isPresent()) {
+            targetX = config.spawn().get().x();
+            targetZ = config.spawn().get().z();
+        } else if (config.mask().isPresent()) {
+            var mask = config.mask().get();
+            targetX = (int) Math.round((mask.minX + mask.maxX) / 2.0);
+            targetZ = (int) Math.round((mask.minZ + mask.maxZ) / 2.0);
+        }
+        return new int[]{targetX, targetZ};
+    }
+
+    private static BlockPos findModernSpawn(ServerLevel world, int startX, int startZ) {
+        IslandDensityFunction activeDf = IslandDensityFunction.getActive();
+        IslandTerrain terrain = activeDf != null ? activeDf.terrain() : null;
+        if (terrain != null && terrain.signedDistance(startX, startZ) > 0.0) {
+            return surfaceAt(world, startX, startZ);
+        }
+
+        if (terrain != null) {
+            // The marker is meant to be land; if it is not, pick the deepest land
+            // within a short radius rather than the first 1-2 block spit.
+            double bestDepth = -1.0e9;
+            int bestX = startX;
+            int bestZ = startZ;
+            for (int radius = 16; radius <= 512; radius += 16) {
+                int samples = 32;
+                for (int i = 0; i < samples; i++) {
+                    double angle = Math.PI * 2.0 * i / samples;
+                    int x = startX + (int) Math.round(Math.cos(angle) * radius);
+                    int z = startZ + (int) Math.round(Math.sin(angle) * radius);
+                    double depth = terrain.signedDistance(x, z);
+                    if (depth > bestDepth) {
+                        bestDepth = depth;
+                        bestX = x;
+                        bestZ = z;
+                    }
+                }
+                if (bestDepth >= 48.0) break;
+            }
+            if (bestDepth > 0.0) {
+                return surfaceAt(world, bestX, bestZ);
+            }
+        }
+
+        return surfaceAt(world, startX, startZ);
+    }
+
+    private static BlockPos surfaceAt(ServerLevel world, int x, int z) {
+        world.getChunk(x >> 4, z >> 4);
+        int surfaceY = world.getHeight(Heightmap.Types.WORLD_SURFACE, x, z);
+        return new BlockPos(x, surfaceY, z);
     }
 
     public static BlockPos findSafeSpawn(ServerLevel world, int startX, int startZ) {

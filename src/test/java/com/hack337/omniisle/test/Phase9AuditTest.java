@@ -737,15 +737,20 @@ public class Phase9AuditTest {
         IslandShapeConfig cfg = new IslandShapeConfig(2, 0.0, List.of(), Optional.empty(), 1L);
         assertFalse(cfg.worldBorder);
         assertFalse(new IslandDraft().copy().isWorldBorderEnabled());
-        // copy() drops border/river settings in 0.6.0; recorded in the audit, fixed in Phase 9.4.
+        // 0.6.0 copy() dropped border/river settings; fixed in Phase 9.4.
         draft.setWorldBorderEnabled(true);
         draft.setWorldBorderMargin(1500);
-        assertFalse(draft.copy().isWorldBorderEnabled());
+        draft.setRiverDensity(0.42);
+        IslandDraft copy = draft.copy();
+        assertTrue(copy.isWorldBorderEnabled());
+        assertEquals(1500, copy.worldBorderMargin());
+        assertEquals(0.42, copy.riverDensity(), 1e-9);
         if (WRITE_EVIDENCE) {
             String note = "IslandDraft.worldBorder default: " + draftDefault + "\n"
                 + "IslandShapeConfig.worldBorder default (codec fallback): false\n"
-                + "copy() result for a draft with border enabled: " + draft.copy().isWorldBorderEnabled() + "\n"
-                + "Conclusion: border is OFF by default; copy() silently drops border and river settings in 0.6.0.\n";
+                + "copy() result for a draft with border enabled: " + copy.isWorldBorderEnabled() + "\n"
+                + "copy() result for riverDensity 0.42: " + copy.riverDensity() + "\n"
+                + "Conclusion: border is OFF by default; Phase 9.4 makes copy() preserve river and border settings.\n";
             Files.writeString(EVIDENCE.resolve("world_border_default.txt"), note, StandardCharsets.UTF_8);
         }
     }

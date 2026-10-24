@@ -15,7 +15,7 @@ ocean_profile_summary_v3.csv global min/max, band max, seamount max, thresholds
 ocean_height_6000_v3.png     6000x6000 height render (ROUND 4000 seed 101, islets 0.25)
 ocean_islets_v3.csv          islet land samples, peak c, clearance, max 1-block delta
 ocean_monument_band.csv      headless monument placement: chunk, centre c, 29-block
-                             survey max c, generated has_structure tag (15 configs)
+                             survey max c, preview biome at the chunk (15 configs)
 ocean_monument_locate.csv    real 26.3 server: /locate result + biome tag queries
                              at the located monument (10 configs)
 pack_metadata.txt            min_format/max_format 121 and clean datapack load log

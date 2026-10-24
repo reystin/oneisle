@@ -30,13 +30,20 @@ import net.minecraft.commands.Commands;
 import net.minecraft.commands.SharedSuggestionProvider;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.permissions.Permissions;
+import net.minecraft.tags.StructureTags;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.BiomeResolver;
 import net.minecraft.world.level.biome.BiomeSource;
+import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.levelgen.Heightmap;
+import net.minecraft.world.level.levelgen.structure.BoundingBox;
+import net.minecraft.world.level.levelgen.structure.Structure;
+import net.minecraft.world.level.levelgen.structure.StructureStart;
 import net.minecraft.world.level.storage.LevelResource;
 
 public final class OmniCommands {
@@ -112,6 +119,30 @@ public final class OmniCommands {
                         return Command.SINGLE_SUCCESS;
                     })
                 )
+                .then(Commands.literal("query")
+                    .requires(source -> source.permissions().hasPermission(Permissions.COMMANDS_GAMEMASTER))
+                    .then(Commands.literal("spawn").executes(OmniCommands::executeSpawnQuery))
+                    .then(Commands.literal("eye").executes(OmniCommands::executeEyeQuery))
+                    .then(Commands.literal("dry")
+                        .then(Commands.argument("x", IntegerArgumentType.integer(-30_000_000, 30_000_000))
+                            .then(Commands.argument("z", IntegerArgumentType.integer(-30_000_000, 30_000_000))
+                                .executes(context -> executeDryQuery(context,
+                                    IntegerArgumentType.getInteger(context, "x"),
+                                    IntegerArgumentType.getInteger(context, "z"))))))
+                    .then(Commands.literal("column")
+                        .then(Commands.argument("x", IntegerArgumentType.integer(-30_000_000, 30_000_000))
+                            .then(Commands.argument("z", IntegerArgumentType.integer(-30_000_000, 30_000_000))
+                                .executes(context -> executeColumnQuery(context,
+                                    IntegerArgumentType.getInteger(context, "x"),
+                                    IntegerArgumentType.getInteger(context, "z"))))))
+                    .then(Commands.literal("structure")
+                        .then(Commands.argument("structure", StringArgumentType.string())
+                            .then(Commands.argument("x", IntegerArgumentType.integer(-30_000_000, 30_000_000))
+                                .then(Commands.argument("z", IntegerArgumentType.integer(-30_000_000, 30_000_000))
+                                    .executes(context -> executeStructureQuery(context,
+                                        StringArgumentType.getString(context, "structure"),
+                                        IntegerArgumentType.getInteger(context, "x"),
+                                        IntegerArgumentType.getInteger(context, "z"))))))))
                 .then(Commands.literal("debug")
                     .requires(source -> source.permissions().hasPermission(Permissions.COMMANDS_GAMEMASTER))
                     .then(Commands.argument("mode", StringArgumentType.word())
@@ -173,6 +204,259 @@ public final class OmniCommands {
         double cS = terrain.continentalness(x, z + 4.0);
         double cN = terrain.continentalness(x, z - 4.0);
         return Math.hypot((cE - cW) / 8.0, (cS - cN) / 8.0) * 64.0;
+    }
+
+    private static int executeSpawnQuery(CommandContext<CommandSourceStack> context) {
+        ServerLevel world = context.getSource().getLevel();
+        IslandDensityFunction idf = IslandDensityFunction.getActive();
+        IslandShapeConfig cfg = idf != null ? idf.shapeConfig() : null;
+        IslandTerrain terrain = idf != null ? idf.terrain() : null;
+        BlockPos spawn = world.getRespawnData().pos();
+        world.getChunk(spawn.getX() >> 4, spawn.getZ() >> 4);
+        String biome = world.getBiome(spawn).unwrapKey()
+            .map(key -> key.identifier().toString()).orElse("unknown");
+        int surfaceY = world.getHeight(Heightmap.Types.WORLD_SURFACE, spawn.getX(), spawn.getZ());
+        BlockPos below = spawn.below();
+        String feetBlock = world.getBlockState(spawn).getBlock().getDescriptionId();
+        String groundBlock = world.getBlockState(below).getBlock().getDescriptionId();
+        boolean feetWater = !world.getFluidState(spawn).isEmpty();
+        boolean groundWater = !world.getFluidState(below).isEmpty();
+        boolean dry = feetBlock.equals("block.minecraft.air") && !groundWater
+            && !groundBlock.equals("block.minecraft.air");
+        boolean river = false;
+        double terrainElevation = -1.0;
+        if (terrain != null) {
+            river = terrain.rivers() != null && terrain.rivers().isEnabled()
+                && terrain.rivers().isRiver(spawn.getX() + 0.5, spawn.getZ() + 0.5);
+            terrainElevation = IslandTerrain.continentalnessToElevation(
+                terrain.continentalness(spawn.getX() + 0.5, spawn.getZ() + 0.5));
+        }
+        String markerX = "none";
+        String markerZ = "none";
+        boolean match = false;
+        if (cfg != null && cfg.spawn != null) {
+            markerX = String.valueOf(cfg.spawn.x());
+            markerZ = String.valueOf(cfg.spawn.z());
+            match = spawn.getX() == cfg.spawn.x() && spawn.getZ() == cfg.spawn.z();
+        }
+        boolean land = terrain != null
+            && terrain.signedDistance(spawn.getX() + 0.5, spawn.getZ() + 0.5) > 0.0;
+        int coastDistance = -1;
+        if (terrain != null) {
+            int nearest = 999;
+            for (int i = 0; i < 16; i++) {
+                double angle = i * Math.PI * 2.0 / 16.0;
+                double dx = Math.cos(angle);
+                double dz = Math.sin(angle);
+                for (int r = 2; r <= 96; r += 2) {
+                    if (terrain.signedDistance(spawn.getX() + 0.5 + dx * r,
+                        spawn.getZ() + 0.5 + dz * r) <= 0.0) {
+                        nearest = Math.min(nearest, r);
+                        break;
+                    }
+                }
+            }
+            coastDistance = nearest;
+        }
+        int nearestWater = 65;
+        int dryProbes = 0;
+        int dryProbesOk = 0;
+        for (int i = 0; i < 8; i++) {
+            double angle = i * Math.PI / 4.0;
+            double dx = Math.cos(angle);
+            double dz = Math.sin(angle);
+            for (int r = 8; r <= 64; r += 4) {
+                int x = (int) Math.floor(spawn.getX() + 0.5 + dx * r);
+                int z = (int) Math.floor(spawn.getZ() + 0.5 + dz * r);
+                world.getChunk(x >> 4, z >> 4);
+                int top = world.getHeight(Heightmap.Types.WORLD_SURFACE, x, z);
+                boolean water = !world.getFluidState(new BlockPos(x, top - 1, z)).isEmpty();
+                dryProbes++;
+                if (water) {
+                    nearestWater = Math.min(nearestWater, r);
+                    break;
+                }
+                dryProbesOk++;
+            }
+        }
+        String line = "OMNI_SPAWN spawn_x=" + spawn.getX() + " spawn_y=" + spawn.getY()
+            + " spawn_z=" + spawn.getZ() + " surface_y=" + surfaceY
+            + " marker_x=" + markerX + " marker_z=" + markerZ + " match=" + match
+            + " biome=" + biome + " land=" + land + " coast_distance=" + coastDistance
+            + " nearest_water=" + nearestWater + " dry_probes=" + dryProbesOk + "/" + dryProbes
+            + " feet_block=" + feetBlock + " ground_block=" + groundBlock
+            + " feet_water=" + feetWater + " dry=" + dry + " river=" + river
+            + " terrain_elevation=" + String.format(java.util.Locale.ROOT, "%.1f", terrainElevation);
+        context.getSource().sendSuccess(() -> Component.literal(line), false);
+        return Command.SINGLE_SUCCESS;
+    }
+
+    private static int executeEyeQuery(CommandContext<CommandSourceStack> context) {
+        ServerLevel world = context.getSource().getLevel();
+        BlockPos spawn = world.getRespawnData().pos();
+        BlockPos target = world.findNearestMapStructure(StructureTags.EYE_OF_ENDER_LOCATED, spawn, 100, false);
+        if (target == null) {
+            context.getSource().sendSuccess(() -> Component.literal("OMNI_EYE found=false"), false);
+            return Command.SINGLE_SUCCESS;
+        }
+        int chunkX = Math.floorDiv(target.getX(), 16);
+        int chunkZ = Math.floorDiv(target.getZ(), 16);
+        world.getChunk(chunkX, chunkZ);
+        Structure stronghold = context.getSource().getServer().registryAccess()
+            .lookupOrThrow(Registries.STRUCTURE).getValue(Identifier.withDefaultNamespace("stronghold"));
+        int pieces = 0;
+        if (stronghold != null) {
+            for (StructureStart start : world.structureManager().startsForStructure(chunkX, chunkZ, stronghold)) {
+                if (start.isValid()) {
+                    pieces = Math.max(pieces, start.getPieces().size());
+                }
+            }
+        }
+        int surfaceY = world.getHeight(Heightmap.Types.WORLD_SURFACE, target.getX(), target.getZ());
+        String line = "OMNI_EYE found=true x=" + target.getX() + " z=" + target.getZ()
+            + " chunk=" + chunkX + "," + chunkZ + " surface_y=" + surfaceY
+            + " stronghold_pieces=" + pieces;
+        context.getSource().sendSuccess(() -> Component.literal(line), false);
+        return Command.SINGLE_SUCCESS;
+    }
+
+    private static int executeDryQuery(CommandContext<CommandSourceStack> context, int x, int z) {
+        ServerLevel world = context.getSource().getLevel();
+        int surfaceY = columnTop(world, x, z);
+        boolean centerDry = !columnWater(world, x, z, surfaceY);
+        int nearestDry = 113;
+        int nearestWater = 113;
+        for (int i = 0; i < 16; i++) {
+            double angle = i * Math.PI / 8.0;
+            double dx = Math.cos(angle);
+            double dz = Math.sin(angle);
+            boolean dryFound = centerDry;
+            boolean waterFound = !centerDry;
+            if (dryFound) nearestDry = 0;
+            if (waterFound) nearestWater = 0;
+            for (int r = 4; r <= 112; r += 4) {
+                int sx = (int) Math.floor(x + 0.5 + dx * r);
+                int sz = (int) Math.floor(z + 0.5 + dz * r);
+                int top = columnTop(world, sx, sz);
+                boolean water = columnWater(world, sx, sz, top);
+                if (!dryFound && !water) {
+                    nearestDry = Math.min(nearestDry, r);
+                    dryFound = true;
+                }
+                if (!waterFound && water) {
+                    nearestWater = Math.min(nearestWater, r);
+                    waterFound = true;
+                }
+                if (dryFound && waterFound) break;
+            }
+        }
+        int top = surfaceY;
+        String biome = world.getBiome(new BlockPos(x, Math.max(top - 1, world.getMinY()), z)).unwrapKey()
+            .map(key -> key.identifier().toString()).orElse("unknown");
+        String block = world.getBlockState(new BlockPos(x, top - 1, z)).getBlock().getDescriptionId();
+        String line = "OMNI_DRY x=" + x + " z=" + z + " surface_y=" + top
+            + " center_dry=" + centerDry + " center_water=" + !centerDry
+            + " nearest_dry=" + nearestDry + " nearest_water=" + nearestWater
+            + " biome=" + biome + " block=" + block;
+        context.getSource().sendSuccess(() -> Component.literal(line), false);
+        return Command.SINGLE_SUCCESS;
+    }
+
+    private static int columnTop(ServerLevel world, int x, int z) {
+        world.getChunk(Math.floorDiv(x, 16), Math.floorDiv(z, 16));
+        return world.getHeight(Heightmap.Types.WORLD_SURFACE, x, z);
+    }
+
+    private static boolean columnWater(ServerLevel world, int x, int z, int surfaceY) {
+        return surfaceY > world.getMinY()
+            && !world.getFluidState(new BlockPos(x, surfaceY - 1, z)).isEmpty();
+    }
+
+    private static int executeColumnQuery(CommandContext<CommandSourceStack> context, int x, int z) {
+        ServerLevel world = context.getSource().getLevel();
+        IslandDensityFunction idf = IslandDensityFunction.getActive();
+        IslandTerrain terrain = idf != null ? idf.terrain() : null;
+        world.getChunk(Math.floorDiv(x, 16), Math.floorDiv(z, 16));
+        int surfaceY = world.getHeight(Heightmap.Types.WORLD_SURFACE, x, z);
+        int floorY = world.getHeight(Heightmap.Types.OCEAN_FLOOR, x, z);
+        BlockPos top = new BlockPos(x, surfaceY - 1, z);
+        String topBlock = world.getBlockState(top).getBlock().getDescriptionId();
+        boolean water = !world.getFluidState(top).isEmpty();
+        String biome = world.getBiome(new BlockPos(x, Math.max(floorY, water ? surfaceY : floorY), z))
+            .unwrapKey().map(key -> key.identifier().toString()).orElse("unknown");
+        double c = terrain != null ? terrain.continentalness(x + 0.5, z + 0.5) : Double.NaN;
+        double d = terrain != null ? terrain.signedDistance(x + 0.5, z + 0.5) : Double.NaN;
+        double estimated = terrain != null ? IslandTerrain.continentalnessToElevation(c) : Double.NaN;
+        String line = "OMNI_COLUMN x=" + x + " z=" + z + " surface_y=" + surfaceY
+            + " floor_y=" + floorY + " biome=" + biome + " block=" + topBlock
+            + " water=" + water + " c=" + String.format(java.util.Locale.ROOT, "%.4f", c)
+            + " d=" + String.format(java.util.Locale.ROOT, "%.1f", d)
+            + " estimated_y=" + String.format(java.util.Locale.ROOT, "%.1f", estimated);
+        context.getSource().sendSuccess(() -> Component.literal(line), false);
+        return Command.SINGLE_SUCCESS;
+    }
+
+    private static int executeStructureQuery(CommandContext<CommandSourceStack> context,
+                                             String structureId, int x, int z) {
+        ServerLevel world = context.getSource().getLevel();
+        Identifier id = Identifier.tryParse(structureId);
+        Structure structure = id == null ? null : context.getSource().getServer().registryAccess()
+            .lookupOrThrow(Registries.STRUCTURE).getValue(id);
+        if (structure == null) {
+            context.getSource().sendFailure(Component.literal("Unknown structure id: " + structureId));
+            return 0;
+        }
+
+        int chunkX = Math.floorDiv(x, 16);
+        int chunkZ = Math.floorDiv(z, 16);
+        ChunkAccess chunk = world.getChunk(chunkX, chunkZ);
+        StructureStart start = chunk.getStartForStructure(structure);
+        if (start == null || !start.isValid()) {
+            for (StructureStart candidate : world.structureManager()
+                .startsForStructure(chunkX, chunkZ, structure)) {
+                if (candidate.isValid() && candidate.getChunkPos().x() == chunkX
+                    && candidate.getChunkPos().z() == chunkZ) {
+                    start = candidate;
+                    break;
+                }
+            }
+        }
+        if (start == null || !start.isValid()) {
+            String line = "OMNI_STRUCTURE structure=" + id + " found=false chunk=" + chunkX + "," + chunkZ
+                + " x=" + x + " z=" + z;
+            context.getSource().sendSuccess(() -> Component.literal(line), false);
+            return Command.SINGLE_SUCCESS;
+        }
+
+        BoundingBox box = start.getBoundingBox();
+        int pieceMinY = Integer.MAX_VALUE;
+        int pieceMaxY = Integer.MIN_VALUE;
+        StringBuilder pieceBoxes = new StringBuilder();
+        for (net.minecraft.world.level.levelgen.structure.StructurePiece piece : start.getPieces()) {
+            BoundingBox pieceBox = piece.getBoundingBox();
+            pieceMinY = Math.min(pieceMinY, pieceBox.minY());
+            pieceMaxY = Math.max(pieceMaxY, pieceBox.maxY());
+            if (pieceBoxes.length() < 160) {
+                pieceBoxes.append(pieceBox.minY()).append('/').append(pieceBox.maxY()).append(',');
+            }
+        }
+        int centerX = (box.minX() + box.maxX()) / 2;
+        int centerZ = (box.minZ() + box.maxZ()) / 2;
+        world.getChunk(Math.floorDiv(centerX, 16), Math.floorDiv(centerZ, 16));
+        int surfaceY = world.getHeight(Heightmap.Types.WORLD_SURFACE, centerX, centerZ);
+        String biome = world.getBiome(new BlockPos(centerX, Math.max(world.getMinY(), surfaceY - 1), centerZ))
+            .unwrapKey().map(key -> key.identifier().toString()).orElse("unknown");
+        String line = "OMNI_STRUCTURE structure=" + id + " found=true"
+            + " chunk=" + start.getChunkPos().x() + "," + start.getChunkPos().z()
+            + " query_chunk=" + chunkX + "," + chunkZ
+            + " x=" + centerX + " z=" + centerZ
+            + " y=" + box.minY() + " y_min=" + box.minY() + " y_max=" + box.maxY()
+            + " piece_y_min=" + pieceMinY + " piece_y_max=" + pieceMaxY
+            + " piece_boxes=" + pieceBoxes
+            + " surface_y=" + surfaceY + " biome=" + biome
+            + " pieces=" + start.getPieces().size();
+        context.getSource().sendSuccess(() -> Component.literal(line), false);
+        return Command.SINGLE_SUCCESS;
     }
 
     private static int executeDebug(CommandContext<CommandSourceStack> context, String mode, int radius, int step) {

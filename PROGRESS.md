@@ -122,3 +122,17 @@ selects `cold_ocean` because deep-cold variants are not in the default palette, 
 `minecraft:monument` (vanilla ID; `ocean_monument` is not a structure ID).
 Full suite green with evidence gating: 67 tests, 0 failed, 1 skipped (golden
 regeneration gate). Evidence: `docs/evidence/ocean/`.
+
+### Phase 9.4 — Structures and spawn [v3] (completed; structure matrix PARTIAL)
+- [x] **9.4.1** v3 stronghold selection: three fixed starts in 120° sectors, spawn-distance ≥150 (2500) / ≥300 (≥4000), pairwise ≥250, main-island land preferred; written as `omniisle:fixed_multi` (extends `RandomSpreadStructurePlacement`, visible to `/locate` and Eyes of Ender)
+- [x] **9.4.2** Real-server full sweep: NATURAL/ROUND/LONG/CRESCENT/ARCHIPELAGO × sizes 2500/4000/8000 × seed 101 = 15 configs × 20 structure rows; **15/45 full configs (PARTIAL)**; 300/300 rows found and locate_ok
+- [x] **9.4.3** Real-server stronghold-only sweep on all 45 configs (seeds 101/202/303): 135/135 starts found, locate matches the target chunk, on land / within 112 blocks, Eyes of Ender target a start; **45/45 configs pass**
+- [x] **9.4.4** v3 village/trial-chamber spacing scales with size and the structure-density slider (`min(1, size/4000)`, separation < spacing); headless `structure_scaling.csv`
+- [x] **9.4.5** Spawn evidence on 45 configs: 45/45 marker x/z match, land and dry; 42/45 fully dry ray probes to 64 blocks; v3 spawn plateau keeps the marker dry
+- [x] **9.4.6** v3 relaxed pyramids bypass the vanilla 21×21 sea-level gate; v1/v2 packs untouched (I1); legacy `has_structure` tags stay single-biome (review regression fixed and tested)
+
+Measured: stronghold spawn distances 526.0–551.9 (2500, requirement 150), 868.4–875.4
+(4000) and 818.8–1193.6 (8000, requirement 300); minimum mutual distance 273.9
+(threshold 250); all 135 starts on land; 45/45 eyes target a start. Full-sweep 300/300
+structure rows found. Spawn: 45/45 match/land/dry. Evidence:
+`docs/evidence/structures/`, `docs/evidence/spawn/`.

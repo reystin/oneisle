@@ -6,6 +6,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.hack337.omniisle.continent.IslandMask;
+import com.hack337.omniisle.continent.IslandTerrain;
 import com.hack337.omniisle.platform.TargetPlatform;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -14,7 +15,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.EnumSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.zip.ZipEntry;
@@ -27,6 +30,14 @@ public final class WorldPackBuilder {
     private static final double OCEAN_TRANSITION_WIDTH = 400.0;
     /** The v3 base reaches -0.62 at 0.4*Wo, the shallow edge of the monument band. */
     private static final double DEEP_MONUMENT_MAX_CONTINENTALNESS = -0.62;
+    private static final int VILLAGE_SPACING = 34;
+    private static final int VILLAGE_SEPARATION = 8;
+    private static final int TRIAL_CHAMBERS_SPACING = 34;
+    private static final int TRIAL_CHAMBERS_SEPARATION = 12;
+    private static final int VILLAGE_SALT = 10387312;
+    private static final int TRIAL_CHAMBERS_SALT = 94251327;
+    private static final double STRONGHOLD_MIN_PAIR_DISTANCE = 250.0;
+    private static final double STRONGHOLD_MAX_REACH = 1500.0;
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
     private record StructureDefinition(IslandDraft.StructureOption option, String setName, String structure, String biomeTag,
@@ -75,6 +86,14 @@ public final class WorldPackBuilder {
             putEntry(zip, "pack.mcmeta", packMetadata());
             putEntry(zip, "data/omniisle/worldgen/density_function/overworld/continents.json",
                 createDensityJson(state, halfSpan));
+            if (state.generationVersionNumber() >= 3) {
+                putEntry(zip, "data/omniisle/worldgen/density_function/overworld/final_density.json",
+                    createSpawnPlateauJson(state));
+                putEntry(zip, "data/minecraft/worldgen/structure/desert_pyramid.json",
+                    relaxedPyramidJson("omniisle:relaxed_desert_pyramid", "desert_pyramid"));
+                putEntry(zip, "data/minecraft/worldgen/structure/jungle_pyramid.json",
+                    relaxedPyramidJson("omniisle:relaxed_jungle_temple", "jungle_temple"));
+            }
             putEntry(zip, "data/omniisle/worldgen/world_preset/omniisle.json", createPresetJson(state));
             exportStructureSets(zip, state, mask, halfSpan);
         } catch (Throwable throwable) {
@@ -136,6 +155,18 @@ public final class WorldPackBuilder {
         root.addProperty("type", "minecraft:cache");
         root.add("input", input);
         return GSON.toJson(root) + "\n";
+    }
+
+    private static String createSpawnPlateauJson(IslandDraft state) {
+        int[] sp = state.effectiveSpawnPx();
+        JsonObject plateau = new JsonObject();
+        plateau.addProperty("type", "omniisle:spawn_plateau");
+        plateau.addProperty("input", "omniisle:overworld/final_density_base");
+        plateau.addProperty("spawn_x", (int) Math.round(state.worldX(sp[0])));
+        plateau.addProperty("spawn_z", (int) Math.round(state.worldZ(sp[1])));
+        plateau.addProperty("radius", 80.0);
+        plateau.addProperty("top_y", 78.0);
+        return GSON.toJson(plateau) + "\n";
     }
 
     private static String createPresetJson(IslandDraft state) throws IOException {
@@ -228,15 +259,35 @@ public final class WorldPackBuilder {
             }
         }
 
-        boolean isV2 = state.generationVersionNumber() >= 2;
+        int version = state.generationVersionNumber();
+        boolean isV2 = version >= 2;
+        boolean isV3 = version >= 3;
         List<Point> used = new ArrayList<>();
         for (StructureDefinition definition : STRUCTURES) {
             if (!TargetPlatform.HAS_TRIAL_CHAMBERS && definition.option == IslandDraft.StructureOption.TRIAL_CHAMBERS) continue;
             if (!TargetPlatform.HAS_ABANDONED_CAMP && definition.option == IslandDraft.StructureOption.ABANDONED_CAMP) continue;
             boolean enabled = state.isStructureEnabled(definition.option);
 
-            if (isV2 && definition.option == IslandDraft.StructureOption.STRONGHOLD) {
-                // Scale concentric rings with island radius so strongholds lie inside the island
+            if (isV3 && definition.option == IslandDraft.StructureOption.STRONGHOLD) {
+                List<Point> points = enabled
+                    ? placeStrongholds(state, terrain, samples, minChunk, maxChunk, width, used)
+                    : List.of();
+                used.addAll(points);
+                putEntry(zip, "data/minecraft/worldgen/structure_set/" + definition.setName + ".json",
+                    fixedMultiSetJson(points, enabled));
+                if (enabled) {
+                    Set<String> biomeIds = allEnabledBiomeIds(state);
+                    for (Point point : points) {
+                        biomeIds.add(samples[(point.chunkZ - minChunk) * width + point.chunkX - minChunk].biome.biomeId());
+                    }
+                    putEntry(zip, "data/minecraft/tags/worldgen/biome/has_structure/" + definition.biomeTag + ".json",
+                        biomeTagJson(biomeIds));
+                }
+                continue;
+            }
+
+            if (isV2 && !isV3 && definition.option == IslandDraft.StructureOption.STRONGHOLD) {
+                // Legacy v1/v2 worlds keep the 0.6.0 ring scaling untouched (invariant I1).
                 int scaledDistance = Math.max(8, Math.min(32, (int) Math.round(32.0 * state.islandSize() / 8000.0)));
                 int scaledSpread = Math.max(1, scaledDistance / 10);
                 String json = "{\n  \"structures\": [{\n    \"structure\": \"" + definition.structure +
@@ -247,25 +298,228 @@ public final class WorldPackBuilder {
                 continue;
             }
 
+            if (isV3 && (definition.option == IslandDraft.StructureOption.VILLAGE
+                    || definition.option == IslandDraft.StructureOption.TRIAL_CHAMBERS)) {
+                if (enabled) {
+                    int[] spread = scaledSpread(definition.option, state);
+                    int salt = definition.option == IslandDraft.StructureOption.VILLAGE
+                        ? VILLAGE_SALT : TRIAL_CHAMBERS_SALT;
+                    putEntry(zip, "data/minecraft/worldgen/structure_set/" + definition.setName + ".json",
+                        randomSpreadSetJson(definition, spread[0], spread[1], salt));
+                    putEntry(zip, "data/minecraft/tags/worldgen/biome/has_structure/" + definition.biomeTag + ".json",
+                        biomeTagJson(enabledLandBiomeIds(state)));
+                } else {
+                    putEntry(zip, "data/minecraft/worldgen/structure_set/" + definition.setName + ".json",
+                        fixedSetJson(definition, new Point(0, 0), false));
+                }
+                continue;
+            }
+
             Point point = enabled ? locateStructure(definition, state, samples, minChunk, maxChunk, width, used) : new Point(0, 0);
             if (enabled) used.add(point);
-            String json = "{\n  \"structures\": [{\n    \"structure\": \"" + definition.structure +
-                "\",\n    \"weight\": 1\n  }],\n  \"placement\": {\n    \"type\": \"omniisle:fixed\",\n" +
-                "    \"chunk_x\": " + point.chunkX + ",\n    \"chunk_z\": " + point.chunkZ +
-                ",\n    \"enabled\": " + enabled + "\n  }\n}\n";
-            putEntry(zip, "data/minecraft/worldgen/structure_set/" + definition.setName + ".json", json);
+            putEntry(zip, "data/minecraft/worldgen/structure_set/" + definition.setName + ".json",
+                fixedSetJson(definition, point, enabled));
             if (enabled) {
                 Sample pointSample = samples[(point.chunkZ - minChunk) * width + point.chunkX - minChunk];
-                String biomeId = pointSample.biome.biomeId();
-                if (definition.option == IslandDraft.StructureOption.ANCIENT_CITY) {
-                    putEntry(zip, "data/minecraft/tags/worldgen/biome/has_structure/ancient_city.json",
-                        "{\n  \"replace\": false,\n  \"values\": [\n    \"minecraft:deep_dark\",\n    \"" + biomeId + "\"\n  ]\n}\n");
+                String tagPath = "data/minecraft/tags/worldgen/biome/has_structure/" + definition.biomeTag + ".json";
+                if (isV3) {
+                    Set<String> biomeIds = allEnabledBiomeIds(state);
+                    biomeIds.add(pointSample.biome.biomeId());
+                    if (definition.option == IslandDraft.StructureOption.ANCIENT_CITY) {
+                        biomeIds.add("minecraft:deep_dark");
+                    }
+                    putEntry(zip, tagPath, biomeTagJson(biomeIds));
                 } else {
-                    putEntry(zip, "data/minecraft/tags/worldgen/biome/has_structure/" + definition.biomeTag + ".json",
-                        "{\n  \"replace\": false,\n  \"values\": [\n    \"" + biomeId + "\"\n  ]\n}\n");
+                    String biomeId = pointSample.biome.biomeId();
+                    if (definition.option == IslandDraft.StructureOption.ANCIENT_CITY) {
+                        putEntry(zip, tagPath, "{\n  \"replace\": false,\n  \"values\": [\n    \"minecraft:deep_dark\",\n    \"" + biomeId + "\"\n  ]\n}\n");
+                    } else {
+                        putEntry(zip, tagPath, "{\n  \"replace\": false,\n  \"values\": [\n    \"" + biomeId + "\"\n  ]\n}\n");
+                    }
                 }
             }
         }
+    }
+
+    private static String fixedSetJson(StructureDefinition definition, Point point, boolean enabled) {
+        return "{\n  \"structures\": [{\n    \"structure\": \"" + definition.structure +
+            "\",\n    \"weight\": 1\n  }],\n  \"placement\": {\n    \"type\": \"omniisle:fixed\",\n" +
+            "    \"chunk_x\": " + point.chunkX + ",\n    \"chunk_z\": " + point.chunkZ +
+            ",\n    \"enabled\": " + enabled + "\n  }\n}\n";
+    }
+
+    private static String fixedMultiSetJson(List<Point> points, boolean enabled) {
+        StringBuilder chunks = new StringBuilder("[");
+        for (int i = 0; i < points.size(); i++) {
+            if (i > 0) chunks.append(", ");
+            chunks.append("{\"x\": ").append(points.get(i).chunkX)
+                .append(", \"z\": ").append(points.get(i).chunkZ).append('}');
+        }
+        chunks.append(']');
+        return "{\n  \"structures\": [{\n    \"structure\": \"minecraft:stronghold\",\n    \"weight\": 1\n"
+            + "  }],\n  \"placement\": {\n    \"type\": \"omniisle:fixed_multi\",\n"
+            + "    \"chunks\": " + chunks + ",\n    \"enabled\": " + enabled + "\n  }\n}\n";
+    }
+
+    private static String randomSpreadSetJson(StructureDefinition definition, int spacing, int separation, int salt) {
+        return "{\n  \"structures\": [{\n    \"structure\": \"" + definition.structure +
+            "\",\n    \"weight\": 1\n  }],\n  \"placement\": {\n    \"type\": \"minecraft:random_spread\",\n" +
+            "    \"salt\": " + salt + ",\n    \"spacing\": " + spacing + ",\n    \"separation\": " + separation +
+            "\n  }\n}\n";
+    }
+
+    private static String relaxedPyramidJson(String type, String biomeTag) {
+        return "{\n  \"type\": \"" + type + "\",\n  \"biomes\": \"#minecraft:has_structure/" + biomeTag
+            + "\",\n  \"spawn_overrides\": {},\n  \"step\": \"surface_structures\"\n}\n";
+    }
+
+    private static String biomeTagJson(Set<String> biomeIds) {
+        StringBuilder values = new StringBuilder();
+        for (String biomeId : biomeIds) {
+            if (!values.isEmpty()) values.append(",\n    ");
+            values.append('"').append(biomeId).append('"');
+        }
+        return "{\n  \"replace\": false,\n  \"values\": [\n    " + values + "\n  ]\n}\n";
+    }
+
+    private static Set<String> enabledLandBiomeIds(IslandDraft state) {
+        Set<String> ids = new LinkedHashSet<>();
+        state.enabledBiomes(BiomePreview.Category.LAND).forEach(type -> ids.add(type.biomeId()));
+        if (ids.isEmpty()) ids.add(BiomePreview.Type.PLAINS.biomeId());
+        return ids;
+    }
+
+    /**
+     * v3 fixed placements have exactly one candidate chunk, so the biome tag is a
+     * presence gate, not a distribution control. The editor preview can disagree
+     * with the runtime biome source by one family; listing every enabled biome
+     * keeps the chosen chunk valid without allowing any other placement. v1/v2 keep
+     * the 0.6.0 single-biome tag.
+     */
+    private static Set<String> allEnabledBiomeIds(IslandDraft state) {
+        Set<String> ids = new LinkedHashSet<>();
+        for (BiomePreview.Category category : BiomePreview.Category.values()) {
+            state.enabledBiomes(category).forEach(type -> ids.add(type.biomeId()));
+        }
+        if (ids.isEmpty()) ids.add(BiomePreview.Type.PLAINS.biomeId());
+        return ids;
+    }
+
+    private static int[] scaledSpread(IslandDraft.StructureOption option, IslandDraft state) {
+        boolean trial = option == IslandDraft.StructureOption.TRIAL_CHAMBERS;
+        int baseSpacing = trial ? TRIAL_CHAMBERS_SPACING : VILLAGE_SPACING;
+        int baseSeparation = trial ? TRIAL_CHAMBERS_SEPARATION : VILLAGE_SEPARATION;
+        double islandScale = Math.min(1.0, state.islandSize() / 4000.0);
+        double density = Math.max(0.5, Math.min(2.0, state.structureDensity()));
+        double densityScale = 1.0 / Math.sqrt(density);
+        int spacing = Math.max(2, (int) Math.round(baseSpacing * islandScale * densityScale));
+        int separation = Math.max(1, (int) Math.round(baseSeparation * islandScale * densityScale));
+        separation = Math.min(separation, spacing - 1);
+        return new int[]{spacing, separation};
+    }
+
+    private record StrongholdCandidate(Point point, double distance, double angle, double score) {}
+
+    /**
+     * Places the three v3 strongholds on real land in three roughly even sectors around
+     * the spawn. Unlike vanilla concentric rings, this guarantees the spawn distance,
+     * pairwise spacing and land requirements for every preset and island size, and the
+     * fixed chunks are still visible to /locate and Eyes of Ender.
+     */
+    private static List<Point> placeStrongholds(IslandDraft state, com.hack337.omniisle.continent.IslandTerrain terrain,
+                                                Sample[] samples, int minChunk, int maxChunk, int width,
+                                                List<Point> used) throws IOException {
+        double spawnX = state.worldSpawnX();
+        double spawnZ = state.worldSpawnZ();
+        double minSpawnDistance = state.islandSize() >= 4000 ? 300.0 : 150.0;
+        double targetDistance = Math.min(1200.0, Math.max(320.0, state.islandSize() * 0.22));
+        double maxReach = Math.min(STRONGHOLD_MAX_REACH, Math.max(targetDistance + 300.0, 600.0));
+        double sectorRotation = ((state.biomeSeed() >>> 11) % 3600) / 3600.0 * Math.PI * 2.0;
+
+        List<StrongholdCandidate> candidates = new ArrayList<>();
+        List<StrongholdCandidate> fallback = new ArrayList<>();
+        for (int cz = minChunk; cz <= maxChunk; cz++) {
+            for (int cx = minChunk; cx <= maxChunk; cx++) {
+                Sample sample = samples[(cz - minChunk) * width + cx - minChunk];
+                double x = cx * 16 + 8;
+                double z = cz * 16 + 8;
+                double dx = x - spawnX;
+                double dz = z - spawnZ;
+                double distance = Math.hypot(dx, dz);
+                if (distance < minSpawnDistance || distance > maxReach) continue;
+                boolean tooClose = false;
+                for (Point other : used) {
+                    int ox = cx - other.chunkX;
+                    int oz = cz - other.chunkZ;
+                    if (ox * ox + oz * oz < 64) { tooClose = true; break; }
+                }
+                if (tooClose) continue;
+                double score = Math.abs(distance - targetDistance) - sample.continentalness * 40.0;
+                StrongholdCandidate candidate = new StrongholdCandidate(new Point(cx, cz), distance,
+                    Math.atan2(dz, dx), score);
+                if (sample.biome.isLand() && mainIslandDistance(terrain, x, z) > 0.0) {
+                    candidates.add(candidate);
+                } else if (sample.biome.category == BiomePreview.Category.SHORE) {
+                    fallback.add(candidate);
+                }
+            }
+        }
+        candidates.sort(Comparator.comparingDouble(StrongholdCandidate::score));
+        fallback.sort(Comparator.comparingDouble(StrongholdCandidate::score));
+
+        List<Point> chosen = new ArrayList<>();
+        for (int sector = 0; sector < 3; sector++) {
+            double center = sectorRotation + sector * (Math.PI * 2.0 / 3.0);
+            StrongholdCandidate best = null;
+            for (StrongholdCandidate candidate : candidates) {
+                if (Math.abs(angleDifference(candidate.angle, center)) > Math.PI / 3.0) continue;
+                if (!farEnough(candidate.point, chosen)) continue;
+                best = candidate;
+                break;
+            }
+            if (best != null) chosen.add(best.point);
+        }
+        if (chosen.size() < 3) {
+            for (StrongholdCandidate candidate : candidates) {
+                if (chosen.size() >= 3) break;
+                if (farEnough(candidate.point, chosen)) chosen.add(candidate.point);
+            }
+        }
+        if (chosen.size() < 3) {
+            for (StrongholdCandidate candidate : fallback) {
+                if (chosen.size() >= 3) break;
+                if (farEnough(candidate.point, chosen)) chosen.add(candidate.point);
+            }
+        }
+        if (chosen.size() < 3) {
+            throw new IOException("Could not place three strongholds: needs " + minSpawnDistance
+                + " blocks from spawn and " + STRONGHOLD_MIN_PAIR_DISTANCE + " blocks apart, found "
+                + chosen.size() + " land candidates");
+        }
+        chosen.sort(Comparator.comparingDouble(point ->
+            Math.hypot(point.chunkX * 16 + 8 - spawnX, point.chunkZ * 16 + 8 - spawnZ)));
+        return chosen;
+    }
+
+    private static boolean farEnough(Point candidate, List<Point> chosen) {
+        for (Point other : chosen) {
+            double dx = (candidate.chunkX - other.chunkX) * 16.0;
+            double dz = (candidate.chunkZ - other.chunkZ) * 16.0;
+            if (Math.hypot(dx, dz) < STRONGHOLD_MIN_PAIR_DISTANCE) return false;
+        }
+        return true;
+    }
+
+    private static double mainIslandDistance(com.hack337.omniisle.continent.IslandTerrain terrain, double x, double z) {
+        if (terrain instanceof com.hack337.omniisle.continent.ModernTerrainV2 modern) {
+            return modern.computeSignedDistance(x, z, true);
+        }
+        return terrain.signedDistance(x, z);
+    }
+
+    private static double angleDifference(double a, double b) {
+        double difference = Math.abs(a - b) % (Math.PI * 2.0);
+        return difference > Math.PI ? Math.PI * 2.0 - difference : difference;
     }
 
     /**

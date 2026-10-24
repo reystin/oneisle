@@ -148,7 +148,7 @@ This document records the empirical verification of Minecraft 26.3 worldgen inte
 **v3 bathymetry measurements (`docs/evidence/ocean/`):**
 - 15 configs × 360 rays: `c ∈ [0.4·Wo, 1.0·Wo]` maximum −0.712976, 120,856 samples, 0 above −0.60 (threshold −0.58). Radial CSV: 23,184 rows, `c_min = -1.000000`, coast `c_max = -0.052040`, soft floor respected.
 - Islets: 62 land samples across 6 configs at density 0.35, peak `c = 0.2355`, nearest islet coast 611.4 blocks offshore (> `Wo = 400`), max 1-block profile delta 0.04462.
-- Headless monument placement (15 configs): centre `c` −0.748…−0.719, 29-block survey maximum ≤ −0.640, all tags ocean; one config tags `cold_ocean` because `deep_cold_ocean` is absent from the default palette while `c` is still deep.
+- Headless monument placement (15 configs): centre `c` −0.748…−0.719, 29-block survey maximum ≤ −0.640, all 15 preview biomes are oceans; `ROUND_4000_s303` selects `cold_ocean` because `deep_cold_ocean` is absent from the default palette while `c` is still −0.724. Since Phase 9.4 makes v3 fixed-placement tags presence gates (Decision 020), the test records the preview biome at the chunk instead of the first tag value.
 - Real 26.3 server: `/locate structure minecraft:monument` returned the pack chunk in 10/10 configs (511–1000 blocks away); `execute if biome` confirmed `#minecraft:is_deep_ocean` at y = 62/50/40/30 and `#minecraft:is_ocean` at y = 50 at every located monument. One config was additionally probed for prismarine blocks, confirming the monument actually generated.
 
 **Pack metadata:**
@@ -157,3 +157,80 @@ This document records the empirical verification of Minecraft 26.3 worldgen inte
 **Limitations:**
 - The locate evidence starts the server once per config with a fresh `run/locate` world; the first locate probe for each config may load chunks, but biome probes are taken after a forceload and 2 s wait. The evidence records the actual tag queries rather than inferred biome names.
 - RCON locate does not prove every monument generated; only the probed config was block-scanned. The headless 5×5 check plus the vanilla `required_ocean_monument_surrounding` rule are the generation guarantee.
+
+---
+
+## 11. [VERIFY] Phase 9.4 — Structures and Spawn on Real 26.3 Servers
+
+**Why the old rings could not pass:** v2 and earlier scaled `minecraft:concentric_rings`
+with the island size. Concentric rings choose starts from a ring angle and biome filter,
+so on an arbitrary painted mask they can land in water, inside the spawn radius or outside
+the 100-chunk `/locate` reach. The 9.1 audit had already shown that "24.12 blocks from
+spawn" was a pre-0.6.0 artifact, not a measured stronghold distance.
+
+**v3 fixed starts (`WorldPackBuilder.placeStrongholds`, `FixedMultiStructurePlacement`):**
+- Candidate generation walks real land chunks, requires distance from spawn ≥150
+  (size 2500) or ≥300 (≥4000), scores `|distance − target| − 40·continentalness` with
+  `target = min(1200, max(320, 0.22·size))`, picks one candidate per 120° sector and
+  rejects pairs closer than 250 blocks. Main-island land is preferred; shore is a
+  fallback. The three chunks are written as an ordered `omniisle:fixed_multi` placement
+  with spacing 1.
+- 26.3 `ChunkGenerator#findNearestMapStructure` only handles `ConcentricRings` and
+  `RandomSpread` placements (section 10), so `fixed_multi` extends the latter; both
+  `isPlacementChunk` and `applyAdditionalChunkRestrictions` accept exactly the listed
+  chunks, which keeps the locate scan cheap and makes `/locate` and the Eye of Ender
+  path see the real starts.
+
+**Measured (real dedicated server, 45 configs, 135 starts):** every start found and
+located at the target chunk. Spawn distance 526.0–551.9 (2500; requirement 150),
+868.4–875.4 (4000) and 818.8–1193.6 (8000; requirement 300). Minimum pairwise distance
+273.9 (requirement 250). 115 starts have their centre on dry land; the other 20 are
+4–24 blocks from dry land (limit 112). `omniisle query eye` found a target in 45/45
+configs and the target chunk equals one of the three starts. Source: `stronghold_validation.csv`.
+
+**Full 20-structure sweep (15 configs, seed 101):** 300/300 rows `found=true` and
+`locate_ok=true`; each of the 17 other structure types is 15/15. This is a PARTIAL
+matrix (15/45 configs) by the agreed scope cut; the 30 remaining configs have no claim
+about the other 17 structures. Source: `STRUCTURE_REPORT_after_v2.csv`.
+
+**Pyramid gate:** 26.3's `SinglePieceStructure#findGenerationPoint` rejects a start when
+the 21×21 footprint's lowest block is below sea level. OmniIsle lowlands can have
+footprint corners at y=63 from vanilla ridge/erosion noise that the editor cannot
+evaluate. v3 replaces only the two pyramid structure codecs with
+`omniisle:relaxed_desert_pyramid` / `omniisle:relaxed_jungle_temple`, reusing the vanilla
+pieces, IDs, tags and `afterPlace`; v1/v2 packs keep the vanilla codecs. In the reduced
+sweep both pyramids are 15/15, including the NATURAL_8000_101 rows that failed before
+the override.
+
+**Spawn:** the v3 world writes a spawn plateau density wrapper around
+`effectiveSpawnPx()` (80-block radius, top y 78), and `SERVER_STARTED` reconciles
+`getRespawnData()`. Across 45 fresh worlds the real spawn block equals the editor
+marker in x/z 45/45, is land 45/45 and dry 45/45; 42/45 stay dry on all 8 ray probes to
+64 blocks, nearest water min 56 blocks, and no coast ray hits non-land within 96 blocks.
+Spawn coordinates are seed-independent for non-archipelago presets; ARCHIPELAGO moves
+its main component with the shape seed. `spawn_y` is the heightmap at query time and
+can differ by a feature (pale oak leaves vs moss carpet) between reruns; the overlap
+check compares x/z/biome/land/dry and reports such y differences as Y-NOTEs.
+
+**Legacy regression caught in review:** the first cut of the presence-tag change listed
+all enabled biomes for every version. Fixed placements have one candidate chunk, so this
+did not move structures, but it changed v1/v2 tag JSON and could have enabled a fixed
+structure the old single-biome tag rejected. The final code writes the broad tag only
+for v3 and keeps the original single-biome JSON for v1/v2; a test asserts the v1/v2
+pyramid tag has one value and the ancient-city tag has `deep_dark` plus one biome.
+
+**Config copy fix:** 0.6.0 `IslandDraft.copy()` dropped `riverDensity` and the world-border
+settings. The v3 pack/spawn path copies the draft, so a user's river or border choice could
+silently reset between preview and export. `copy()` now carries all three fields, and
+`Phase9AuditTest` asserts the round-trip; `docs/evidence/phase9_before/world_border_default.txt`
+records the fixed result.
+
+**Limitations:**
+- Structure rows come from `/locate` plus `StructureStart` queries after force-loading;
+  they prove placement/start data, not a full block scan of every structure. One
+  monument was block-probed in 9.3; this sweep does not repeat that for every config.
+- The repeatability rerun was dropped with the reduced matrix, so there is no
+  repeatability claim. The 15 overlapping full/stronghold-only runs agree on all stable
+  spawn fields (`mismatches=0`).
+- `/omniisle query structure` matches a start only by its chunk; it is a debug helper
+  for the harness and is always queried at the located start chunk.
