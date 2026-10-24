@@ -105,3 +105,20 @@ Evidence: `docs/evidence/phase9_before/README.md`.
 Measured (defaults): sand 22.1 %, stony 3.9 %, none 74.0 %; longest run failures 0;
 density 0→0 %, 1→71.2 % monotone; bays/headlands sand ratio 2.51; widest line-fit-straight
 border 56 blocks (longest border 155 blocks, 7.1 block deviation). Evidence: `docs/evidence/shore/`.
+
+### Phase 9.3 — Ocean floor and deep-ocean band [v3] (completed)
+- [x] **9.3.1** v3-only smooth ocean ramp `base = -0.08 - 0.54·smoothstep(s/0.4Wo) - 0.18·smoothstep(s/Wo)` with zero slope at the coastline; soft floor −0.80; v1/v2 linear ramp untouched (I1)
+- [x] **9.3.2** Seabed noise weight `smoothstep(s/0.5Wo)` is exactly 0 at the coast; seamounts (`max(0,fbm)·0.18`) fade in only beyond `1.0·Wo`; trenches `0.12`; global clamp `[-1.0, 0.70]`
+- [x] **9.3.3** Deep-ocean guarantee: in `[0.4·Wo, 1.0·Wo]` no positive seabed noise, worst `c = -0.712976` (threshold `-0.58`) over 120,856 samples in 15 configs, 0 violations
+- [x] **9.3.4** Islets keep `c = max(c_ocean, c_islet)`; v3 clearance `Wo + 80` (legacy 350); 62 islet land samples, peak 0.2355, nearest coast 611 blocks, max profile delta 0.0446
+- [x] **9.3.5** Ocean monuments target deep water: 5×5 chunk-centre survey below −0.62 (mirrors the 29-block biome check), score toward −0.72; placement class now extends `RandomSpreadStructurePlacement` so 26.3 `/locate` finds it, with exact-chunk restriction to keep the scan cheap
+- [x] **9.3.6** Evidence: 23,184-row radial CSV, 6000×6000 height PNG, `/locate structure minecraft:monument` in 10/10 configs (511–1000 blocks away) with `#minecraft:is_deep_ocean` at y=62/50/40/30
+
+Measured: `c` in band max −0.713 across all 15 headless configs; global `c` range
+[−1.000, −0.052] (coast micro-roughness); monument centres `c` −0.748…−0.719 with
+29-block survey maximum ≤ −0.640; 14/15 pack tags are `deep_ocean`, one config
+selects `cold_ocean` because deep-cold variants are not in the default palette, while
+`c` still sits below the deep threshold. Real 26.3 server evidence used
+`minecraft:monument` (vanilla ID; `ocean_monument` is not a structure ID).
+Full suite green with evidence gating: 67 tests, 0 failed, 1 skipped (golden
+regeneration gate). Evidence: `docs/evidence/ocean/`.

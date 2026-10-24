@@ -1,0 +1,16 @@
+config,chunk_x,chunk_z,center_x,center_z,c_center,c_max_surround,biome_tag
+NATURAL_4000_s101,7,-127,120,-2024,-0.719411,-0.676915,minecraft:deep_ocean
+NATURAL_4000_s202,3,-128,56,-2040,-0.725379,-0.657586,minecraft:deep_ocean
+NATURAL_4000_s303,-35,-118,-552,-1880,-0.724305,-0.642836,minecraft:deep_ocean
+ROUND_4000_s101,6,-130,104,-2072,-0.733659,-0.682416,minecraft:deep_ocean
+ROUND_4000_s202,12,-131,200,-2088,-0.732993,-0.665504,minecraft:deep_ocean
+ROUND_4000_s303,-3,-129,-40,-2056,-0.719772,-0.645251,minecraft:cold_ocean
+LONG_4000_s101,82,-85,1320,-1352,-0.721375,-0.653942,minecraft:deep_ocean
+LONG_4000_s202,47,-133,760,-2120,-0.721604,-0.658506,minecraft:deep_ocean
+LONG_4000_s303,39,-131,632,-2088,-0.720053,-0.662743,minecraft:deep_ocean
+CRESCENT_4000_s101,-43,3,-680,56,-0.748015,-0.685200,minecraft:deep_ocean
+CRESCENT_4000_s202,-43,-12,-680,-184,-0.733947,-0.647188,minecraft:deep_ocean
+CRESCENT_4000_s303,-42,16,-664,264,-0.723067,-0.640199,minecraft:deep_ocean
+ARCHIPELAGO_4000_s101,23,30,376,488,-0.719328,-0.660674,minecraft:deep_ocean
+ARCHIPELAGO_4000_s202,-35,-4,-552,-56,-0.720403,-0.687409,minecraft:deep_ocean
+ARCHIPELAGO_4000_s303,25,-14,408,-216,-0.719674,-0.664595,minecraft:deep_ocean

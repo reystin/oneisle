@@ -25,6 +25,8 @@ public final class WorldPackBuilder {
     public static final String FILE_NAME = "omniisle-generated.zip";
     private static final double COAST_TRANSITION_WIDTH = 192.0;
     private static final double OCEAN_TRANSITION_WIDTH = 400.0;
+    /** The v3 base reaches -0.62 at 0.4*Wo, the shallow edge of the monument band. */
+    private static final double DEEP_MONUMENT_MAX_CONTINENTALNESS = -0.62;
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
     private record StructureDefinition(IslandDraft.StructureOption option, String setName, String structure, String biomeTag,
@@ -84,7 +86,10 @@ public final class WorldPackBuilder {
     }
 
     private static String packMetadata() {
-        return "{\n  \"pack\": {\n    \"pack_format\": " + TargetPlatform.PACK_FORMAT
+        // 26.3 requires min_format/max_format for pack formats above 81; a bare
+        // pack_format is reported as incompatible even though it still loads.
+        return "{\n  \"pack\": {\n    \"min_format\": " + TargetPlatform.PACK_FORMAT
+            + ",\n    \"max_format\": " + TargetPlatform.PACK_FORMAT
             + ",\n    \"description\": \"OmniIsle generated island\"\n  }\n}\n";
     }
 
@@ -263,6 +268,29 @@ public final class WorldPackBuilder {
         }
     }
 
+    /**
+     * The monument's own generation check surveys every biome within 29 blocks and requires
+     * all of them to be ocean. Requiring the 5x5 chunk centres around the candidate to stay
+     * below the deep threshold keeps that survey on deep water and rejects islet skirts,
+     * which can dip below -0.62 right next to shallow land.
+     */
+    private static boolean deepSurveyClean(Sample[] samples, int minChunk, int maxChunk, int width,
+                                           int chunkX, int chunkZ) {
+        for (int oz = -2; oz <= 2; oz++) {
+            int sz = chunkZ + oz;
+            if (sz < minChunk || sz > maxChunk) return false;
+            for (int ox = -2; ox <= 2; ox++) {
+                int sx = chunkX + ox;
+                if (sx < minChunk || sx > maxChunk) return false;
+                if (samples[(sz - minChunk) * width + sx - minChunk].continentalness
+                    > DEEP_MONUMENT_MAX_CONTINENTALNESS) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
     private static Point locateStructure(StructureDefinition definition, IslandDraft state, Sample[] samples,
                                      int minChunk, int maxChunk, int width, List<Point> used) throws IOException {
         Set<BiomePreview.Type> accepted = EnumSet.noneOf(BiomePreview.Type.class);
@@ -284,8 +312,17 @@ public final class WorldPackBuilder {
                     if (dx * dx + dz * dz < 64) { tooClose = true; break; }
                 }
                 if (tooClose) continue;
+                boolean deepMonument = definition.option == IslandDraft.StructureOption.OCEAN_MONUMENT;
+                if (deepMonument && !deepSurveyClean(samples, minChunk, maxChunk, width, cx, cz)) continue;
                 boolean oceanOrShore = sample.biome.name().contains("OCEAN") || sample.biome == BiomePreview.Type.BEACH;
-                double score = oceanOrShore ? -Math.abs(sample.continentalness + 0.40) : sample.continentalness;
+                double score;
+                if (deepMonument) {
+                    // Keep the monument safely inside the v3 deep band [0.4*Wo, 1.0*Wo],
+                    // whose shallow edge is about -0.62, instead of the old +-0.40 target.
+                    score = -Math.abs(sample.continentalness + 0.72);
+                } else {
+                    score = oceanOrShore ? -Math.abs(sample.continentalness + 0.40) : sample.continentalness;
+                }
                 double distFromSpawn = Math.hypot((cx * 16 + 8) - spawnX, (cz * 16 + 8) - spawnZ);
                 score -= distFromSpawn * 0.00005;
                 if (score > bestScore) { bestScore = score; best = new Point(cx, cz); }

@@ -1,0 +1,11 @@
+config,preset,seed,pack_chunk_x,pack_chunk_z,locate_origin_x,locate_origin_z,locate_result,monument_x,monument_z,locate_distance_blocks,biome_y_62,biome_y_50,biome_y_40,biome_y_30,is_deep_ocean,is_ocean
+NATURAL_4000_101,NATURAL,101,7,-127,57,-1034,"The nearest minecraft:monument is at [112, ~, -2032] (999 blocks away)",112,-2032,999,True,True,True,True,True,True
+NATURAL_4000_202,NATURAL,202,3,-128,25,-1048,"The nearest minecraft:monument is at [48, ~, -2048] (1000 blocks away)",48,-2048,1000,True,True,True,True,True,True
+ROUND_4000_101,ROUND,101,6,-130,50,-1081,"The nearest minecraft:monument is at [96, ~, -2080] (1000 blocks away)",96,-2080,1000,True,True,True,True,True,True
+ROUND_4000_202,ROUND,202,12,-131,101,-1100,"The nearest minecraft:monument is at [192, ~, -2096] (1000 blocks away)",192,-2096,1000,True,True,True,True,True,True
+LONG_4000_101,LONG,101,82,-85,618,-640,"The nearest minecraft:monument is at [1312, ~, -1360] (1000 blocks away)",1312,-1360,1000,True,True,True,True,True,True
+LONG_4000_202,LONG,202,47,-133,419,-1185,"The nearest minecraft:monument is at [752, ~, -2128] (1000 blocks away)",752,-2128,1000,True,True,True,True,True,True
+CRESCENT_4000_101,CRESCENT,101,-43,3,0,0,"The nearest minecraft:monument is at [-688, ~, 48] (689 blocks away)",-688,48,689,True,True,True,True,True,True
+CRESCENT_4000_202,CRESCENT,202,-43,-12,0,0,"The nearest minecraft:monument is at [-688, ~, -192] (714 blocks away)",-688,-192,714,True,True,True,True,True,True
+ARCHIPELAGO_4000_101,ARCHIPELAGO,101,23,30,0,0,"The nearest minecraft:monument is at [368, ~, 480] (604 blocks away)",368,480,604,True,True,True,True,True,True
+ARCHIPELAGO_4000_202,ARCHIPELAGO,202,-35,-4,0,0,"The nearest minecraft:monument is at [-560, ~, -64] (563 blocks away)",-560,-64,563,True,True,True,True,True,True

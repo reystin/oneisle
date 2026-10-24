@@ -1,0 +1,7 @@
+preset,seed,islet_land_samples,peak_c,nearest_land_offshore,max_delta
+ROUND,101,11,0.2349,930.4,0.04462
+ROUND,202,20,0.2355,611.4,0.03071
+ROUND,303,0,-2.0000,Infinity,0.00000
+NATURAL,101,11,0.2349,958.1,0.04462
+NATURAL,202,20,0.2355,624.9,0.03071
+NATURAL,303,0,-2.0000,Infinity,0.00000

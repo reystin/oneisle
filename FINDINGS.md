@@ -134,3 +134,26 @@ This document records the empirical verification of Minecraft 26.3 worldgen inte
 
 **Limitations:**
 - The editor GUI and the in-game debug command were not launched in this environment (no client run); their wiring is covered by compilation, the headless round-trip test and shared `ShoreField` logic only. The final report marks them PARTIAL.
+
+---
+
+## 10. [VERIFY] Phase 9.3 — 26.3 Ocean Depth, `/locate`, and Pack Metadata
+
+**26.3 source behavior (checked with `javap` against `minecraft-merged.jar`, project Loom cache):**
+- `ChunkGenerator#findNearestMapStructure(ServerLevel, HolderSet, BlockPos, int, boolean)` groups structures by `StructurePlacement` and then only handles two cases: `instanceof ConcentricRingsStructurePlacement` and a cast to `RandomSpreadStructurePlacement` (`checkcast`). Any other `StructurePlacement` subclass is silently skipped. `LocateCommand` passes `maxDistance = 100` chunks. This is why the previous `AbstractSpreadingStructurePlacement` was invisible to `/locate`, and why the fixed start must be at most 100 chunks from the command source.
+- `StructureCheck#checkStart` calls `StructurePlacement#applyAdditionalChunkRestrictions(int, int, long)` (bytecode `invokeinterface`) but never calls `isPlacementChunk`. With a spacing-1 placement every candidate chunk therefore reaches `findGenerationPoint`; for monuments that means a 29-block `getBiomesWithin` survey per candidate (~40k candidates), which tripped the 60 s server watchdog. Rejecting non-fixed chunks in `applyAdditionalChunkRestrictions` fixes both cost and correctness.
+- `OceanMonumentStructure#findGenerationPoint` samples `biomeResolver.getBiomesWithin(chunk.getBlockX(9), seaLevel, chunk.getBlockZ(9), 29)` and returns empty unless every biome is in `BiomeTags.REQUIRED_OCEAN_MONUMENT_SURROUNDING` (all oceans and rivers). A monument can therefore generate even if a few survey samples are shallow ocean, not only deep ocean; the v3 placement deliberately keeps the whole 5×5 chunk neighbourhood below the deep threshold as a stronger guarantee.
+- The structure registry id is `minecraft:monument`; `ocean_monument` is the `has_structure` biome tag name. `/locate structure minecraft:ocean_monument` fails with "no such structure".
+
+**v3 bathymetry measurements (`docs/evidence/ocean/`):**
+- 15 configs × 360 rays: `c ∈ [0.4·Wo, 1.0·Wo]` maximum −0.712976, 120,856 samples, 0 above −0.60 (threshold −0.58). Radial CSV: 23,184 rows, `c_min = -1.000000`, coast `c_max = -0.052040`, soft floor respected.
+- Islets: 62 land samples across 6 configs at density 0.35, peak `c = 0.2355`, nearest islet coast 611.4 blocks offshore (> `Wo = 400`), max 1-block profile delta 0.04462.
+- Headless monument placement (15 configs): centre `c` −0.748…−0.719, 29-block survey maximum ≤ −0.640, all tags ocean; one config tags `cold_ocean` because `deep_cold_ocean` is absent from the default palette while `c` is still deep.
+- Real 26.3 server: `/locate structure minecraft:monument` returned the pack chunk in 10/10 configs (511–1000 blocks away); `execute if biome` confirmed `#minecraft:is_deep_ocean` at y = 62/50/40/30 and `#minecraft:is_ocean` at y = 50 at every located monument. One config was additionally probed for prismarine blocks, confirming the monument actually generated.
+
+**Pack metadata:**
+- 26.3's pack metadata codec requires `min_format`/`max_format` for formats above 81; emitting only `pack_format: 121` loads but marks the datapack `(incompatible)` in the server log. `min_format = max_format = 121` removes the warning with no version change.
+
+**Limitations:**
+- The locate evidence starts the server once per config with a fresh `run/locate` world; the first locate probe for each config may load chunks, but biome probes are taken after a forceload and 2 s wait. The evidence records the actual tag queries rather than inferred biome names.
+- RCON locate does not prove every monument generated; only the probed config was block-scanned. The headless 5×5 check plus the vanilla `required_ocean_monument_surrounding` rule are the generation guarantee.

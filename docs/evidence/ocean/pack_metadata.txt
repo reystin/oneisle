@@ -1,0 +1,22 @@
+OmniIsle v3 datapack metadata on Minecraft 26.3
+================================================
+
+pack.mcmeta from /tmp/omniisle-locate/LONG_4000_101/datapacks/omniisle-generated.zip:
+
+{
+  "pack": {
+    "min_format": 121,
+    "max_format": 121,
+    "description": "OmniIsle generated island"
+  }
+}
+
+Server log (/tmp/omni-locate-LONG_4000_101.log), datapack auto-load:
+
+[17:38:58] [main/INFO] (Minecraft) Found new data pack file/omniisle-generated.zip, loading it automatically
+[17:38:59] [Worker-Main-1/INFO] (Minecraft) No existing world data, creating new world
+[17:38:59] [Worker-Main-2/INFO] (Minecraft) Loaded 1866 advancements
+
+No "(incompatible)" marker appears anywhere in the log. With the previous bare
+"pack_format": 121 field the same pack loaded but the datapack list marked it
+incompatible; 26.3 requires min_format/max_format for formats above 81.

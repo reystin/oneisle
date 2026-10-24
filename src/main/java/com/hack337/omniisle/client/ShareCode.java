@@ -42,8 +42,8 @@ public final class ShareCode {
         return crc & 0xFFFF;
     }
 
-    /** Encodes an IslandDraft into a share code string. */
-    public static String encode(IslandDraft draft) {
+    /** Serializes a draft to the JSON payload used by share codes and config/omniisle.json. */
+    public static String toJson(IslandDraft draft) {
         JsonObject root = new JsonObject();
         root.addProperty("version", 2);
         root.addProperty("resolution", draft.resolution());
@@ -86,8 +86,12 @@ public final class ShareCode {
         }
         root.add("structures", structs);
 
-        String json = GSON.toJson(root);
-        byte[] payload = json.getBytes(StandardCharsets.UTF_8);
+        return GSON.toJson(root);
+    }
+
+    /** Encodes an IslandDraft into a share code string. */
+    public static String encode(IslandDraft draft) {
+        byte[] payload = toJson(draft).getBytes(StandardCharsets.UTF_8);
 
         // Deflate
         Deflater deflater = new Deflater(Deflater.BEST_COMPRESSION);

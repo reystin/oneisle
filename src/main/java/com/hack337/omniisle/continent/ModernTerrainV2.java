@@ -9,6 +9,8 @@ package com.hack337.omniisle.continent;
  * - Domain warping on mask lookup only (frequency 1/520, amplitude 45; octave 2 at 1/190, amplitude 12).
  * - Near-coast micro-roughness centered at shoreline -0.08 with smoothstep falloff.
  * - Ocean bathymetry with soft floor at -0.80, seabed noise (fBm + ridged trenches), and guaranteed deep ocean band.
+ * - v3: smooth depth ramp reaching the deep threshold before 0.4*Wo, no positive seabed noise
+ *   inside the [0.4*Wo, 1.0*Wo] monument band, and islets placed beyond 1.0*Wo.
  * - Satellite islets with jittered cellular placement, 350-block margin from main island, and density slider.
  * - Procedural ridged mountain spines with headroom and tanh soft saturation (stops the cone).
  * - 4-tier height layer support with blurred sampling.
@@ -31,6 +33,8 @@ public final class ModernTerrainV2 implements IslandTerrain {
     private final long seed;
     private final double coastWarp;
     private final double isletDensity;
+    private final double isletClearance;
+    private final boolean v3Ocean;
     private final ShoreSettings shoreSettings;
 
     private final float[] sdfGrid;
@@ -52,6 +56,10 @@ public final class ModernTerrainV2 implements IslandTerrain {
         this.seed = config != null && config.biomeSeed != 0L ? config.biomeSeed : 0x5EED1234ABCDL;
         this.coastWarp = 45.0;
         this.isletDensity = config != null ? config.isletDensity : 0.25;
+        this.v3Ocean = config != null && config.generationVersion >= 3;
+        // 80 blocks covers the maximum domain warp (45 + 12 amplitudes) so islets placed
+        // by unwarped distance still start beyond 1.0*Wo in the warped field.
+        this.isletClearance = v3Ocean ? this.oceanTransitionWidth + 80.0 : 350.0;
         this.shoreSettings = config != null && config.generationVersion >= 3 ? config.shore : null;
 
         this.sdfGrid = buildSdfGrid();
@@ -181,7 +189,16 @@ public final class ModernTerrainV2 implements IslandTerrain {
         // Ocean bathymetry
         double s = -worldDistance; // offshore distance in blocks
         double wo = oceanTransitionWidth;
-        double base = -0.08 - 0.92 * (s / wo);
+        double base;
+        if (v3Ocean) {
+            // Reach the deep band by 0.4*Wo (-0.62 at that point), then settle onto the
+            // -0.80 soft floor by Wo. Zero derivative at the coast keeps c(s=0) = -0.08.
+            base = -0.08
+                - 0.54 * IslandNoise.smoothstep(s / (0.4 * wo))
+                - 0.18 * IslandNoise.smoothstep(s / wo);
+        } else {
+            base = -0.08 - 0.92 * (s / wo);
+        }
         double cBase = base;
 
         // Near-coast micro-roughness on the water side of the shoreline
@@ -199,7 +216,8 @@ public final class ModernTerrainV2 implements IslandTerrain {
         double fbmBed = IslandNoise.fbm2(worldX / 1100.0, worldZ / 1100.0, seed + 555L, 3, 2.0, 0.5);
         double trench = 1.0 - Math.abs(IslandNoise.fbm2(worldX / 450.0, worldZ / 450.0, seed + 777L, 2, 2.0, 0.5));
 
-        // Seamounts (positive seabed noise) fade in only beyond 1.0*wo, keeping [0.4*wo, 1.0*wo] guaranteed deep
+        // Seamounts (positive seabed noise) are forbidden inside the monument band
+        // [0.4*Wo, 1.0*Wo] and fade in only beyond 1.0*Wo.
         double seamountFade = s > 1.0 * wo ? IslandNoise.smoothstep((s - 1.0 * wo) / (0.3 * wo)) : 0.0;
         double positiveBed = Math.max(0.0, fbmBed * 0.18) * seamountFade;
         double negativeBed = Math.min(0.0, fbmBed * 0.18) - trench * 0.12;
@@ -291,9 +309,10 @@ public final class ModernTerrainV2 implements IslandTerrain {
                     double centerZ = (cz + 0.15 + IslandNoise.hashUnit01(cellSeed, 3) * 0.70) * 800.0;
 
                     double r = 40.0 + IslandNoise.hashUnit01(cellSeed, 4) * 120.0;
-                    // Ensure the entire islet disc remains strictly outside the 350-block buffer
+                    // Islet discs must stay outside the islet clearance (350 blocks in legacy
+                    // versions; the full ocean transition width in v3 so the monument band is clean).
                     double centerDist = computeSignedDistance(centerX, centerZ, false);
-                    if (centerDist > -(350.0 + r)) continue;
+                    if (centerDist > -(isletClearance + r)) continue;
 
                     double dist = Math.hypot(worldX - centerX, worldZ - centerZ);
                     if (dist < r) {
@@ -333,7 +352,7 @@ public final class ModernTerrainV2 implements IslandTerrain {
 
                     double r = 40.0 + IslandNoise.hashUnit01(cellSeed, 4) * 120.0;
                     double centerDist = computeSignedDistance(centerX, centerZ, false);
-                    if (centerDist > -(350.0 + r)) continue;
+                    if (centerDist > -(isletClearance + r)) continue;
 
                     double dist = Math.hypot(worldX - centerX, worldZ - centerZ);
                     if (dist < r) {

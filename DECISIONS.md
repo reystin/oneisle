@@ -113,3 +113,30 @@ This log records every design choice, trade-off, and architectural resolution ma
 * **Choice:** Option 2.
 * **Reason:** The relief scaling is applied to `c + 0.08` before river carving, so shorelines stay at the same height and rivers are unaffected. Worst measured per-block delta is 0.0109, below the 0.015 bar. Using the modern sampler for v1/v2 structure placement changed the audited Ancient City surface biome (dappled_forest), so legacy placement keeps the old sampler until Phase 9.4 redesigns placement deliberately.
 * **Evidence:** `docs/evidence/shore/shore_continuity.csv`; full test suite green (62 tests, 1 skipped golden gate).
+
+### Decision 015: v3 ocean ramp and seabed-noise gating
+* **Question:** How to replace the legacy linear ocean ramp (`-0.08 - 0.92·s/Wo`) while keeping `c(s=0) = -0.08` and guaranteeing a deep monument band?
+* **Options:**
+  1. Keep the linear ramp and just clamp at −0.80; rely on a post-hoc clamp inside the band.
+  2. Use a two-stage smoothstep ramp for v3: `-0.08 - 0.54·S(s/0.4Wo) - 0.18·S(s/Wo)`, both with zero derivative at the coast and at their endpoints; weight all seabed noise by `S(s/0.5Wo)` so it is exactly 0 at the shoreline; gate positive seamount noise by `s > 1.0·Wo` with a 0.3·Wo fade-in.
+* **Choice:** Option 2.
+* **Reason:** The first stage reaches ≈−0.68 at 0.4·Wo including trench noise, safely below the −0.58 deep threshold, while the second stage settles onto the −0.80 soft floor. Zero derivative at both stages removes the coastline step and the old hard floor intersection. The `S(s/0.5Wo)` weight keeps the waterline `c` at −0.08 and makes the band's maximum independent of positive noise. The global clamp is only `[-1.0, 0.70]`, so trenches can reach −1.0 and the soft floor is not flat.
+* **Evidence:** `docs/evidence/ocean/ocean_band_summary.csv`, `ocean_radial_profiles_v3.csv`, `ocean_profile_summary_v3.csv`, `ocean_height_6000_v3.png`.
+
+### Decision 016: Locate-visible fixed structure placement and deep-band monument target
+* **Question:** `/locate structure` never found OmniIsle's fixed structure starts, and the monument was placed in ordinary ocean (`c ≈ -0.40`). How should fixed placement and monument targeting work?
+* **Options:**
+  1. Keep `AbstractSpreadingStructurePlacement` and accept that `/locate` cannot see the structure; keep the old −0.40 target.
+  2. Extend `RandomSpreadStructurePlacement` with spacing 1 / separation 0 / LINEAR and override `applyAdditionalChunkRestrictions` to accept only the fixed chunk; for monuments, require the 5×5 chunk-centre neighbourhood to stay below −0.62 and score toward `c = -0.72`.
+* **Choice:** Option 2.
+* **Reason:** 26.3's locate scan only walks random-spread and concentric-ring placements, so a non-random placement is invisible regardless of `isPlacementChunk`. Spacing 1 makes every chunk a candidate; without the restriction override, `StructureCheck` runs the full 29-block monument biome survey for all ~40k candidates and trips the 60 s watchdog. The 5×5 (chunk-resolution) check mirrors the survey's 29-block radius and rejects islet skirts: a centre at `c = -0.72` can still have a 29-block neighbour at −0.566 near an islet, which the single-sample check missed.
+* **Evidence:** `docs/evidence/ocean/ocean_monument_band.csv` (headless) and `ocean_monument_locate.csv` (real 26.3 server `/locate` + biome probes).
+
+### Decision 017: Pack metadata uses min_format/max_format for 26.3
+* **Question:** 26.3 reported the generated datapack as `(incompatible)` even though it loaded and ran.
+* **Options:**
+  1. Keep the legacy `pack_format: 121` field.
+  2. Emit `min_format: 121` and `max_format: 121` for 26.3 packs.
+* **Choice:** Option 2.
+* **Reason:** For pack formats above 81 the 26.3 `PackFormat`/`PackMetadataSection` codec requires `min_format`/`max_format`; a bare `pack_format` is accepted by the parser only as a legacy integer but the pack is flagged incompatible. The server log no longer shows the warning after the change. No version constants were changed (`PACK_FORMAT` stays 121).
+* **Evidence:** `docs/evidence/ocean/pack_metadata.txt` (version.json + server log excerpt) and the `v3OceanMonumentTargetsDeepBand` export test.

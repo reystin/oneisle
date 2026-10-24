@@ -1,0 +1,10 @@
+metric,value
+configs,6
+islet_density,0
+rows,23184
+c_min,-1.000000
+c_max,-0.052040
+c_max_in_band,-0.721275
+c_max_beyond_wo,-0.732564
+deep_threshold,-0.58
+ocean_transition_width,400
