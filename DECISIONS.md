@@ -284,3 +284,48 @@ This log records every design choice, trade-off, and architectural resolution ma
 * **Choice:** Option 2.
 * **Reason:** Only pre-launch is early enough while still reading the normal config file. The world folder is resolved the same way the server does: working directory + optional `--universe` (both `--universe X` and `--universe=X`) + `level-name` from `server.properties` (default `world`). The generated classes used by the exporter are Minecraft-free, so they load safely before the game. No manual copy is needed and the pack can shape the very first spawn chunks.
 * **Evidence:** `docs/evidence/server/README.md`, `server_startup.log` (preLaunch export 21:58:12, world creation 21:58:19, advancements 21:58:20, Done 21:58:22), `rcon_world_info.txt` (`file/omniisle-generated.zip (world)`, Generation Version 3, Rivers 45 %), `rcon_verify.txt`; `OmniIslePreLaunch`.
+
+### Decision 034: cache biome-lookup column data per thread
+* **Question:** Every biome lookup sampled four y-independent continentalness neighbors, plus `signedDistance` and shore outcome in v3. The chunk generator asks for each XZ column at every Y quart (about 24.6 k lookups per chunk), so the same column was recomputed at ~96 Y levels.
+* **Options:**
+  1. Leave the redundant sampling; `jdk.ExecutionSample` stacks showed only ~5 % of samples in the biome source, so it looked minor.
+  2. Add a fixed-size per-thread column cache keyed by `(terrain identity, biomeX, biomeZ)` storing slope, half-span, signed distance and shore outcome; invalidate naturally when the active terrain changes.
+* **Choice:** Option 2, with the terrain reference as the owner key (the terrain is already the source of truth for the sampler in `getNoiseBiome`).
+* **Reason:** All cached values are pure functions of the XZ column; continentalness in `IslandDensityFunction` ignores Y. The cache writes only primitive arrays (no per-call allocation) and is thread-local, preserving I4. Hash evidence over 29 282 v2/v3 lookups is bit-identical before/after (`BiomeSourceV2V3RegressionTest`). Real inland generation improved by ~27–31 % and moved v2/v3 below the v1 baseline.
+* **Evidence:** `BiomeSourceV2V3RegressionTest` (hashes 0xBABFA0E91DFC5659 / 0x693CB057CB9B9DB7C), `docs/evidence/perf/`.
+
+### Decision 035: performance evidence uses an inland area and interleaved rounds
+* **Question:** The first 25×25 area (chunks x=108..132) lies 240–640 blocks offshore of the +X coast at ~1490 blocks. v1 generates flat −1.0 ocean there while v2/v3 add bathymetry, islets and shore-adjacent content, so the comparison mixed new content with algorithmic overhead. Sequential version blocks also drifted by up to 15 % between runs on the same machine.
+* **Options:**
+  1. Keep the offshore area and sequential order; report the worst numbers.
+  2. Make the official run an inland area (chunks x=28..52, z=−12..12) where all versions generate land, and interleave versions per repetition (v1, v2, v3) to distribute thermal/background drift. Keep the offshore run as diagnostic evidence.
+* **Choice:** Option 2.
+* **Reason:** The budget is about generation overhead for comparable content. Interleaving prevents a fast or slow machine phase from biasing one version. The offshore CSV remains committed so the difference in content cost is visible rather than hidden.
+* **Evidence:** `docs/evidence/perf/chunkgen_25x25.csv`, `chunkgen_25x25_offshore.csv`, `docs/evidence/perf/README.md`.
+
+### Decision 036: freeze v2 from an independent 0.6.0 worktree
+* **Question:** A v2 golden regenerated from the current code would only prove the code equals itself, not that 0.6.0 worlds keep generating identically.
+* **Options:**
+  1. Generate the snapshot from current HEAD and call it v2 compatibility.
+  2. Check out commit `7a5174d` in a detached worktree, compile the 0.6.0 test harness there, and generate 30 configs × 1 500 points × 4 metrics from that binary.
+* **Choice:** Option 2.
+* **Reason:** It is an independent oracle. `GoldenV2Test` compares `doubleToLongBits` exactly for `continentalness`, `computeSignedDistance(false)`, `signedDistance` and `erosionBias`; all 180 000 values match current code. This also proves the speculative biome-cache change does not alter v2 terrain.
+* **Evidence:** `src/test/resources/golden/v2/golden_v2.bin.gz` (sha256 `abb4bb1b…b96ee`), `golden_v2_source.txt` (provenance: commit `7a5174d`, LCG seed, 30 configs), `GoldenV2Test`.
+
+### Decision 037: keep `minecraft:cache`, remove the "2D slice" claim
+* **Question:** Phase 9.8 asked to remove "non-existent `minecraft:cache`" from the spec. `javap` of the 26.3 merged jar shows `op/CacheFunction` registered as `"cache"`, with an `input` codec field and compiler-managed `CachingDensitySampler`; the generated pack uses it and loads.
+* **Options:**
+  1. Follow the prompt literally and remove a type the game supports.
+  2. Keep the type, delete the unsupported claim that omitting Y automatically compiles a 2D slice cache, and document the real mechanism: `domainAxes() = X|Z` plus a `sampleVolume` that writes one value across `sizeY`.
+* **Choice:** Option 2.
+* **Reason:** Evidence wins over the prompt's example. `SamplerContext$CacheCell` stores a single `valueKey` (packed 3D position), not a 2D column buffer; column reuse is created by our sampler's range fill. The spec now states this and keeps `height_layer` as base64 JSON (no `.bin` file). Also corrected: spawn initialization sets the respawn point, it does not teleport players.
+* **Evidence:** `FINDINGS.md` §3 addendum, `javap` output of `CacheFunction`, `DensityFunctionCompiler$PreparedCache`, `SamplerContext$CacheCell`, `IslandDensityFunctionTest`.
+
+### Decision 038: revert the ineffective terrain cache
+* **Question:** A per-thread direct-mapped cache was added to `ModernTerrainV2.continentalness`/`signedDistance` to speed up repeated column sampling.
+* **Options:**
+  1. Keep it because it is exact and might help other workloads.
+  2. Revert it; measured inland v2 was 15.128 s with the cache vs 15.17 s without (within noise), and it adds ThreadLocal state to a hot path.
+* **Choice:** Option 2.
+* **Reason:** No measurable benefit; goldens passed either way. The real redundancy was in `OmniBiomeSource` (Y-repeated column lookups), where the cache is ~30 % faster. Keeping dead complexity would violate the simplicity invariant.
+* **Evidence:** pre-cache/post-revert runs in `docs/evidence/perf/README.md`; `git diff` shows no remaining cache in `ModernTerrainV2`.

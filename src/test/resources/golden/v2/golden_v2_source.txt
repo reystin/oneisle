@@ -1,0 +1,14 @@
+# V2 terrain golden snapshot provenance
+generated_from_commit,7a5174d6bed14602f309efec138b283d10271137
+generated_from_version,0.6.0+mc26.3-fabric
+generator,one-off JUnit generator run inside a detached worktree of 7a5174d
+configs,30
+points_per_config,1500
+metrics,continentalness;computeSignedDistance(applyWarp=false);signedDistance;erosionBias
+seed_shape,1337
+seed_biome,4242
+river_density,0.35
+islet_density,0.25
+sizes,2500;8000
+sampling,LCG 0x2545F4914F6CDD1DL over +/-(worldSpan/2 + 1500) blocks
+comparison,exact equality of Double.doubleToLongBits

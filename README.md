@@ -2,7 +2,7 @@
 
 **OmniIsle** is an open-source Minecraft mod for Fabric (Minecraft 26.3, Java 25) that transforms standard infinite Overworld generation into a standalone, fully customizable, isolated island surrounded by an endless ocean.
 
-Every Overworld biome (all 56 vanilla biomes, including Pale Garden, Dappled Forest, and Sulfur Caves) and all 18 structures generate organically on a single island, perfectly balanced and ready for exploration, survival, and server events.
+Every Overworld biome (all 56 vanilla biomes, including Pale Garden, Dappled Forest, and Sulfur Caves) and 18 structure options can generate on a single island, balanced and ready for exploration, survival, and server events.
 
 ---
 
@@ -12,45 +12,72 @@ Every Overworld biome (all 56 vanilla biomes, including Pale Garden, Dappled For
 * Embedded directly into the "Create New World" screen (World Type: **OmniIsle**).
 * **Interactive Canvas:** Draw land and height layers in real-time with brush sizes from 1 to 24 pixels.
 * **Canvas Resolutions:** Choose between 192×192 (default), 256×256, or 384×384 with bilinear resampling.
-* **Drawing Tools:** Freehand brush, Flood Fill, Line, Rectangle, and Ellipse (hold Shift for square/circle; fill/outline toggle).
+* **Drawing Tools:** Freehand brush, Flood Fill, Line, Rectangle, and Ellipse (hold Shift for square/circle; fill/outline toggle), plus Smooth.
 * **Symmetry Modes:** Off, Mirror-X, Mirror-Z, 4-Way, 6-Way, and 8-Way radial symmetry.
 * **Zoom & Pan:** Smooth 1×–8× canvas zoom with scroll wheel; middle-click or Space-drag to pan; 16px grid overlay toggle.
 * **12 Procedural Presets:** Natural, Round, Long, Crescent, Archipelago, Atoll, Volcano, Fjords, Twin Islands, Inland Sea, Horseshoe Bay, and Ridge Island.
-* **PNG Import/Export:** Import custom heightmaps or masks with threshold, invert, and aspect-preserving letterbox. Export B/W mask, height layer, color biome map, and relief hillshade.
+* **PNG Import/Export:** Import custom heightmaps or masks with threshold, invert, aspect-preserving letterbox, and height quantiles. Export B/W mask, height layer, color biome map, relief hillshade, and shore map.
 * **Share Codes:** One-click copy/paste of island designs via compact compressed share codes (`OMNI2-...`).
 
-### Next-Gen Terrain Generation (v2)
-* **High-Precision SDF:** Exact Felzenszwalb-Huttenlocher Euclidean Distance Transform on native grids with sub-pixel distance convention.
-* **Organic Coastlines:** Catmull-Rom bicubic interpolation with neighborhood clamping and domain warping (45-block low-frequency noise).
-* **Shoreline Micro-Roughness:** Smoothstep-attenuated fine detail centered on the shoreline (-0.08).
-* **Inland Relief:** Non-conical relief featuring compressed coastal rise, procedural ridged mountain spines, and painted 4-tier heightmaps (Lowland, Normal, Plateau, Alpine Peaks) with smooth transitions.
-* **Ocean Bathymetry:** Soft ocean floor at -0.80 with seamounts and oceanic trenches down to -1.0.
-* **Guaranteed Deep Band:** Continuous deep ocean band ensuring Ocean Monuments always generate properly.
-* **Satellite Islets:** Outer archipelago islets generated via cellular noise with configurable density.
-* **Physically Carved Rivers & Lakes:** Deterministically derived at load using Priority-Flood depression filling, flow accumulation, and $C^1$ smoothstep carving.
+### Three Frozen Generation Versions
+* **v3 (default for new worlds):** v2 terrain plus deterministic shore fields, a smooth deep-ocean ramp, a guaranteed monument band, islets outside that band, river mouths crossing the waterline, a dry spawn plateau, relaxed pyramids, and fixed three-start strongholds.
+* **v2:** exact 0.6.0 output (bit-for-bit frozen by `GoldenV2Test`): EDT + Catmull-Rom SDF, domain warping, ridged mountains, 4-tier heightmaps, bathymetry, islets, rivers.
+* **v1:** exact 0.5.0 output (`GoldenV1Test`) for existing worlds.
+
+### Terrain & Ocean
+* **High-Precision SDF:** Exact Felzenszwalb-Huttenlocher Euclidean Distance Transform on native grids with sub-pixel distance convention and clamped Catmull-Rom bicubic resampling.
+* **Organic Coastlines (v2/v3):** Domain warping applied only to mask lookup, plus shoreline micro-roughness centered on the real shoreline value (-0.08).
+* **Patchy Shores (v3):** `ShoreField` produces sand, snowy beach, or stony shore pockets with bays, notches, and slope-aware cliffs; configurable density, variety, and rockiness.
+* **Inland Relief:** Compressed coastal rise, procedural ridged mountain spines, and painted 4-tier heightmaps (Lowland, Normal, Plateau, Alpine Peaks) with smooth transitions.
+* **Bathymetry:** Soft ocean floor at -0.80, seabed fBm/trenches down to -1.0, and a continuous deep band for Ocean Monuments.
+* **Satellite Islets:** Outer-archipelago islets generated beyond the monument band with configurable density.
+* **Physically Carved Rivers & Lakes:** Deterministic Priority-Flood + D8 network; v3 carves river mouths through the waterline.
 
 ### Climate & Biome System
 * **Biome Scale Slider:** Configurable `climate_scale` (384 to 1536 blocks).
 * **Latitudinal Temperature Gradients:** North-South, East-West, or Radial gradients with theme-aware amplitude compression.
-* **Noise-Jittered Blending:** Organic transitions between climate families with zero straight lines.
-* **Dramatic Shorelines:** Automatic cliff detection transforming steep slopes ($\ge 0.35$) into stony shore cliffs.
-* **Dynamic Biome Discovery:** Automatically detects and integrates datapack and modded biomes (e.g. Terralith) from `WorldCreationContext`.
+* **Noise-Jittered Blending:** Organic transitions between climate families with no straight-line borders.
+* **Dynamic Biome Discovery:** Automatically detects and integrates datapack and modded biomes from `WorldCreationContext`.
 
-### Structures & Guaranteed Safe Spawn
-* **Small-Island Scaling:** Concentric stronghold rings automatically scale with island size, guaranteeing strongholds generate on land even on 2500-block islands.
-* **Deep Dark Ancient Cities:** Guaranteed subterranean ancient city placement decoupled from surface peaks.
-* **Inland Spawn Selector:** Automatically selects the inland pixel with the highest positive distance to coast.
-* **Gold Crosshair Marker:** Manual world spawn placement on the canvas with right-click auto-reset.
-* **First-Load Relocation:** Automated outward spiral search relocating the player to solid land if spawned in water.
+### Structures & Safe Spawn
+* **Small-Island Scaling:** Stronghold rings scale with island size; v3 places exactly three starts inside the island.
+* **Deep Dark Ancient Cities:** Subterranean placement decoupled from surface peaks.
+* **Inland Spawn Selector:** Chooses the inland pixel with the highest positive distance to coast; v3 adds a dry plateau under the marker and reconciles the world spawn after server start.
 * **World Border:** Optional island-bounded world border with configurable margin (500 to 4000 blocks).
+
+---
+
+## Screenshots & Evidence
+
+Before/after the v3 shore redesign (same editor draft, `ROUND`, 4000 blocks, seed 4242):
+
+| Before (v2 ribbon) | After (v3 shore field) |
+| :---: | :---: |
+| ![Shore before](docs/evidence/shore/shore_before_ROUND.png) | ![Shore after](docs/evidence/shore/shore_after_ROUND.png) |
+
+More previews and measured datasets live in [`docs/evidence/`](docs/evidence/): coast overlays,
+climate family maps, relief maps, river-mouth probes, ocean depth maps, structure/spawn tables.
+UI screenshots at GUI scales 1–4 are still outstanding; see [`UI_CHECKLIST.md`](UI_CHECKLIST.md).
 
 ---
 
 ## World Compatibility
 
 > [!IMPORTANT]
-> **Old Worlds Keep Generating Identically (Invariant I1):**  
-> Worlds created with OmniIsle 0.5.0 (`generation_version = 1`) load seamlessly in 0.6.0. Chunks generated in 0.6.0 match existing 0.5.0 chunks **bit-for-bit** with zero seams or terrain tears. New worlds default to **v2** generation.
+> **Old Worlds Keep Generating Identically (Invariant I1):**
+> Worlds created with OmniIsle 0.5.0 (`generation_version = 1`) and 0.6.0 (`generation_version = 2`) load in 0.7.0 and generate later chunks **bit-for-bit identically** — no seams, no biome drift. `GoldenV1Test` and `GoldenV2Test` compare sampled doubles/bit patterns exactly. New worlds default to **v3**; existing worlds keep their stored version.
+
+---
+
+## Performance
+
+Real dedicated-server chunk generation (fresh world per run, 25×25 inland chunks, 3 interleaved
+reps, seed 4242, ROUND 4000) is recorded in
+[`docs/evidence/perf/chunkgen_25x25.csv`](docs/evidence/perf/chunkgen_25x25.csv).
+Median 625-chunk generation: **v1 14.891 s, v2 14.231 s (−4.4 %), v3 14.557 s (−2.2 %)**;
+the worst modern run is +6.7 % over the fastest v1 run, inside the +15 % budget. Method,
+pre/post-cache probes and offshore diagnostics are in
+[`docs/evidence/perf/README.md`](docs/evidence/perf/README.md).
 
 ---
 
@@ -79,7 +106,7 @@ cd OmniIsle
 ./gradlew build
 ```
 
-The resulting mod JAR will be located in `build/libs/OmniIsle-26.3-Fabric-0.6.0+mc26.3.jar`.
+The resulting mod JAR will be located in `build/libs/OmniIsle-26.3-Fabric-0.7.0+mc26.3.jar`.
 
 ---
 

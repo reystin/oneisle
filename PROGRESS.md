@@ -193,3 +193,18 @@ uses the generated pack (log order: preLaunch export 21:58:12 → world creation
 21:58:19 → advancements 21:58:20 → Done 21:58:22 → v3 spawn 21:58:23). Evidence:
 `docs/evidence/relief/`, `docs/evidence/coast/`, `docs/evidence/rivers/`,
 `docs/evidence/dynamic_biome/`, `docs/evidence/server/`.
+
+### Phase 9.8 — Spec, changelog, README, v2 golden, final performance (completed)
+- [x] **9.8.1** `OMNIISLE_AI_SPEC.md` rewritten to 0.7.0: v1/v2/v3 pipeline, class roles (`ShoreField`, `SpawnPlateauDensity`, `RelaxedPyramids`, `FixedMultiStructurePlacement`, `OmniIslePreLaunch`, mixins), JSON schema for `generation_version` 1/2/3 incl. `shore`, `islet_density`, `river_density`, `height_layer` (base64 JSON, no `.bin`), `spawn`; SDF/relief/shore/ocean/islet/climate/structure/spawn formulas; invariants I1–I7
+- [x] **9.8.2** False claims corrected: `minecraft:cache` is real in 26.3 but does not allocate a 2D slice (column reuse comes from `domainAxes()` + `sampleVolume`); spawn initialization sets respawn data, it does not teleport. `CHANGELOG.md` has `[0.7.0+mc26.3-fabric]`; README covers v1/v2/v3 compatibility, 18 structures, shore/ocean/editor features, before/after shore images, final perf
+- [x] **9.8.3** Independent v2 golden from detached worktree of 0.6.0 commit `7a5174d`: 30 configs × 1500 points × 4 doubles (180 000 values), sha256 `abb4bb1b…b96ee`; `GoldenV2Test` exact bit equality, current code matches
+- [x] **9.8.4** `OmniBiomeSource` per-thread 512-slot column cache removes per-Y slope/distance/shore recomputation; `BiomeSourceV2V3RegressionTest` locks 29 282 v2/v3 lookups (v2 `13456651134697231961`, v3 `7583129763709705084` unsigned) and passes; pre/post output hashes identical
+- [x] **9.8.5** Real dedicated-server timing: 25×25 inland chunks, fresh world/run, RCON forceload + 25 row probes, 3 interleaved rounds. Medians v1 14.891 s / v2 14.231 s (−4.43 %) / v3 14.557 s (−2.24 %); worst-case +2.54 %/+6.71 % vs fastest v1 — inside +15 %
+- [x] **9.8.6** Offshore diagnostic (+22.0 %/+38.7 %) separated from the verdict; `ModernTerrainV2` cache experiment reverted (15.128/15.081 s vs 15.17 s, no gain); sequential-run drift documented
+- [x] **9.8.7** Final `./gradlew build` green: 96 tests, 0 failures, 2 assumption-gated skips; jar `OmniIsle-26.3-Fabric-0.7.0+mc26.3.jar`; mirrored to PrismLauncher mods and `~/Downloads`
+- [x] **9.8.8** Final report follows Section 11, preserving structure matrix PARTIAL 15/45 and 9.6 screenshots NOT DONE
+
+Measured: v2 golden 180 000/180 000 exact; biome cache medians v2 19.432 → 15.251 s and
+v3 20.534 → 14.209 s; final inland medians v1 14.891 / v2 14.231 / v3 14.557 s; build
+96 tests, 0 failures. Evidence: `docs/evidence/perf/`, `FINDINGS.md` §15, `DECISIONS.md`
+034–038, `src/test/resources/golden/v2/`.

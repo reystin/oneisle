@@ -56,7 +56,16 @@ This document records the empirical verification of Minecraft 26.3 worldgen inte
         return AXIS_X | AXIS_Z;
     }
     ```
-    Because `AXIS_Y` is omitted, Minecraft's compiler automatically allocates and caches a 2D column slice (`DensityBuffer`).
+    **Addendum (Phase 9.8):** the earlier claim that omitting `AXIS_Y` makes
+    `minecraft:cache` allocate a 2D column slice is wrong. `javap` of the 26.3 merged
+    jar shows `CacheFunction` (`op/CacheFunction`, `register("cache", …)`) and
+    `SamplerContext$CacheCell`, whose cached state is a single packed 3D `valueKey`,
+    not a 2D buffer. Column reuse comes from our density function itself:
+    `domainAxes() = AXIS_X|AXIS_Z`, `sampleVolume` loops only XZ and calls
+    `buffer.setRange(baseIdx, sizeY, value)`, and `sampleValue` ignores Y. The cache
+    type is real and is kept in the generated pack; only the 2D-slice claim is
+    withdrawn (Decision 037). Evidence: `IslandDensityFunctionTest` (every Y in a
+    column equals the first value and `sampleValue`).
 
 ---
 
@@ -391,3 +400,52 @@ nominal size), rivers 45 %. Evidence: `docs/evidence/server/`.
 ray changes `c` by more per ray block than per normal block; the worst raw value
 0.020876 occurred where the shoreline moved 5.57 blocks per ray block. River banks use
 the analytic 0.035 budget above rather than an arbitrary per-ray threshold.
+
+## 15. [VERIFY] Phase 9.8 — v2 golden, biome column cache, final performance, spec corrections
+
+**Independent v2 golden snapshot:** `GoldenV2Test` compares current code against a
+snapshot generated inside a detached worktree of 0.6.0 commit
+`7a5174d6bed14602f309efec138b283d10271137`, not against the current tree. Coverage:
+30 configs × 1500 LCG points × 4 metrics (`continentalness`,
+`computeSignedDistance(false)`, `signedDistance`, `erosionBias`) = 180 000 values,
+compared with `Double.doubleToLongBits` exact equality; all match. Seeds are shape
+1337 / biome 4242, rivers 0.35, islets 0.25, sizes 2500 and 8000. Snapshot sha256
+`abb4bb1badd53b247759ffb06f313ad5d8ab71deb57ece61771bc55a589b96ee`; provenance is in
+`src/test/resources/golden/v2/golden_v2_source.txt`. This also proves the Phase 9.8
+biome-cache change did not alter v2 terrain.
+
+**Biome column cache (exactness and effect):** `OmniBiomeSource` sampled four
+continentalness neighbours, `signedDistance`, bayness and the shore outcome for every
+biome Y quart, although all are Y-independent. A per-thread 512-slot direct-mapped
+cache keyed by `(biomeX, biomeZ)` and terrain identity now reuses them. Exactness:
+`BiomeSourceV2V3RegressionTest` hashes 29 282 v2/v3 lookup results (ROUND 4000, seed
+4242, rivers 0.35, islets 0.25, shore 0.30/0.60 rocky; quart grid −120..120 step 2 ×
+y {4,−4}); v2 hash `13456651134697231961` and v3 `7583129763709705084` (unsigned)
+match the pre-change values. Inland 625-chunk probes: v2 median 19.432 → 15.251 s,
+v3 20.534 → 14.209 s, against a pre-change v1 median 16.785 s. The analogous cache
+inside `ModernTerrainV2` measured 15.128/15.081 s vs 15.17 s and was reverted.
+
+**Final dedicated-server timing:** method and full diagnostics are in
+`docs/evidence/perf/README.md`. Fresh world per run, same ROUND 4000 / seed 4242
+config, only `generation_version` changes; 25×25 inland chunks (x 28–52, z −12..12),
+5 forceload strips, 25 `execute if loaded` probes, wall clock to 625/625. Three
+interleaved rounds (v1 → v2 → v3, reps 10–12) avoid host drift: a prior sequential
+run moved from 14.410/14.196 s to 15.837 s for v1 between rounds. Medians:
+v1 14.891 s, v2 14.231 s (−4.43 %), v3 14.557 s (−2.24 %); worst modern run vs
+fastest v1 run +2.54 % / +6.71 %, inside the +15 % budget. Offshore rows
+(v2 +22.0 %, v3 +38.7 %) are diagnostic only: v1 generates flat ocean there while
+v2/v3 generate bathymetry, the deep band and islets.
+
+**Spec corrections:** (1) `minecraft:cache` exists in 26.3 (`CacheFunction`), but it
+does not create a 2D column slice; `CacheCell.valueKey` is a packed 3D key and the
+column fill comes from our `sampleVolume` (see §3 addendum, Decision 037).
+(2) `height_layer` is base64-encoded JSON in the config, not a `height_layer.bin`
+file. (3) spawn initialization sets the world respawn data; it does not teleport
+players. `OMNIISLE_AI_SPEC.md`, `CHANGELOG.md` and `README.md` now state the actual
+0.7.0 behavior.
+
+**Final build:** `./gradlew build` succeeds; 96 tests, 0 failures, 0 errors, 2
+conditional skips (`GoldenV1Test.regenerateGoldenIfRequested`,
+`Phase9HarnessPacksTest.exportHarnessPacks`, both assumption-gated). Jar:
+`build/libs/OmniIsle-26.3-Fabric-0.7.0+mc26.3.jar`, `fabric.mod.json` version
+`0.7.0+mc26.3`.

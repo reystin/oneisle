@@ -4,6 +4,46 @@ All notable changes to OmniIsle are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0+mc26.3-fabric] - 2026-10-24
+
+### Added
+- **Generation v3 (new default):**
+  - Deterministic `ShoreField`: patchy beaches, bay-aware sand, rocky/stony coasts, intertidal strip and calm-water pockets; configurable `shore.density`, `shore.variety`, `shore.rocky`.
+  - Smooth ocean depth ramp reaching the deep threshold at `0.4·Wo` with zero slope at the coast.
+  - Guaranteed deep monument band `[0.4·Wo, 1.0·Wo]`; satellite islets moved beyond `1.0·Wo + 80`.
+  - River mouths carve across the waterline; v3 river threshold follows the observed drainage.
+  - Spawn-plateau density wrapper (`omniisle:spawn_plateau`, radius 80, top Y 78) under the editor spawn marker.
+  - Fixed three-start stronghold placement and relaxed desert/jungle pyramids for low islands.
+- **Golden v2 snapshot:** 30 configs × 1 500 points × 4 metrics generated from 0.6.0 (`7a5174d`), asserted bit-exactly by `GoldenV2Test`.
+- **Expanded v1 snapshot:** biome-source hashes for 30 configs (surface + 4 underground Y levels) in `GoldenV1Test`.
+- **Editor (Phase 9.6):**
+  - Six tabs (Shape, Terrain, Climate, Biomes, Structures, Tools), responsive down to 480×270.
+  - Fill/Line/Rectangle/Ellipse tools with Shift constraints and fill/outline; 6-way/8-way radial symmetry with closed pixel orbits.
+  - Zoom 1×–8× at cursor, middle/Space pan, 16-px grid; seed fields, dice and copy; inspector with shore outcome.
+  - Shore PNG export (5th map) and heightmap quantile import; height/shore-aware preview.
+- **Server & lifecycle:**
+  - First-boot dedicated-server datapack export from `config/omniisle.json` before pack scan.
+  - Dynamic biome list test through the real `RegistryDataLoader`.
+- **Evidence & documentation:** shore/climate/coast/relief/river/server/structure/spawn datasets, corrected `OMNIISLE_AI_SPEC.md` for v1/v2/v3, performance harness and CSVs.
+
+### Changed
+- New worlds default to `generation_version = 3`; v1 and v2 keep their frozen output (I1).
+- v3 coast warp scales quadratically below 4000-block islands, keeping coast error within 0.6 px mean / 2 px max.
+- Climate gradients use explicit per-theme spans (`0.5·span·strength`); v1/v2/v3 temperatures at default settings are unchanged.
+- Legacy and share-code configs without `river_density` default to 0 (rivers off).
+- v3 biome source resolves shores via `ShoreField`; ocean/deep classification uses the new depth ramp.
+- v3 structure placement includes relaxed pyramids and exact stronghold starts; structure set export is island-aware.
+
+### Fixed
+- SDF terracing/overshoot at mask edges (exact EDT, clamped Catmull-Rom).
+- Straight ruler-like coasts replaced by deterministic patchy shorelines.
+- Ocean monuments failing due to missing deep band.
+- Strongholds missing on 2500-block islands; pyramids rejected near sea level.
+- Spawn in water; spawn marker now has a dry plateau in v3.
+- Vanilla ribbon shores at bay heads and steep slopes; slope-aware stony shores.
+- Radial symmetry rasterization gaps.
+- Dedicated server loading a world without the generated pack.
+
 ## [0.6.0+mc26.3-fabric] - 2026-10-24
 
 ### Added

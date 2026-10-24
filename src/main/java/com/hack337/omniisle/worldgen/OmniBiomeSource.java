@@ -80,6 +80,10 @@ public final class OmniBiomeSource extends BiomeSource {
     private final IslandClimate.GradientMode gradientMode;
     private final ShoreSettings shore;
     private final boolean shoreDisabled;
+    // Slope neighbors, signed distance and shore outcome depend only on the XZ column,
+    // but the chunk generator asks for each column at every Y quart. Cache exact values
+    // per thread; the terrain identity invalidates the cache when the world changes.
+    private final ThreadLocal<ColumnCache> columnCache = ThreadLocal.withInitial(ColumnCache::new);
 
     public OmniBiomeSource(List<Holder<Biome>> landBiomes,
                            List<Holder<Biome>> enabledLandBiomes,
@@ -204,35 +208,64 @@ public final class OmniBiomeSource extends BiomeSource {
             return landBiome(climate, continentalness, x, z);
         }
 
-        // Modern generation (v2)
-        double cE = net.minecraft.world.level.biome.Climate.unquantizeCoord(sampler.sample(biomeX + 1, biomeY, biomeZ).continentalness());
-        double cW = net.minecraft.world.level.biome.Climate.unquantizeCoord(sampler.sample(biomeX - 1, biomeY, biomeZ).continentalness());
-        double cS = net.minecraft.world.level.biome.Climate.unquantizeCoord(sampler.sample(biomeX, biomeY, biomeZ + 1).continentalness());
-        double cN = net.minecraft.world.level.biome.Climate.unquantizeCoord(sampler.sample(biomeX, biomeY, biomeZ - 1).continentalness());
-        double slope = Math.hypot((cE - cW) / 8.0, (cS - cN) / 8.0) * 64.0;
-        double halfSpan = 2000.0;
+        // Modern generation (v2/v3)
         IslandDensityFunction activeDf = IslandDensityFunction.getActive();
-        if (activeDf != null && activeDf.shapeConfig() != null && activeDf.shapeConfig().mask().isPresent()) {
-            var m = activeDf.shapeConfig().mask().get();
-            halfSpan = (m.maxX - m.minX) / 2.0;
+        IslandTerrain terrain = activeDf != null ? activeDf.terrain() : null;
+        ColumnCache cache = this.columnCache.get();
+        int slot = cache.slot(biomeX, biomeZ);
+        boolean hit = cache.valid[slot]
+            && cache.owners[slot] == terrain
+            && cache.colX[slot] == biomeX
+            && cache.colZ[slot] == biomeZ;
+        double slope;
+        double halfSpan;
+        double distance;
+        int shoreOutcome;
+        if (hit) {
+            slope = cache.slope[slot];
+            halfSpan = cache.halfSpan[slot];
+            distance = cache.distance[slot];
+            shoreOutcome = cache.shoreOutcome[slot];
+        } else {
+            double cE = net.minecraft.world.level.biome.Climate.unquantizeCoord(sampler.sample(biomeX + 1, biomeY, biomeZ).continentalness());
+            double cW = net.minecraft.world.level.biome.Climate.unquantizeCoord(sampler.sample(biomeX - 1, biomeY, biomeZ).continentalness());
+            double cS = net.minecraft.world.level.biome.Climate.unquantizeCoord(sampler.sample(biomeX, biomeY, biomeZ + 1).continentalness());
+            double cN = net.minecraft.world.level.biome.Climate.unquantizeCoord(sampler.sample(biomeX, biomeY, biomeZ - 1).continentalness());
+            slope = Math.hypot((cE - cW) / 8.0, (cS - cN) / 8.0) * 64.0;
+            halfSpan = 2000.0;
+            if (activeDf != null && activeDf.shapeConfig() != null && activeDf.shapeConfig().mask().isPresent()) {
+                var m = activeDf.shapeConfig().mask().get();
+                halfSpan = (m.maxX - m.minX) / 2.0;
+            }
+
+            distance = 0.0;
+            shoreOutcome = ShoreField.NONE;
+            if (generationVersion >= 3) {
+                if (terrain != null) {
+                    distance = terrain.signedDistance(x, z);
+                } else {
+                    distance = continentalness < IslandClimate.OCEAN_START ? -10.0
+                        : Math.max(1.0, continentalness * 100.0);
+                }
+                if (!shoreDisabled && shore != null && shore.enabled()
+                    && distance >= ShoreField.intertidalLimit(x, z, biomeSeed) && distance <= ShoreField.MAX_INLAND) {
+                    double bay = ShoreField.bayness(terrain, x, z, distance);
+                    shoreOutcome = ShoreField.outcome(distance, x, z, slope, bay, shore, biomeSeed);
+                }
+            }
+
+            cache.owners[slot] = terrain;
+            cache.colX[slot] = biomeX;
+            cache.colZ[slot] = biomeZ;
+            cache.slope[slot] = slope;
+            cache.halfSpan[slot] = halfSpan;
+            cache.distance[slot] = distance;
+            cache.shoreOutcome[slot] = shoreOutcome;
+            cache.valid[slot] = true;
         }
 
         IslandClimate.SampleResult res;
         if (generationVersion >= 3) {
-            IslandTerrain terrain = activeDf != null ? activeDf.terrain() : null;
-            double distance;
-            if (terrain != null) {
-                distance = terrain.signedDistance(x, z);
-            } else {
-                distance = continentalness < IslandClimate.OCEAN_START ? -10.0
-                    : Math.max(1.0, continentalness * 100.0);
-            }
-            int shoreOutcome = ShoreField.NONE;
-            if (!shoreDisabled && shore != null && shore.enabled()
-                && distance >= ShoreField.intertidalLimit(x, z, biomeSeed) && distance <= ShoreField.MAX_INLAND) {
-                double bay = ShoreField.bayness(terrain, x, z, distance);
-                shoreOutcome = ShoreField.outcome(distance, x, z, slope, bay, shore, biomeSeed);
-            }
             res = IslandClimate.sampleV3(
                 continentalness, x, z, slope, climateScale, biomeSeed,
                 gradientMode, gradientStrength, biomeThemeStr, halfSpan, generationVersion,
@@ -492,6 +525,28 @@ public final class OmniBiomeSource extends BiomeSource {
     private static double clamp01(double value) { return Math.max(0.0, Math.min(1.0, value)); }
 
     private record Climate(double temperature, double humidity, double mountains, double warpX, double warpZ) {}
+
+    private static final class ColumnCache {
+        private static final int SIZE = 512;
+        private static final int MASK = SIZE - 1;
+
+        final IslandTerrain[] owners = new IslandTerrain[SIZE];
+        final int[] colX = new int[SIZE];
+        final int[] colZ = new int[SIZE];
+        final double[] slope = new double[SIZE];
+        final double[] halfSpan = new double[SIZE];
+        final double[] distance = new double[SIZE];
+        final int[] shoreOutcome = new int[SIZE];
+        final boolean[] valid = new boolean[SIZE];
+
+        int slot(int x, int z) {
+            int h = x * 0x9E3779B1 + z * 0x85EBCA77;
+            h ^= h >>> 13;
+            h *= 0xC2B2AE35;
+            h ^= h >>> 16;
+            return h & MASK;
+        }
+    }
 
     public static void registerCodec() {
         Registry.register(BuiltInRegistries.BIOME_SOURCE, OmniIsleIds.id("island_biomes"), CODEC);
