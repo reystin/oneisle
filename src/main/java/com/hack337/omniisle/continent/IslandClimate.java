@@ -163,6 +163,46 @@ public final class IslandClimate {
         return new SampleResult(SurfaceZone.LAND, "land", landFam, c.temperature, c.humidity, c.mountains);
     }
 
+    /**
+     * v3 sample: the shore outcome is computed from the explicit {@link ShoreField}
+     * by the caller (which owns the signed-distance terrain). Negative distances
+     * below the intertidal limit are always ocean, independent of continentalness.
+     */
+    public static SampleResult sampleV3(double continentalness, double x, double z, double slope,
+                                        double scale, long biomeSeed, GradientMode gradientMode, double gradientStrength,
+                                        String themeName, double islandHalfSpan, int version,
+                                        double signedDistance, int shoreOutcome) {
+        double cQuantized = (double)((long)((float)continentalness * 10000.0f)) / 10000.0;
+        ClimateValues c = climateAt(x, z, scale, biomeSeed, gradientMode, gradientStrength, themeName, islandHalfSpan, version);
+
+        int landFam = selectLandFamily(c, cQuantized, x, z, version, biomeSeed);
+        if (shoreOutcome != ShoreField.NONE) {
+            boolean suppressed = landFam == 16 || landFam == 8 || landFam == 9
+                || (shoreOutcome == ShoreField.STONY && (landFam == 12 || landFam == 13));
+            if (!suppressed) {
+                String subType = shoreOutcome == ShoreField.STONY
+                    ? "stony_shore"
+                    : (c.temperature < 0.24 ? "snowy_beach" : "beach");
+                return new SampleResult(SurfaceZone.SHORE, subType, -1,
+                    c.temperature, c.humidity, c.mountains);
+            }
+        }
+        if (signedDistance <= 0.0) {
+            boolean deep = cQuantized < DEEP_OCEAN_THRESHOLD;
+            return new SampleResult(SurfaceZone.OCEAN, oceanSubType(c, deep), -1,
+                c.temperature, c.humidity, c.mountains);
+        }
+        return new SampleResult(SurfaceZone.LAND, "land", landFam, c.temperature, c.humidity, c.mountains);
+    }
+
+    private static String oceanSubType(ClimateValues c, boolean deep) {
+        if (c.temperature < 0.16) return deep ? "deep_frozen_ocean" : "frozen_ocean";
+        if (c.temperature < 0.32) return deep ? "deep_cold_ocean" : "cold_ocean";
+        if (c.temperature > 0.82) return "warm_ocean";
+        if (c.temperature > 0.66) return deep ? "deep_lukewarm_ocean" : "lukewarm_ocean";
+        return deep ? "deep_ocean" : "ocean";
+    }
+
     public static int selectLandFamily(ClimateValues c, double continentalness, double x, double z, int version, long biomeSeed) {
         double wx = x + c.warpX;
         double wz = z + c.warpZ;

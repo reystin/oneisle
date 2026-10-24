@@ -77,6 +77,14 @@ final class TestWorldgen {
 
     static OmniBiomeSource biomeSource(int climateScale, long seed, int version,
                                        String gradient, double strength, String theme) {
+        return biomeSource(climateScale, seed, version, gradient, strength, theme, null, false);
+    }
+
+    static OmniBiomeSource biomeSource(int climateScale, long seed, int version,
+                                       String gradient, double strength, String theme,
+                                       com.hack337.omniisle.continent.ShoreSettings shore,
+                                       boolean enableShore) {
+        List<Holder<Biome>> shoreList = List.of(holder("beach"), holder("stony_shore"), holder("snowy_beach"));
         return new OmniBiomeSource(
             List.of(holder("snowy_plains"), holder("taiga"), holder("birch_forest"), holder("forest"),
                 holder("plains"), holder("meadow"), holder("cherry_grove"), holder("dark_forest"),
@@ -84,8 +92,8 @@ final class TestWorldgen {
                 holder("desert"), holder("badlands"), holder("stony_peaks"), holder("jagged_peaks"),
                 holder("mushroom_fields"), holder("pale_garden")),
             List.of(),
-            List.of(holder("beach"), holder("stony_shore"), holder("snowy_beach")),
-            List.of(),
+            shoreList,
+            enableShore ? shoreList : List.of(),
             List.of(holder("ocean"), holder("deep_ocean"), holder("warm_ocean"), holder("lukewarm_ocean"),
                 holder("deep_lukewarm_ocean"), holder("cold_ocean"), holder("deep_cold_ocean"),
                 holder("frozen_ocean"), holder("deep_frozen_ocean")),
@@ -93,6 +101,7 @@ final class TestWorldgen {
             List.of(holder("river"), holder("frozen_river")),
             List.of(),
             List.of(holder("lush_caves"), holder("dripstone_caves"), holder("deep_dark"), holder("sulfur_caves")),
-            List.of(), climateScale, seed, version, gradient, strength, theme);
+            List.of(), climateScale, seed, version, gradient, strength, theme,
+            java.util.Optional.ofNullable(shore));
     }
 }

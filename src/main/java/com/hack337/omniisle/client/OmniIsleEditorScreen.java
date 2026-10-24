@@ -353,6 +353,21 @@ public final class OmniIsleEditorScreen extends Screen {
         cy += 24;
 
         climateTabWidgets.add(addRenderableWidget(new GradientStrengthSlider(controlsX, cy, controlsWidth, 20)));
+        cy += 24;
+
+        climateTabWidgets.add(addRenderableWidget(new ShoreDensitySlider(controlsX, cy, controlsWidth, 20)));
+        cy += 24;
+
+        climateTabWidgets.add(addRenderableWidget(new ShoreVarietySlider(controlsX, cy, controlsWidth, 20)));
+        cy += 24;
+
+        CycleButton<Boolean> rockyToggle = CycleButton
+            .onOffBuilder(state.shoreRocky())
+            .create(controlsX, cy, controlsWidth, 20, Component.translatable("omniisle.editor.shore_rocky"), (b, v) -> {
+                state.setShoreRocky(v);
+                invalidatePreview();
+            });
+        climateTabWidgets.add(addRenderableWidget(rockyToggle));
 
         // ---------------- TAB 4: PRESETS & SEEDS ----------------
         int py = controlsY + 22;
@@ -584,9 +599,14 @@ public final class OmniIsleEditorScreen extends Screen {
                 state.relief().coastWidth, 400.0,
                 state.packedMask()
             )),
-            state.biomeSeed()
+            state.biomeSeed(),
+            state.generationVersionNumber() >= 3
+                ? java.util.Optional.of(state.shoreSettings())
+                : java.util.Optional.empty()
         );
         this.currentTerrain = com.hack337.omniisle.continent.IslandTerrain.create(cfg);
+        boolean shoreAllowed = state.generationVersionNumber() >= 3
+            && !state.enabledBiomes(BiomePreview.Category.SHORE).isEmpty();
 
         float[] elevations = new float[resolution * resolution];
         float[] continentalnessGrid = new float[resolution * resolution];
@@ -613,15 +633,19 @@ public final class OmniIsleEditorScreen extends Screen {
                 double dx = (elevations[z * resolution + xNext] - elevations[z * resolution + xPrev]) / ((xNext - xPrev) * blockSize);
                 double dz = (elevations[zNext * resolution + x] - elevations[zPrev * resolution + x]) / ((zNext - zPrev) * blockSize);
                 double slope = Math.hypot(dx, dz);
+                double cdx = (continentalnessGrid[z * resolution + xNext] - continentalnessGrid[z * resolution + xPrev]) / ((xNext - xPrev) * blockSize);
+                double cdz = (continentalnessGrid[zNext * resolution + x] - continentalnessGrid[zPrev * resolution + x]) / ((zNext - zPrev) * blockSize);
+                double biomeSlope = Math.hypot(cdx, cdz) * 64.0;
 
                 double wx = state.worldX(x);
                 double wz = state.worldZ(z);
                 double c = continentalnessGrid[z * resolution + x];
-                BiomePreview.Type preferred = BiomePreview.surface(
+                BiomePreview.Type preferred = BiomePreview.surfaceV3(
                     c, wx, wz, state.biomeSeed(),
                     state.climateScale(), state.gradientMode(), state.gradientStrength(),
-                    state.theme(), slope, state.generationVersionNumber(), halfSpan,
-                    currentTerrain != null ? currentTerrain.rivers() : null
+                    state.theme(), biomeSlope, state.generationVersionNumber(), halfSpan,
+                    currentTerrain != null ? currentTerrain.rivers() : null,
+                    currentTerrain, state.shoreSettings(), shoreAllowed
                 );
                 baseColors[z * resolution + x] = state.selectBiome(preferred, wx, wz).color;
 
@@ -800,11 +824,13 @@ public final class OmniIsleEditorScreen extends Screen {
             double cN = currentTerrain.continentalness(worldX, worldZ - 8);
             slope = Math.hypot((cE - cW) / 16.0, (cS - cN) / 16.0) * 64.0;
         }
-        BiomePreview.Type preferred = BiomePreview.surface(
+        BiomePreview.Type preferred = BiomePreview.surfaceV3(
             continentalness, worldX, worldZ, state.biomeSeed(),
             state.climateScale(), state.gradientMode(), state.gradientStrength(),
             state.theme(), slope, state.generationVersionNumber(), state.worldSpan() / 2.0,
-            currentTerrain != null ? currentTerrain.rivers() : null
+            currentTerrain != null ? currentTerrain.rivers() : null,
+            currentTerrain, state.shoreSettings(),
+            state.generationVersionNumber() >= 3 && !state.enabledBiomes(BiomePreview.Category.SHORE).isEmpty()
         );
         BiomePreview.Type biome = state.selectBiome(preferred, worldX, worldZ);
 
@@ -1387,6 +1413,38 @@ public final class OmniIsleEditorScreen extends Screen {
         }
         @Override protected void applyValue() {
             state.setGradientStrength(value);
+            updateMessage();
+            invalidatePreview();
+        }
+    }
+
+    private final class ShoreDensitySlider extends AbstractSliderButton {
+        private ShoreDensitySlider(int x, int y, int width, int height) {
+            super(x, y, width, height, Component.empty(), state.shoreDensity());
+            updateMessage();
+        }
+        @Override protected void updateMessage() {
+            int pct = (int) Math.round(state.shoreDensity() * 100.0);
+            setMessage(Component.translatable("omniisle.editor.shore_density", pct + "%"));
+        }
+        @Override protected void applyValue() {
+            state.setShoreDensity(Math.round(value * 20.0) / 20.0);
+            updateMessage();
+            invalidatePreview();
+        }
+    }
+
+    private final class ShoreVarietySlider extends AbstractSliderButton {
+        private ShoreVarietySlider(int x, int y, int width, int height) {
+            super(x, y, width, height, Component.empty(), state.shoreVariety());
+            updateMessage();
+        }
+        @Override protected void updateMessage() {
+            int pct = (int) Math.round(state.shoreVariety() * 100.0);
+            setMessage(Component.translatable("omniisle.editor.shore_variety", pct + "%"));
+        }
+        @Override protected void applyValue() {
+            state.setShoreVariety(Math.round(value * 20.0) / 20.0);
             updateMessage();
             invalidatePreview();
         }

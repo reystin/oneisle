@@ -12,9 +12,9 @@ import net.minecraft.world.level.levelgen.WorldOptions;
 public class IslandShapeConfig {
     private static final Logger LOGGER = LoggerFactory.getLogger(IslandShapeConfig.class);
 
-    public static final int CURRENT_GENERATION_VERSION = 2;
+    public static final int CURRENT_GENERATION_VERSION = 3;
     public static final int LEGACY_GENERATION_VERSION = 1;
-    public static final int MAX_SUPPORTED_GENERATION_VERSION = 2;
+    public static final int MAX_SUPPORTED_GENERATION_VERSION = 3;
 
     public static volatile boolean unknownGenerationVersionDetected = false;
     public static volatile int lastUnknownGenerationVersion = 0;
@@ -62,7 +62,8 @@ public class IslandShapeConfig {
             SpawnPos.CODEC.optionalFieldOf("spawn").forGetter(d -> java.util.Optional.ofNullable(d.spawn)),
             IslandShapeConfig.Entry.CODEC.listOf().fieldOf("entries").orElseGet(ArrayList::new).forGetter(d -> d.entries),
             IslandMask.CODEC.optionalFieldOf("mask").forGetter(d -> java.util.Optional.ofNullable(d.mask)),
-            Codec.LONG.optionalFieldOf("biome_seed", 0L).forGetter(d -> d.biomeSeed)
+            Codec.LONG.optionalFieldOf("biome_seed", 0L).forGetter(d -> d.biomeSeed),
+            ShoreSettings.CODEC.optionalFieldOf("shore").forGetter(d -> java.util.Optional.ofNullable(d.shore))
         ).apply(instance, IslandShapeConfig::new)
     );
 
@@ -77,12 +78,23 @@ public class IslandShapeConfig {
     public ArrayList<IslandShapeConfig.Entry> entries;
     public IslandMask mask;
     public long biomeSeed;
+    public ShoreSettings shore;
 
     public IslandShapeConfig(int generationVersion, double isletDensity, double riverDensity,
                              boolean worldBorder, int worldBorderMargin,
                              java.util.Optional<HeightLayer> heightLayer,
                              java.util.Optional<SpawnPos> spawn,
                              List<IslandShapeConfig.Entry> entries, java.util.Optional<IslandMask> mask, long biomeSeed) {
+        this(generationVersion, isletDensity, riverDensity, worldBorder, worldBorderMargin,
+            heightLayer, spawn, entries, mask, biomeSeed, java.util.Optional.empty());
+    }
+
+    public IslandShapeConfig(int generationVersion, double isletDensity, double riverDensity,
+                             boolean worldBorder, int worldBorderMargin,
+                             java.util.Optional<HeightLayer> heightLayer,
+                             java.util.Optional<SpawnPos> spawn,
+                             List<IslandShapeConfig.Entry> entries, java.util.Optional<IslandMask> mask, long biomeSeed,
+                             java.util.Optional<ShoreSettings> shore) {
         if (generationVersion > MAX_SUPPORTED_GENERATION_VERSION) {
             LOGGER.error("OmniIsle: Unknown generation_version {}, capping to {}", generationVersion, MAX_SUPPORTED_GENERATION_VERSION);
             this.generationVersion = MAX_SUPPORTED_GENERATION_VERSION;
@@ -100,6 +112,7 @@ public class IslandShapeConfig {
         this.entries = new ArrayList<>(entries);
         this.mask = mask.orElse(null);
         this.biomeSeed = biomeSeed;
+        this.shore = shore.orElse(this.generationVersion >= 3 ? ShoreSettings.DEFAULT : null);
 
         int totalPx = this.mask != null ? this.mask.width * this.mask.height : 192 * 192;
         if (this.heightLayer != null && this.heightLayer.data() != null && !this.heightLayer.data().isEmpty()) {

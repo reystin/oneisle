@@ -38,6 +38,7 @@ public final class IslandDraft {
         BiomePreview.Type.SULFUR_CAVES);
 
     public enum GenerationVersion {
+        V3("omniisle.generation.v3", 3),
         V2("omniisle.generation.v2", 2),
         V1("omniisle.generation.v1", 1);
 
@@ -50,6 +51,7 @@ public final class IslandDraft {
         }
 
         public static GenerationVersion fromInt(int v) {
+            if (v >= 3) return V3;
             return v <= 1 ? V1 : V2;
         }
     }
@@ -143,7 +145,10 @@ public final class IslandDraft {
     private Preset preset;
     private Relief relief = Relief.BALANCED;
     private BiomeTheme theme = BiomeTheme.STANDARD;
-    private GenerationVersion generationVersion = GenerationVersion.V2;
+    private GenerationVersion generationVersion = GenerationVersion.V3;
+    private double shoreDensity = com.hack337.omniisle.continent.ShoreSettings.DEFAULT.density();
+    private double shoreVariety = com.hack337.omniisle.continent.ShoreSettings.DEFAULT.variety();
+    private boolean shoreRocky = com.hack337.omniisle.continent.ShoreSettings.DEFAULT.rocky();
     private double isletDensity = 0.25;
     private double structureDensity = 1.0;
     private int climateScale = 720;
@@ -214,6 +219,9 @@ public final class IslandDraft {
         draft.climateScale = this.climateScale;
         draft.gradientMode = this.gradientMode;
         draft.gradientStrength = this.gradientStrength;
+        draft.shoreDensity = this.shoreDensity;
+        draft.shoreVariety = this.shoreVariety;
+        draft.shoreRocky = this.shoreRocky;
         draft.spawnPx = this.spawnPx;
         draft.spawnPz = this.spawnPz;
         return draft;
@@ -351,6 +359,25 @@ public final class IslandDraft {
     public double riverDensity() { return riverDensity; }
     public void setRiverDensity(double density) {
         this.riverDensity = Math.max(0.0, Math.min(1.0, density));
+    }
+
+    public double shoreDensity() { return shoreDensity; }
+    public void setShoreDensity(double density) {
+        this.shoreDensity = Math.max(0.0, Math.min(1.0, density));
+    }
+
+    public double shoreVariety() { return shoreVariety; }
+    public void setShoreVariety(double variety) {
+        this.shoreVariety = Math.max(0.0, Math.min(1.0, variety));
+    }
+
+    public boolean shoreRocky() { return shoreRocky; }
+    public void setShoreRocky(boolean rocky) {
+        this.shoreRocky = rocky;
+    }
+
+    public com.hack337.omniisle.continent.ShoreSettings shoreSettings() {
+        return new com.hack337.omniisle.continent.ShoreSettings(shoreDensity, shoreVariety, "natural", shoreRocky);
     }
 
     public boolean isWorldBorderEnabled() { return worldBorder; }
@@ -1292,6 +1319,9 @@ public final class IslandDraft {
     public List<BiomePreview.Type> enabledBiomes(BiomePreview.Category category) {
         List<BiomePreview.Type> list = enabledBiomes.stream().filter(type -> type.category == category).toList();
         if (list.isEmpty()) {
+            if (generationVersion == GenerationVersion.V3 && category == BiomePreview.Category.SHORE) {
+                return List.of();
+            }
             return DEFAULT_BIOMES.stream().filter(type -> type.category == category && OVERWORLD_BIOMES.contains(type)).toList();
         }
         return list;

@@ -165,6 +165,50 @@ public final class BiomePreview {
         };
     }
 
+    /**
+     * v3 surface preview using the explicit {@link com.hack337.omniisle.continent.ShoreField}.
+     * Must be used instead of the 12-arg overload for generation_version >= 3.
+     */
+    public static Type surfaceV3(double continentalness, double x, double z, long seed,
+                                 int climateScale, com.hack337.omniisle.continent.IslandClimate.GradientMode gradientMode,
+                                 double gradientStrength, IslandDraft.BiomeTheme theme, double slope, int version,
+                                 double islandHalfSpan, com.hack337.omniisle.continent.IslandRivers rivers,
+                                 com.hack337.omniisle.continent.IslandTerrain terrain,
+                                 com.hack337.omniisle.continent.ShoreSettings shore, boolean shoreAllowed) {
+        if (version < 3 || terrain == null) {
+            return surface(continentalness, x, z, seed, climateScale, gradientMode, gradientStrength,
+                theme, slope, version, islandHalfSpan, rivers);
+        }
+        if (rivers != null && rivers.isEnabled() && rivers.isRiver(x, z)) {
+            com.hack337.omniisle.continent.IslandClimate.SampleResult res =
+                com.hack337.omniisle.continent.IslandClimate.sample(
+                    continentalness, x, z, 64.0, slope, climateScale, seed,
+                    gradientMode, gradientStrength, theme != null ? theme.name() : "standard",
+                    islandHalfSpan, 2
+                );
+            return res.temperature() < 0.26 ? Type.FROZEN_RIVER : Type.RIVER;
+        }
+        double distance = terrain.signedDistance(x, z);
+        int shoreOutcome = com.hack337.omniisle.continent.ShoreField.NONE;
+        if (shoreAllowed && shore != null && shore.enabled()
+            && distance >= com.hack337.omniisle.continent.ShoreField.intertidalLimit(x, z, seed)
+            && distance <= com.hack337.omniisle.continent.ShoreField.MAX_INLAND) {
+            double bay = com.hack337.omniisle.continent.ShoreField.bayness(terrain, x, z, distance);
+            shoreOutcome = com.hack337.omniisle.continent.ShoreField.outcome(distance, x, z, slope, bay, shore, seed);
+        }
+        com.hack337.omniisle.continent.IslandClimate.SampleResult res =
+            com.hack337.omniisle.continent.IslandClimate.sampleV3(
+                continentalness, x, z, slope, climateScale, seed,
+                gradientMode, gradientStrength, theme != null ? theme.name() : "standard",
+                islandHalfSpan, version, distance, shoreOutcome
+            );
+        return switch (res.zone()) {
+            case OCEAN -> oceanTypeFromId(res.subType());
+            case SHORE -> shoreTypeFromId(res.subType());
+            case LAND -> landTypeFromFamily(res.landFamily());
+        };
+    }
+
     public static Type landTypeFromFamily(int family) {
         return switch (family) {
             case 0 -> Type.SNOWY_PLAINS;

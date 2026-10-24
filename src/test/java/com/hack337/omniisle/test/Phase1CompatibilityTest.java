@@ -9,8 +9,10 @@ import com.hack337.omniisle.continent.IslandMask;
 import com.hack337.omniisle.continent.IslandShapeConfig;
 import com.hack337.omniisle.continent.IslandTerrain;
 import com.hack337.omniisle.continent.LegacyTerrainV1;
+import com.hack337.omniisle.continent.ShoreSettings;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -109,6 +111,44 @@ public class Phase1CompatibilityTest {
         assertTrue(IslandShapeConfig.unknownGenerationVersionDetected,
             "Warning flag must be set for world join notification");
         assertEquals(99, IslandShapeConfig.lastUnknownGenerationVersion);
+    }
+
+    @Test
+    void testV3ShoreSettingsCodecRoundTrip() {
+        IslandShapeConfig original = new IslandShapeConfig(3, 0.25, 0.35, false, 1000,
+            Optional.empty(), Optional.empty(), List.of(), Optional.empty(), 42L,
+            Optional.of(new ShoreSettings(0.55, 0.8, "natural", false)));
+
+        var encoded = IslandShapeConfig.CODEC.encodeStart(JsonOps.INSTANCE, original);
+        assertTrue(encoded.result().isPresent(), "V3 encoding must succeed");
+        JsonObject obj = encoded.result().get().getAsJsonObject();
+        assertEquals(3, obj.get("generation_version").getAsInt());
+        assertTrue(obj.getAsJsonObject("shore").get("density").getAsDouble() > 0.54);
+
+        var decoded = IslandShapeConfig.CODEC.parse(JsonOps.INSTANCE, obj);
+        assertTrue(decoded.result().isPresent(), "V3 decoding must succeed");
+        IslandShapeConfig roundTripped = decoded.result().get();
+        assertNotNull(roundTripped.shore, "V3 must retain explicit shore settings");
+        assertEquals(0.55, roundTripped.shore.density(), 1e-9);
+        assertEquals(0.8, roundTripped.shore.variety(), 1e-9);
+        assertFalse(roundTripped.shore.rocky());
+    }
+
+    @Test
+    void testV2WithoutShoreKeepsLegacyRibbon() {
+        var result = IslandShapeConfig.CODEC.parse(JsonOps.INSTANCE,
+            JsonParser.parseString("{\"generation_version\":2,\"entries\":[],\"biome_seed\":42}"));
+        assertTrue(result.result().isPresent());
+        assertNull(result.result().get().shore, "Absent shore on v2 must stay null (legacy ribbon)");
+    }
+
+    @Test
+    void testV3WithoutShoreDefaultsToNaturalBeaches() {
+        var result = IslandShapeConfig.CODEC.parse(JsonOps.INSTANCE,
+            JsonParser.parseString("{\"generation_version\":3,\"entries\":[],\"biome_seed\":42}"));
+        assertTrue(result.result().isPresent());
+        assertEquals(ShoreSettings.DEFAULT, result.result().get().shore,
+            "Absent shore on v3 must default to the natural beach field");
     }
 
     @Test

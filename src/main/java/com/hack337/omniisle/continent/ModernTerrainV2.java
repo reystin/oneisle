@@ -31,6 +31,7 @@ public final class ModernTerrainV2 implements IslandTerrain {
     private final long seed;
     private final double coastWarp;
     private final double isletDensity;
+    private final ShoreSettings shoreSettings;
 
     private final float[] sdfGrid;
     private final float[] heightGrid;
@@ -51,6 +52,7 @@ public final class ModernTerrainV2 implements IslandTerrain {
         this.seed = config != null && config.biomeSeed != 0L ? config.biomeSeed : 0x5EED1234ABCDL;
         this.coastWarp = 45.0;
         this.isletDensity = config != null ? config.isletDensity : 0.25;
+        this.shoreSettings = config != null && config.generationVersion >= 3 ? config.shore : null;
 
         this.sdfGrid = buildSdfGrid();
         this.heightGrid = buildHeightGrid(config != null ? config.unpackedHeight : null);
@@ -148,6 +150,22 @@ public final class ModernTerrainV2 implements IslandTerrain {
                 double roughness = IslandNoise.fbm2(worldX / 72.0, worldZ / 72.0, seed + 911L, 3, 2.0, 0.5)
                     * 0.045 * IslandNoise.smoothstep(t);
                 c += roughness;
+            }
+
+            // v3 shore terrain: flatten beach pockets, slightly steepen no-beach coasts
+            if (shoreSettings != null && shoreSettings.enabled() && d < 52.0) {
+                double patch = ShoreField.patch(worldX, worldZ, shoreSettings, seed);
+                double beachMask = 0.0;
+                if (patch > 0.0) {
+                    double width = ShoreField.inlandWidth(worldX, worldZ, shoreSettings, seed, patch);
+                    beachMask = (1.0 - IslandNoise.smoothstep((d - width + 6.0) / 16.0))
+                        * IslandNoise.smoothstep(d / 4.0);
+                }
+                double rockyMask = (1.0 - patch) * (1.0 - IslandNoise.smoothstep((d - 6.0) / 32.0));
+                double relief = c + 0.08;
+                relief *= 1.0 - 0.38 * beachMask;
+                relief *= 1.0 + 0.18 * rockyMask;
+                c = -0.08 + relief;
             }
 
             if (rivers != null && rivers.isEnabled()) {

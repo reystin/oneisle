@@ -1,0 +1,6 @@
+draft_density,0.75
+draft_variety,0.40
+draft_rocky,false
+share_code_roundtrip,density=0.75 variety=0.40 rocky=false version=3
+pack_continents_has_shore,true
+pack_preset_has_shore,true

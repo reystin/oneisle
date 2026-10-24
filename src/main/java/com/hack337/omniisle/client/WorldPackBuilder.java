@@ -121,6 +121,9 @@ public final class WorldPackBuilder {
         config.add("entries", new JsonArray());
         config.add("mask", mask);
         config.addProperty("biome_seed", state.biomeSeed());
+        if (state.generationVersionNumber() >= 3) {
+            config.add("shore", shoreJson(state));
+        }
         JsonObject input = new JsonObject();
         input.addProperty("type", "omniisle:island_continents");
         input.add("config", config);
@@ -144,6 +147,9 @@ public final class WorldPackBuilder {
                 biomeSource.addProperty("gradient_mode", state.gradientMode().name().toLowerCase(java.util.Locale.ROOT));
                 biomeSource.addProperty("gradient_strength", state.gradientStrength());
                 biomeSource.addProperty("biome_theme", state.theme().name().toLowerCase(java.util.Locale.ROOT));
+                if (state.generationVersionNumber() >= 3) {
+                    biomeSource.add("shore", shoreJson(state));
+                }
                 addEnabledBiomes(biomeSource, "enabled_land_biomes", state, BiomePreview.Category.LAND);
                 addEnabledBiomes(biomeSource, "enabled_shore_biomes", state, BiomePreview.Category.SHORE);
                 addEnabledBiomes(biomeSource, "enabled_ocean_biomes", state, BiomePreview.Category.OCEAN);
@@ -152,6 +158,15 @@ public final class WorldPackBuilder {
                 return GSON.toJson(root) + "\n";
             }
         }
+    }
+
+    private static JsonObject shoreJson(IslandDraft state) {
+        JsonObject shore = new JsonObject();
+        shore.addProperty("density", state.shoreDensity());
+        shore.addProperty("variety", state.shoreVariety());
+        shore.addProperty("style", "natural");
+        shore.addProperty("rocky", state.shoreRocky());
+        return shore;
     }
 
     private static void addEnabledBiomes(JsonObject biomeSource, String key, IslandDraft state,
@@ -169,9 +184,14 @@ public final class WorldPackBuilder {
             state.isWorldBorderEnabled(), state.worldBorderMargin(),
             state.hasCustomHeight() ? java.util.Optional.of(new com.hack337.omniisle.continent.IslandShapeConfig.HeightLayer(2, state.packedHeight())) : java.util.Optional.empty(),
             java.util.Optional.of(new com.hack337.omniisle.continent.IslandShapeConfig.SpawnPos((int)Math.round(state.worldX(sp[0])), (int)Math.round(state.worldZ(sp[1])))),
-            List.of(), java.util.Optional.of(mask), state.biomeSeed()
+            List.of(), java.util.Optional.of(mask), state.biomeSeed(),
+            state.generationVersionNumber() >= 3
+                ? java.util.Optional.of(state.shoreSettings())
+                : java.util.Optional.empty()
         );
         com.hack337.omniisle.continent.IslandTerrain terrain = com.hack337.omniisle.continent.IslandTerrain.create(terrainConfig);
+        boolean shoreAllowed = state.generationVersionNumber() >= 3
+            && !state.enabledBiomes(BiomePreview.Category.SHORE).isEmpty();
 
         int minChunk = (int)Math.floor(-halfSpan / 16.0);
         int maxChunk = (int)Math.ceil(halfSpan / 16.0);
@@ -182,8 +202,22 @@ public final class WorldPackBuilder {
                 int x = cx * 16 + 8;
                 int z = cz * 16 + 8;
                 double continentalness = terrain.continentalness(x, z);
-                BiomePreview.Type biome = state.selectBiome(
-                    BiomePreview.surface(continentalness, x, z, state.biomeSeed()), x, z);
+                BiomePreview.Type biome;
+                if (state.generationVersionNumber() >= 3) {
+                    double cpE = terrain.continentalness(x + 8, z);
+                    double cpW = terrain.continentalness(x - 8, z);
+                    double cpS = terrain.continentalness(x, z + 8);
+                    double cpN = terrain.continentalness(x, z - 8);
+                    double slope = Math.hypot((cpE - cpW) / 16.0, (cpS - cpN) / 16.0) * 64.0;
+                    biome = state.selectBiome(
+                        BiomePreview.surfaceV3(continentalness, x, z, state.biomeSeed(),
+                            state.climateScale(), state.gradientMode(), state.gradientStrength(),
+                            state.theme(), slope, state.generationVersionNumber(), halfSpan,
+                            terrain.rivers(), terrain, state.shoreSettings(), shoreAllowed), x, z);
+                } else {
+                    biome = state.selectBiome(
+                        BiomePreview.surface(continentalness, x, z, state.biomeSeed()), x, z);
+                }
                 samples[(cz - minChunk) * width + cx - minChunk] =
                     new Sample(continentalness, biome, BiomePreview.isDeepDark(x, z, state.biomeSeed()));
             }

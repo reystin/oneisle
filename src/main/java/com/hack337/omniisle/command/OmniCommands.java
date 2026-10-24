@@ -6,6 +6,7 @@ import com.hack337.omniisle.client.WorldPackBuilder;
 import com.hack337.omniisle.continent.IslandMask;
 import com.hack337.omniisle.continent.IslandShapeConfig;
 import com.hack337.omniisle.continent.IslandTerrain;
+import com.hack337.omniisle.continent.ShoreField;
 import com.hack337.omniisle.worldgen.IslandDensityFunction;
 import com.hack337.omniisle.worldgen.OmniBiomeSource;
 import com.mojang.brigadier.Command;
@@ -114,7 +115,7 @@ public final class OmniCommands {
                 .then(Commands.literal("debug")
                     .requires(source -> source.permissions().hasPermission(Permissions.COMMANDS_GAMEMASTER))
                     .then(Commands.argument("mode", StringArgumentType.word())
-                        .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(new String[]{"continentalness", "height", "biome", "river", "tier"}, builder))
+                        .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(new String[]{"continentalness", "height", "biome", "river", "tier", "shore"}, builder))
                         .executes(ctx -> executeDebug(ctx, StringArgumentType.getString(ctx, "mode"), 2000, 8))
                         .then(Commands.argument("radius", IntegerArgumentType.integer(100, 16000))
                             .executes(ctx -> executeDebug(ctx, StringArgumentType.getString(ctx, "mode"), IntegerArgumentType.getInteger(ctx, "radius"), 8))
@@ -166,6 +167,14 @@ public final class OmniCommands {
         );
     }
 
+    private static double slopeAt(IslandTerrain terrain, double x, double z) {
+        double cE = terrain.continentalness(x + 4.0, z);
+        double cW = terrain.continentalness(x - 4.0, z);
+        double cS = terrain.continentalness(x, z + 4.0);
+        double cN = terrain.continentalness(x, z - 4.0);
+        return Math.hypot((cE - cW) / 8.0, (cS - cN) / 8.0) * 64.0;
+    }
+
     private static int executeDebug(CommandContext<CommandSourceStack> context, String mode, int radius, int step) {
         ServerLevel world = context.getSource().getLevel();
         IslandDensityFunction idf = IslandDensityFunction.getActive();
@@ -215,8 +224,44 @@ public final class OmniCommands {
                     }
                     case "biome" -> {
                         Holder<Biome> b = resolver.getNoiseBiome(x >> 2, 16, z >> 2);
-                        int foliage = b.value().getFoliageColor();
-                        color = 0xFF000000 | (foliage != 0 ? foliage : 0x8DB84D);
+                        String path = b.unwrapKey().map(key -> key.identifier().getPath()).orElse("");
+                        if (path.equals("beach")) {
+                            color = 0xFFE8D9A0;
+                        } else if (path.equals("snowy_beach")) {
+                            color = 0xFFF4F0E0;
+                        } else if (path.equals("stony_shore")) {
+                            color = 0xFF8C8C8C;
+                        } else if (path.contains("ocean")) {
+                            color = path.startsWith("deep") ? 0xFF123260 : 0xFF2F5E9E;
+                        } else if (path.equals("river") || path.equals("frozen_river")) {
+                            color = 0xFF4F8FD0;
+                        } else {
+                            int foliage = b.value().getFoliageColor();
+                            color = 0xFF000000 | (foliage != 0 ? foliage : 0x8DB84D);
+                        }
+                    }
+                    case "shore" -> {
+                        if (cfg.shore == null || !cfg.shore.enabled()) {
+                            context.getSource().sendFailure(Component.literal(
+                                "Shore field is not active (generation_version " + cfg.generationVersion + ")."));
+                            return 0;
+                        }
+                        double d = terrain.signedDistance(x, z);
+                        double limit = ShoreField.intertidalLimit(x, z, cfg.biomeSeed);
+                        if (d < limit) {
+                            color = 0xFF2F5E9E;
+                        } else if (d > ShoreField.MAX_INLAND) {
+                            color = 0xFF5C8A4E;
+                        } else {
+                            double bay = ShoreField.bayness(terrain, x, z, d);
+                            int outcome = ShoreField.outcome(d, x, z, slopeAt(terrain, x, z), bay,
+                                cfg.shore, cfg.biomeSeed);
+                            color = switch (outcome) {
+                                case ShoreField.SAND -> 0xFFE8D9A0;
+                                case ShoreField.STONY -> 0xFF8C8C8C;
+                                default -> d >= 0.0 ? 0xFF5C8A4E : 0xFF2F5E9E;
+                            };
+                        }
                     }
                     case "river" -> {
                         if (terrain.rivers() != null && terrain.rivers().isEnabled()) {

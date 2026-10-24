@@ -1,0 +1,4 @@
+samples,18382
+matched,18382
+rate,1.0
+shore_samples,1044

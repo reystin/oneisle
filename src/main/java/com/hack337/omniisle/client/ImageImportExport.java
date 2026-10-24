@@ -136,6 +136,9 @@ public final class ImageImportExport {
         int res = draft.resolution();
         BufferedImage img = new BufferedImage(res, res, BufferedImage.TYPE_INT_RGB);
         double halfSpan = draft.worldSpan() / 2.0;
+        boolean shoreAllowed = draft.generationVersionNumber() >= 3
+            && !draft.enabledBiomes(BiomePreview.Category.SHORE).isEmpty();
+        com.hack337.omniisle.continent.ShoreSettings shore = draft.shoreSettings();
 
         for (int z = 0; z < res; z++) {
             for (int x = 0; x < res; x++) {
@@ -150,10 +153,11 @@ public final class ImageImportExport {
                     double cN = terrain.continentalness(wx, wz - 8);
                     slope = Math.hypot((cE - cW) / 16.0, (cS - cN) / 16.0) * 64.0;
                 }
-                BiomePreview.Type preferred = BiomePreview.surface(
+                BiomePreview.Type preferred = BiomePreview.surfaceV3(
                     c, wx, wz, draft.biomeSeed(),
                     draft.climateScale(), draft.gradientMode(), draft.gradientStrength(),
-                    draft.theme(), slope, draft.generationVersionNumber(), halfSpan
+                    draft.theme(), slope, draft.generationVersionNumber(), halfSpan,
+                    terrain != null ? terrain.rivers() : null, terrain, shore, shoreAllowed
                 );
                 int color = draft.selectBiome(preferred, wx, wz).color & 0x00FFFFFF;
                 img.setRGB(x, z, color);

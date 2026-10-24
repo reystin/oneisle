@@ -62,6 +62,9 @@ public final class ShareCode {
         root.addProperty("river_density", draft.riverDensity());
         root.addProperty("world_border", draft.isWorldBorderEnabled());
         root.addProperty("world_border_margin", draft.worldBorderMargin());
+        root.addProperty("shore_density", draft.shoreDensity());
+        root.addProperty("shore_variety", draft.shoreVariety());
+        root.addProperty("shore_rocky", draft.shoreRocky());
         if (draft.hasExplicitSpawn()) {
             root.addProperty("spawn_px", draft.explicitSpawnPx());
             root.addProperty("spawn_pz", draft.explicitSpawnPz());
@@ -234,6 +237,15 @@ public final class ShareCode {
         }
         if (root.has("world_border_margin")) {
             draft.setWorldBorderMargin(root.get("world_border_margin").getAsInt());
+        }
+        if (root.has("shore_density")) {
+            draft.setShoreDensity(root.get("shore_density").getAsDouble());
+        }
+        if (root.has("shore_variety")) {
+            draft.setShoreVariety(root.get("shore_variety").getAsDouble());
+        }
+        if (root.has("shore_rocky")) {
+            draft.setShoreRocky(root.get("shore_rocky").getAsBoolean());
         }
         if (root.has("mask")) {
             draft.unpackMask(root.get("mask").getAsString());

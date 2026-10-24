@@ -91,12 +91,17 @@
 - [x] **9.1.7** World border default off; `copy()` bug recorded
 - [x] **9.1.8** Climate family fractions measured; theme gradient ineffective in ALL/STANDARD
 - [x] **9.1.9** Uniform shore ribbon measured: 100 % of coast samples
+- [x] **9.1.10** Structure harness/test seeds fixed; report generation now deterministic
 
 Evidence: `docs/evidence/phase9_before/README.md`.
 
-### Phase 9.2 — Shoreline redesign [v3] (in progress)
-- [ ] **9.2.1** Shore weight field (patch, width, bayness, slope) in shared sampler
-- [ ] **9.2.2** `shore` config + `generation_version = 3`; v1/v2 unchanged
-- [ ] **9.2.3** Editor controls and `/omniisle debug shore`
-- [ ] **9.2.4** Acceptance metrics + before/after PNGs
-- [x] **9.1.10** Structure harness/test seeds fixed; report generation now deterministic
+### Phase 9.2 — Shoreline redesign [v3] (completed)
+- [x] **9.2.1** Explicit shore field (`ShoreField`): patch mask, noise-varied inland width + notch, 8-point bayness, slope, three outcomes (sand/stony/none), noise-jittered intertidal limit
+- [x] **9.2.2** Nested optional `shore:{density,variety,style,rocky}`; `generation_version = 3` defaults; v1/v2 path and structure sampling untouched
+- [x] **9.2.3** Climate-tab controls (Beaches 0–100 %, Shore variety, Rocky shores) with live preview invalidation; `/omniisle debug shore` three-colour mask; `/omniisle debug biome` colours shore biomes; settings/copy/share-code/pack round-trip test
+- [x] **9.2.4** 30-island acceptance (61,440 contour points), density sweep, bay/headland ratio, 100 % preview/server parity, continuity, line-fit border check, before/after PNGs
+- [x] **9.2.5** v3 coastal terrain easing: beach pockets flattened (×0.62 relief), no-beach coasts steepened (×1.18); max continuity delta 0.0109 < 0.015
+
+Measured (defaults): sand 22.1 %, stony 3.9 %, none 74.0 %; longest run failures 0;
+density 0→0 %, 1→71.2 % monotone; bays/headlands sand ratio 2.51; widest line-fit-straight
+border 56 blocks (longest border 155 blocks, 7.1 block deviation). Evidence: `docs/evidence/shore/`.

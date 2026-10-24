@@ -86,3 +86,30 @@ This log records every design choice, trade-off, and architectural resolution ma
 * **Question:** The task asks to mirror the final jar to `C:\Game\prism\...\mods` and `c:\Users\reystin\Downloads`, but the build host is macOS.
 * **Choice:** Map them to `~/Library/Application Support/PrismLauncher/instances/Vulkan Optimization/minecraft/mods` and `~/Downloads` respectively.
 * **Reason:** Those are the native macOS equivalents and the prompt permits documenting path mappings. Both destination files and hashes will be reported in the final report.
+
+### Decision 012: v3 explicit shore field instead of the continentalness ribbon
+* **Question:** How to replace the uniform v1/v2 beach ribbon with patchy beaches, rocky headlands and no-shore cliffs while keeping old worlds bit-identical?
+* **Options:**
+  1. Keep the `continentalness < 0.02` band and scale it by noise.
+  2. Add an explicit `ShoreField` driven by signed distance `d`, a multi-scale patch mask (380/130/55/17 + 70-block gap mask), noise-varied inland width (3–26 blocks, ×0.25–1.15 factor, 27-block notch), 8-point bayness (R = 60), slope and a noise-jittered intertidal limit; nested optional `shore` config used only when `generation_version = 3`.
+* **Choice:** Option 2.
+* **Reason:** Distance and biome-family gates are orthogonal: the field can create pockets, bays, headlands and cliffs without touching terrain or the v1/v2 code path. `shore` is absent in v1/v2 configs, so the legacy branch remains byte-identical; v3 configs default to `ShoreSettings.DEFAULT` (density 0.30, variety 0.6, natural, rocky). The inland width is capped below `MAX_INLAND` (34) so the width contour, not the hard cutoff, defines the landward beach edge.
+* **Evidence:** `docs/evidence/shore/shore_acceptance_summary.txt`, `shore_density_sweep.csv`, `shore_bay_headland.txt`.
+
+### Decision 013: Straightness check uses a line-fit, not a cell-drift heuristic
+* **Question:** The prompt forbids straight biome borders > 120 blocks "check with a line-fit on the debug mask". What counts as straight?
+* **Options:**
+  1. Link border cells across mask lines when the boundary moves by ≤1 cell; call the run straight.
+  2. Build one-to-one border chains in world coordinates, fit a principal-axis line (PCA), and treat a chain as straight only when every point is within 2.5 blocks (half a 5-block cell) of that line.
+* **Choice:** Option 2.
+* **Reason:** Option 1 flags natural shallow arcs: the north pole of a round island produced a 155-block "straight" chain with 7.1 blocks of bow, which is visibly curved. The line-fit matches the prompt's wording and the mask quantization. Measured result: longest straight segment 56 blocks; longest border 155 blocks with 7.07 blocks max deviation.
+* **Evidence:** `docs/evidence/shore/shore_straight_border.txt`, `shore_border_chains.csv`, `shore_mask_4000_101.png`.
+
+### Decision 014: v3 coastal terrain easing and v1/v2 structure-sampling preservation
+* **Question:** How to make terrain agree with shore outcomes without violating continuity or changing legacy worlds?
+* **Options:**
+  1. Leave terrain untouched (biome-only change).
+  2. In `ModernTerrainV2`, for v3 only, multiply coastal relief by 0.62 inside beach pockets and 1.18 on no-beach coasts, using smooth masks that fade at the waterline and at the inland width edge; keep `BiomePreview.surface(...)` 4-arg sampling for v1/v2 structure placement in `WorldPackBuilder`.
+* **Choice:** Option 2.
+* **Reason:** The relief scaling is applied to `c + 0.08` before river carving, so shorelines stay at the same height and rivers are unaffected. Worst measured per-block delta is 0.0109, below the 0.015 bar. Using the modern sampler for v1/v2 structure placement changed the audited Ancient City surface biome (dappled_forest), so legacy placement keeps the old sampler until Phase 9.4 redesigns placement deliberately.
+* **Evidence:** `docs/evidence/shore/shore_continuity.csv`; full test suite green (62 tests, 1 skipped golden gate).

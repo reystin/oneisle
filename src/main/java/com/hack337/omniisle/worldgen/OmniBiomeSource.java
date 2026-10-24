@@ -5,7 +5,11 @@ import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import com.hack337.omniisle.OmniIsleIds;
 import com.hack337.omniisle.continent.IslandClimate;
+import com.hack337.omniisle.continent.IslandTerrain;
+import com.hack337.omniisle.continent.ShoreField;
+import com.hack337.omniisle.continent.ShoreSettings;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Stream;
 import net.minecraft.core.Holder;
 import net.minecraft.core.Registry;
@@ -25,6 +29,14 @@ public final class OmniBiomeSource extends BiomeSource {
     private static final int SANDY_BEACH_MAX_Y = 70;
     private static final int ROCKY_COAST_MAX_Y = 86;
 
+    private record ThemeShore(String theme, Optional<ShoreSettings> shore) {}
+
+    // Inlined so the flat "biome_theme"/"shore" fields fit DFU's 16-field record limit.
+    private static final MapCodec<ThemeShore> THEME_SHORE_CODEC = RecordCodecBuilder.mapCodec(i -> i.group(
+        Codec.STRING.optionalFieldOf("biome_theme", "standard").forGetter(ThemeShore::theme),
+        ShoreSettings.CODEC.optionalFieldOf("shore").forGetter(ThemeShore::shore)
+    ).apply(i, ThemeShore::new));
+
     public static final MapCodec<OmniBiomeSource> CODEC = RecordCodecBuilder.mapCodec(instance -> instance.group(
         Biome.CODEC.listOf().fieldOf("land_biomes").forGetter(s -> s.landBiomes),
         Biome.CODEC.listOf().optionalFieldOf("enabled_land_biomes", List.of()).forGetter(s -> s.enabledLandBiomes),
@@ -41,8 +53,13 @@ public final class OmniBiomeSource extends BiomeSource {
         Codec.INT.optionalFieldOf("generation_version", 1).forGetter(s -> s.generationVersion),
         Codec.STRING.optionalFieldOf("gradient_mode", "north_south").forGetter(s -> s.gradientModeStr),
         Codec.DOUBLE.optionalFieldOf("gradient_strength", 0.5).forGetter(s -> s.gradientStrength),
-        Codec.STRING.optionalFieldOf("biome_theme", "standard").forGetter(s -> s.biomeThemeStr)
-    ).apply(instance, OmniBiomeSource::new));
+        THEME_SHORE_CODEC.forGetter(s -> new ThemeShore(s.biomeThemeStr, Optional.ofNullable(s.shore)))
+    ).apply(instance, (landBiomes, enabledLandBiomes, shoreBiomes, enabledShoreBiomes, oceanBiomes, enabledOceanBiomes,
+                      riverBiomes, enabledRiverBiomes, caveBiomes, enabledCaveBiomes, climateScale, biomeSeed,
+                      generationVersion, gradientModeStr, gradientStrength, themeShore) ->
+        new OmniBiomeSource(landBiomes, enabledLandBiomes, shoreBiomes, enabledShoreBiomes, oceanBiomes, enabledOceanBiomes,
+            riverBiomes, enabledRiverBiomes, caveBiomes, enabledCaveBiomes, climateScale, biomeSeed,
+            generationVersion, gradientModeStr, gradientStrength, themeShore.theme(), themeShore.shore())));
 
     private final List<Holder<Biome>> landBiomes;
     private final List<Holder<Biome>> enabledLandBiomes;
@@ -61,6 +78,8 @@ public final class OmniBiomeSource extends BiomeSource {
     private final double gradientStrength;
     private final String biomeThemeStr;
     private final IslandClimate.GradientMode gradientMode;
+    private final ShoreSettings shore;
+    private final boolean shoreDisabled;
 
     public OmniBiomeSource(List<Holder<Biome>> landBiomes,
                            List<Holder<Biome>> enabledLandBiomes,
@@ -95,6 +114,28 @@ public final class OmniBiomeSource extends BiomeSource {
                            String gradientModeStr,
                            double gradientStrength,
                            String biomeThemeStr) {
+        this(landBiomes, enabledLandBiomes, shoreBiomes, enabledShoreBiomes, oceanBiomes, enabledOceanBiomes,
+            riverBiomes, enabledRiverBiomes, caveBiomes, enabledCaveBiomes, climateScale, biomeSeed,
+            generationVersion, gradientModeStr, gradientStrength, biomeThemeStr, Optional.empty());
+    }
+
+    public OmniBiomeSource(List<Holder<Biome>> landBiomes,
+                           List<Holder<Biome>> enabledLandBiomes,
+                           List<Holder<Biome>> shoreBiomes,
+                           List<Holder<Biome>> enabledShoreBiomes,
+                           List<Holder<Biome>> oceanBiomes,
+                           List<Holder<Biome>> enabledOceanBiomes,
+                           List<Holder<Biome>> riverBiomes,
+                           List<Holder<Biome>> enabledRiverBiomes,
+                           List<Holder<Biome>> caveBiomes,
+                           List<Holder<Biome>> enabledCaveBiomes,
+                           int climateScale,
+                           long biomeSeed,
+                           int generationVersion,
+                           String gradientModeStr,
+                           double gradientStrength,
+                           String biomeThemeStr,
+                           Optional<ShoreSettings> shore) {
         if (landBiomes.size() < 18 || shoreBiomes.size() < 3 || oceanBiomes.size() < 6
             || (!riverBiomes.isEmpty() && riverBiomes.size() < 2) || caveBiomes.size() < 3) {
             throw new IllegalArgumentException("OmniIsle biome palette is incomplete");
@@ -116,6 +157,8 @@ public final class OmniBiomeSource extends BiomeSource {
         this.gradientStrength = gradientStrength;
         this.biomeThemeStr = biomeThemeStr != null ? biomeThemeStr : "standard";
         this.gradientMode = IslandClimate.GradientMode.fromString(this.gradientModeStr);
+        this.shore = shore.orElse(this.generationVersion >= 3 ? ShoreSettings.DEFAULT : null);
+        this.shoreDisabled = this.generationVersion >= 3 && enabledShoreBiomes.isEmpty();
     }
 
     @Override
@@ -174,10 +217,33 @@ public final class OmniBiomeSource extends BiomeSource {
             halfSpan = (m.maxX - m.minX) / 2.0;
         }
 
-        IslandClimate.SampleResult res = IslandClimate.sample(
-            continentalness, x, z, y, slope, climateScale, biomeSeed,
-            gradientMode, gradientStrength, biomeThemeStr, halfSpan, generationVersion
-        );
+        IslandClimate.SampleResult res;
+        if (generationVersion >= 3) {
+            IslandTerrain terrain = activeDf != null ? activeDf.terrain() : null;
+            double distance;
+            if (terrain != null) {
+                distance = terrain.signedDistance(x, z);
+            } else {
+                distance = continentalness < IslandClimate.OCEAN_START ? -10.0
+                    : Math.max(1.0, continentalness * 100.0);
+            }
+            int shoreOutcome = ShoreField.NONE;
+            if (!shoreDisabled && shore != null && shore.enabled()
+                && distance >= ShoreField.intertidalLimit(x, z, biomeSeed) && distance <= ShoreField.MAX_INLAND) {
+                double bay = ShoreField.bayness(terrain, x, z, distance);
+                shoreOutcome = ShoreField.outcome(distance, x, z, slope, bay, shore, biomeSeed);
+            }
+            res = IslandClimate.sampleV3(
+                continentalness, x, z, slope, climateScale, biomeSeed,
+                gradientMode, gradientStrength, biomeThemeStr, halfSpan, generationVersion,
+                distance, shoreOutcome
+            );
+        } else {
+            res = IslandClimate.sample(
+                continentalness, x, z, y, slope, climateScale, biomeSeed,
+                gradientMode, gradientStrength, biomeThemeStr, halfSpan, generationVersion
+            );
+        }
 
         if (res.zone() == IslandClimate.SurfaceZone.OCEAN) {
             return selectEnabled(enabledOceanBiomes, oceanBiomes, res.subType());
