@@ -21,9 +21,14 @@ final class BiomeSelectionScreen extends Screen {
     private int listHeight;
 
     BiomeSelectionScreen(OmniIsleEditorScreen owner, IslandDraft state) {
+        this(owner, state, false);
+    }
+
+    BiomeSelectionScreen(OmniIsleEditorScreen owner, IslandDraft state, boolean showStructures) {
         super(Component.translatable("omniisle.editor.biomes"));
         this.owner = owner;
         this.state = state;
+        this.showStructures = showStructures;
     }
 
     @Override

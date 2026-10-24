@@ -152,3 +152,25 @@ share the full snowy→desert palette and therefore identical fractions; at defa
 strength NORDIC stays 71.9 % snowy_plains+taiga (91.4 % off), ALL gains 2.5 %
 snowy_plains+taiga (up to 21.5 % at strength 1.0) and 12.1 % warm families. Evidence:
 `docs/evidence/climate/`.
+
+### Phase 9.6 — Editor tools, presets, seed UX, inspector, PNG, layout (completed; screenshots PARTIAL)
+- [x] **9.6.1** Fill/Line/Rectangle/Ellipse on land and height layers, Shift square/circle, fill/outline toggle; symmetry (X, Z, 4-way) preserved and 6-way/8-way radial added
+- [x] **9.6.2** Zoom/Pan: normalized `PreviewViewport`, wheel zoom at cursor 1×–8×, middle-drag / Space+left-drag pan, 16-px grid overlay, zoom reset
+- [x] **9.6.3** Seven new seeded presets (Atoll, Volcano, Fjords, Twin Islands, Inland Sea, Horseshoe Bay, Ridge Island); all 12 presets × 20 seeds pass land 12–55 %, main component ≥ 70 % (except Archipelago/Twin) and border checks
+- [x] **9.6.4** Seed UX: shape/biome seed fields, dice buttons, copy both seeds
+- [x] **9.6.5** Inspector: biome, X/Z + surface elevation, land/water + signed coast distance + islet status, height tier, shore outcome
+- [x] **9.6.6** PNG: 5-map export (mask, height, biomes, hillshade, shore) and heightmap import with threshold + land quantiles (25/50/75 %)
+- [x] **9.6.7** Six tabs (Shape/Terrain/Climate/Biomes/Structures/Tools), per-tab widget visibility, compact layout down to 480×270; compact `BiomeSelectionScreen` buttons retained
+- [x] **9.6.8** `/omniisle info` and Advanced generation v1/v2/v3 selector (default v3) present
+- [x] **9.6.9** Undo/redo covers land, height, spawn, resolution and every tool; `PreviewTextureSlot` guarantees one release per registration
+- [ ] **9.6.10** Screenshots at GUI scales 1–4 — **NOT DONE**; see `UI_CHECKLIST.md` and `docs/screens/README.md`
+
+Measured: 12 presets × 20 seeds pass (observed land fraction 13.5–40.1 %, largest
+component 100 %, 0 border pixels). Radial symmetry required a fix: stamping a disk at
+rotated centers left rasterization gaps (measured `(126,34) → (164,91)` missing for
+6-way); painting the forward orbit of every pixel is now exactly closed. PNG export
+writes 5/5 files; shore palette on ROUND at density 1.0 is 37.85 % land, 61.33 % water,
+0.62 % sand, 0.20 % stony. Equal-quartile heightmap import maps 0/85/170/255 to
+tiers 0/1/2/3 exactly; flat maps import as tier 1. Layout content bottom/panel
+bottom/Done bottom at 480×270 = 216/222/250. Texture lifecycle: 50/50
+registrations/releases. Evidence: `docs/evidence/editor/`, `UI_CHECKLIST.md`.

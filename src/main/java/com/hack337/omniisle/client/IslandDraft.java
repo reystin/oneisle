@@ -547,41 +547,69 @@ public final class IslandDraft {
             }
         };
 
-        add.accept(x, z);
+        List<int[]> initial = transformPoints(x, z, symmetry, w, h, cx, cz, dx, dz);
+        for (int[] point : initial) {
+            add.accept(point[0], point[1]);
+        }
 
+        // Rasterized rotations can drift by a pixel; close the orbit so every
+        // painted point maps back into the same painted set.
+        if (symmetry == Symmetry.SIX_WAY || symmetry == Symmetry.EIGHT_WAY) {
+            java.util.ArrayDeque<int[]> queue = new java.util.ArrayDeque<>(initial);
+            int guard = 0;
+            while (!queue.isEmpty() && guard++ < 512) {
+                int[] point = queue.poll();
+                double pdx = point[0] - cx;
+                double pdz = point[1] - cz;
+                for (int[] next : transformPoints(point[0], point[1], symmetry, w, h, cx, cz, pdx, pdz)) {
+                    int before = result.size();
+                    add.accept(next[0], next[1]);
+                    if (result.size() > before) {
+                        queue.add(next);
+                    }
+                }
+            }
+        }
+        return result;
+    }
+
+    private static List<int[]> transformPoints(int x, int z, Symmetry symmetry, int w, int h,
+                                               double cx, double cz, double dx, double dz) {
+        List<int[]> points = new ArrayList<>(8);
+        points.add(new int[]{x, z});
         switch (symmetry) {
-            case MIRROR_X -> add.accept(w - 1 - x, z);
-            case MIRROR_Z -> add.accept(x, h - 1 - z);
+            case MIRROR_X -> points.add(new int[]{w - 1 - x, z});
+            case MIRROR_Z -> points.add(new int[]{x, h - 1 - z});
             case FOUR_WAY -> {
-                add.accept(w - 1 - x, z);
-                add.accept(x, h - 1 - z);
-                add.accept(w - 1 - x, h - 1 - z);
+                points.add(new int[]{w - 1 - x, z});
+                points.add(new int[]{x, h - 1 - z});
+                points.add(new int[]{w - 1 - x, h - 1 - z});
             }
             case SIX_WAY -> {
                 for (int k = 1; k < 6; k++) {
                     double angle = k * (Math.PI / 3.0);
                     double cos = Math.cos(angle);
                     double sin = Math.sin(angle);
-                    int rx = (int) Math.round(cx + dx * cos - dz * sin);
-                    int rz = (int) Math.round(cz + dx * sin + dz * cos);
-                    add.accept(rx, rz);
+                    points.add(new int[]{
+                        (int) Math.round(cx + dx * cos - dz * sin),
+                        (int) Math.round(cz + dx * sin + dz * cos)
+                    });
                 }
             }
             case EIGHT_WAY -> {
-                add.accept(w - 1 - x, z);
-                add.accept(x, h - 1 - z);
-                add.accept(w - 1 - x, h - 1 - z);
-                // Diagonal reflections
+                points.add(new int[]{w - 1 - x, z});
+                points.add(new int[]{x, h - 1 - z});
+                points.add(new int[]{w - 1 - x, h - 1 - z});
                 int d1x = (int) Math.round(cx + dz);
                 int d1z = (int) Math.round(cz + dx);
-                add.accept(d1x, d1z);
-                add.accept(w - 1 - d1x, d1z);
-                add.accept(d1x, h - 1 - d1z);
-                add.accept(w - 1 - d1x, h - 1 - d1z);
+                points.add(new int[]{d1x, d1z});
+                points.add(new int[]{w - 1 - d1x, d1z});
+                points.add(new int[]{d1x, h - 1 - d1z});
+                points.add(new int[]{w - 1 - d1x, h - 1 - d1z});
             }
             default -> {}
         }
-        return result;
+        return points;
     }
 
     public void paint(int centerX, int centerZ, int radius, boolean value) {
@@ -589,8 +617,81 @@ public final class IslandDraft {
     }
 
     public void paint(int centerX, int centerZ, int radius, boolean value, Symmetry symmetry) {
+        if (symmetry == Symmetry.SIX_WAY || symmetry == Symmetry.EIGHT_WAY) {
+            paintRadial(centerX, centerZ, radius, value, symmetry);
+            return;
+        }
         for (int[] pt : getSymmetricPoints(centerX, centerZ, symmetry)) {
             paintDirect(pt[0], pt[1], radius, value);
+        }
+    }
+
+    private int[] radialStamp = new int[0];
+    private int[] radialQueue = new int[0];
+    private int radialGeneration = 0;
+
+    private void ensureRadialBuffers() {
+        int size = resolution * resolution;
+        if (radialStamp.length != size) {
+            radialStamp = new int[size];
+            radialQueue = new int[size];
+            radialGeneration = 0;
+        }
+    }
+
+    /**
+     * Rasterized 60-degree rotations are not exactly reversible, so a disk
+     * stamped at rotated centers is not closed under rotation. Instead, paint
+     * the forward orbit of every pixel in the source disk; the resulting set
+     * is closed by construction.
+     */
+    private void paintRadial(int centerX, int centerZ, int radius, boolean value, Symmetry symmetry) {
+        radialClosure(centerX, centerZ, radius, symmetry, index -> land[index] = value);
+    }
+
+    @FunctionalInterface
+    private interface RadialWriter {
+        void accept(int index);
+    }
+
+    private void radialClosure(int centerX, int centerZ, int radius, Symmetry symmetry, RadialWriter writer) {
+        ensureRadialBuffers();
+        if (++radialGeneration == 0) {
+            Arrays.fill(radialStamp, 0);
+            radialGeneration = 1;
+        }
+        int generation = radialGeneration;
+        int r2 = radius * radius;
+        double cx = (resolution - 1) / 2.0;
+        double cz = cx;
+
+        for (int z = Math.max(0, centerZ - radius); z <= Math.min(resolution - 1, centerZ + radius); z++) {
+            for (int x = Math.max(0, centerX - radius); x <= Math.min(resolution - 1, centerX + radius); x++) {
+                int dx = x - centerX;
+                int dz = z - centerZ;
+                if (dx * dx + dz * dz > r2) continue;
+                int start = z * resolution + x;
+                if (radialStamp[start] == generation) continue;
+
+                int head = 0;
+                int tail = 0;
+                radialStamp[start] = generation;
+                radialQueue[tail++] = start;
+                while (head < tail) {
+                    int current = radialQueue[head++];
+                    writer.accept(current);
+                    int px = current % resolution;
+                    int pz = current / resolution;
+                    for (int[] point : transformPoints(px, pz, symmetry, resolution, resolution,
+                        cx, cz, px - cx, pz - cz)) {
+                        if (point[0] < 0 || point[0] >= resolution || point[1] < 0 || point[1] >= resolution) continue;
+                        int next = point[1] * resolution + point[0];
+                        if (radialStamp[next] == generation) continue;
+                        radialStamp[next] = generation;
+                        radialQueue[tail++] = next;
+                    }
+                }
+            }
         }
     }
 
@@ -610,6 +711,11 @@ public final class IslandDraft {
     }
 
     public void paintHeight(int centerX, int centerZ, int radius, int tier, Symmetry symmetry) {
+        if (symmetry == Symmetry.SIX_WAY || symmetry == Symmetry.EIGHT_WAY) {
+            byte bTier = (byte) Math.max(0, Math.min(3, tier));
+            radialClosure(centerX, centerZ, radius, symmetry, index -> height[index] = bTier);
+            return;
+        }
         for (int[] pt : getSymmetricPoints(centerX, centerZ, symmetry)) {
             paintHeightDirect(pt[0], pt[1], radius, tier);
         }

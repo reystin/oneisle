@@ -278,3 +278,51 @@ jitter is therefore sufficient; growing it would alter existing v2/v3 worlds.
 non-empty land fractions, and the ≤400-block border on the shared side-neutral sampler
 (`IslandClimate`); `Phase6ClimateTest` 6.3 now measures the v2 sampler instead of
 counting a loop with no assertion.
+
+## 13. [VERIFY] Phase 9.6 — Editor tools, radial symmetry, PNG import/export, layout
+
+**Radial symmetry (measured failure then fix):** with `paint(..., SIX_WAY)` stamping a
+disk at each rounded rotation of the center, the resulting mask was not closed under
+the 60° transform. The test reported `(126,34) → (164,91)` as painted → not painted
+for a disk at `(60,40)` on a 192 grid. The cause is that `Math.round(center + d·R(θ))`
+is not reversible at pixel edges; a disk around a rotated center does not contain the
+exact rotated positions of every pixel in the source disk. Painting the forward orbit
+of each source disk pixel (reusable int stamp + int queue) produces a closed set.
+The same closure is used for height tiers. 8-way reflection/rotation orbits are also
+closed; the test checks every painted pixel's seven transforms.
+
+**Heightmap quantiles:** with land luminance values sorted, `q25 = sorted[count/4-1]`,
+`q50 = sorted[count/2-1]`, `q75 = sorted[3·count/4-1]`, and tiers are
+`<=q25 → 0`, `<=q50 → 1`, `<=q75 → 2`, else 3. An image with four equal quadrants
+0/85/170/255 (192², 9216 pixels each) imports exactly 0/1/2/3 in the quadrant centers.
+A flat image (all 120) imports as tier 1 for every pixel. Inverting with threshold 100
+keeps dark pixels and rejects bright pixels. Quantiles are computed over land pixels
+only; water keeps tier 1.
+
+**PNG export:** `exportAll` now writes 5 files: mask, height, biomes, hillshade, shore.
+The ROUND preset at density 1.0/variety 0.5/rocky true produced a 192×192 shore map
+with palette-only pixels: 13,953 land (37.85 %), 22,608 water (61.33 %), 228 sand
+(0.62 %), 75 stony (0.20 %). The biome map has 25 distinct colours; the hillshade has
+224 grey levels. The exported height layer is still a 4-shade visualization
+(`tier·85`): water columns are tier 1, so the height PNG is not a standalone land-mask
+round trip; the separate mask PNG is the land source. The Phase 7 test was corrected
+to assert the exact shade encoding instead of re-importing the height PNG as a mask.
+
+**Layout:** `EditorLayout.compute` is pure. The controls content (8 rows) ends at
+`contentY + 7·rowStep + rowH`; the panel interior ends 2 px lower. Checked logical
+sizes: 1920×1080 (scale 1, non-compact), 960×540 (scale 2, non-compact), 640×360
+(scale 3, non-compact, 144-px preview) and 480×270 (scale 4, compact, 140-px preview).
+At 480×270 the content bottom is 216, panel bottom 222, Done button bottom 250.
+Below ~270 logical pixels of height the fixed control set cannot fit; this is recorded
+as the practical minimum rather than claimed as scale-independent.
+
+**Texture lifecycle:** `PreviewTextureSlot.ensure` releases the old texture before
+creating a new one when resolution changes, reuses it when unchanged, and `release`
+is idempotent. Unit test: 50 open/close cycles → 50 creates, 50 releases; a 192→256
+change → one extra release + create. This verifies accounting, not the GL texture
+count in a live client (screenshots/interactive checks are marked UNVERIFIED).
+
+**Verified 26.3 API:** `GuiGraphicsExtractor.blit(RenderPipeline, Identifier, int x,
+int y, float u, float v, int width, int height, int uWidth, int vHeight, int textureWidth,
+int textureHeight)` is the 12-argument subregion overload used for zoom; the previous
+1:1 blit call was replaced so panning/zooming does not require re-uploading the texture.

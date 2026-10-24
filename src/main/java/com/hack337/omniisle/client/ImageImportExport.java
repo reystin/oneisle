@@ -46,13 +46,14 @@ public final class ImageImportExport {
     }
 
     /**
-     * Imports a heightmap image into both a land mask (by threshold)
-     * and a 4-tier height layer (0..3) scaled to targetRes x targetRes.
+     * Imports a heightmap image into a land mask (threshold) and four height
+     * tiers split by the 25/50/75 percentiles of the land luminosity.
      */
     public static ImportedDraftData importHeightmap(BufferedImage src, int targetRes, int threshold, boolean invert) {
         BufferedImage scaled = scaleLetterbox(src, targetRes);
-        boolean[] land = new boolean[targetRes * targetRes];
-        byte[] height = new byte[targetRes * targetRes];
+        int total = targetRes * targetRes;
+        boolean[] land = new boolean[total];
+        int[] values = new int[total];
 
         for (int z = 0; z < targetRes; z++) {
             for (int x = 0; x < targetRes; x++) {
@@ -61,23 +62,43 @@ public final class ImageImportExport {
                 int g = (rgb >> 8) & 0xFF;
                 int b = rgb & 0xFF;
                 int lum = (int) Math.round(0.299 * r + 0.587 * g + 0.114 * b);
-
-                boolean isLand = invert ? (lum <= threshold) : (lum >= threshold);
-                land[z * targetRes + x] = isLand;
-
-                if (isLand) {
-                    double norm;
-                    if (!invert) {
-                        norm = threshold < 255 ? (lum - threshold) / (255.0 - threshold) : 1.0;
-                    } else {
-                        norm = threshold > 0 ? (threshold - lum) / (double) threshold : 1.0;
-                    }
-                    int tier = Math.max(0, Math.min(3, (int) Math.round(norm * 3.0)));
-                    height[z * targetRes + x] = (byte) tier;
-                } else {
-                    height[z * targetRes + x] = (byte) 1;
-                }
+                int index = z * targetRes + x;
+                land[index] = invert ? (lum <= threshold) : (lum >= threshold);
+                values[index] = invert ? 255 - lum : lum;
             }
+        }
+
+        int[] landValues = new int[total];
+        int count = 0;
+        int min = 255;
+        int max = 0;
+        for (int i = 0; i < total; i++) {
+            if (!land[i]) continue;
+            int value = values[i];
+            landValues[count++] = value;
+            min = Math.min(min, value);
+            max = Math.max(max, value);
+        }
+        byte[] height = new byte[total];
+        if (count == 0 || min == max) {
+            java.util.Arrays.fill(height, (byte) 1);
+            return new ImportedDraftData(land, height);
+        }
+
+        int[] sorted = java.util.Arrays.copyOf(landValues, count);
+        java.util.Arrays.sort(sorted);
+        int q25 = sorted[Math.max(0, count / 4 - 1)];
+        int q50 = sorted[Math.max(0, count / 2 - 1)];
+        int q75 = sorted[Math.max(0, count * 3 / 4 - 1)];
+
+        for (int i = 0; i < total; i++) {
+            if (!land[i]) {
+                height[i] = (byte) 1;
+                continue;
+            }
+            int value = values[i];
+            int tier = value <= q25 ? 0 : value <= q50 ? 1 : value <= q75 ? 2 : 3;
+            height[i] = (byte) tier;
         }
         return new ImportedDraftData(land, height);
     }
@@ -204,7 +225,43 @@ public final class ImageImportExport {
         ImageIO.write(img, "PNG", path.toFile());
     }
 
-    /** Exports all 4 maps into the given export folder. */
+    /** Exports shore outcomes: black none, yellow sand, grey stony, dark grey land. */
+    public static void exportShore(IslandDraft draft, IslandTerrain terrain, Path path) throws IOException {
+        int res = draft.resolution();
+        BufferedImage img = new BufferedImage(res, res, BufferedImage.TYPE_INT_RGB);
+        boolean shoreAllowed = terrain != null
+            && draft.generationVersionNumber() >= 3
+            && !draft.enabledBiomes(BiomePreview.Category.SHORE).isEmpty();
+        com.hack337.omniisle.continent.ShoreSettings settings = draft.shoreSettings();
+
+        for (int z = 0; z < res; z++) {
+            for (int x = 0; x < res; x++) {
+                int color = draft.isLand(x, z) ? 0x333333 : 0x000000;
+                if (shoreAllowed && settings != null && settings.enabled()) {
+                    double wx = draft.worldX(x);
+                    double wz = draft.worldZ(z);
+                    double distance = terrain.signedDistance(wx, wz);
+                    if (distance >= com.hack337.omniisle.continent.ShoreField.intertidalLimit(wx, wz, draft.biomeSeed())
+                        && distance <= com.hack337.omniisle.continent.ShoreField.MAX_INLAND) {
+                        double cE = terrain.continentalness(wx + 8, wz);
+                        double cW = terrain.continentalness(wx - 8, wz);
+                        double cS = terrain.continentalness(wx, wz + 8);
+                        double cN = terrain.continentalness(wx, wz - 8);
+                        double slope = Math.hypot((cE - cW) / 16.0, (cS - cN) / 16.0) * 64.0;
+                        double bay = com.hack337.omniisle.continent.ShoreField.bayness(terrain, wx, wz, distance);
+                        int outcome = com.hack337.omniisle.continent.ShoreField.outcome(
+                            distance, wx, wz, slope, bay, settings, draft.biomeSeed());
+                        if (outcome == com.hack337.omniisle.continent.ShoreField.SAND) color = 0xF0E6A0;
+                        else if (outcome == com.hack337.omniisle.continent.ShoreField.STONY) color = 0x90989B;
+                    }
+                }
+                img.setRGB(x, z, color);
+            }
+        }
+        ImageIO.write(img, "PNG", path.toFile());
+    }
+
+    /** Exports all 5 maps into the given export folder. */
     public static Path exportAll(IslandDraft draft, IslandTerrain terrain, Path gameDir) throws IOException {
         Path exportsDir = gameDir.resolve("omniisle").resolve("exports");
         Files.createDirectories(exportsDir);
@@ -215,12 +272,14 @@ public final class ImageImportExport {
         Path heightPath = exportsDir.resolve(prefix + "_height.png");
         Path biomesPath = exportsDir.resolve(prefix + "_biomes.png");
         Path hillshadePath = exportsDir.resolve(prefix + "_hillshade.png");
+        Path shorePath = exportsDir.resolve(prefix + "_shore.png");
 
         exportMask(draft, maskPath);
         exportHeight(draft, heightPath);
         if (terrain != null) {
             exportBiomes(draft, terrain, biomesPath);
             exportHillshade(draft, terrain, hillshadePath);
+            exportShore(draft, terrain, shorePath);
         }
         return exportsDir;
     }

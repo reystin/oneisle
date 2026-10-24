@@ -212,3 +212,39 @@ This log records every design choice, trade-off, and architectural resolution ma
 * **Choice:** Option 2.
 * **Reason:** The stronghold acceptance gates (spawn distance, mutual distance, on land, Eyes of Ender) are checked on all 45 configs; the other 17 structures are measured on 15. The matrix is marked PARTIAL (15/45 full) in `PROGRESS.md` and the final report, and the 30 configs without a full sweep carry no claim about the other structures. The repeatability run was dropped, so no repeatability claim is made; the 15 overlapping configs are used as a consistency check instead.
 * **Evidence:** `docs/evidence/structures/STRUCTURE_REPORT_after_v2.csv` (300 rows, 15 configs), `stronghold_validation.csv` (45/45 pass), `docs/evidence/spawn/spawn_evidence_45.csv`; the overlap check reports 0 mismatches and two feature-dependent `spawn_y` Y-NOTEs.
+
+### Decision 026: radial symmetry paints forward orbits instead of rotated disks
+* **Question:** 6-way/8-way symmetry initially stamped the brush disk at each rotated center. A closure test showed the result was not symmetric: `(126,34)` was painted but its 60° image `(164,91)` was not, because `Math.round` rotation is not reversible at pixel edges.
+* **Options:**
+  1. Relax the test and accept approximate radial symmetry.
+  2. For every pixel in the source disk, paint its complete forward orbit under the rasterized transform; the painted set is then closed by construction.
+* **Choice:** Option 2.
+* **Reason:** The requirement is exact symmetry, and the forward-orbit closure is cheap for editor-sized masks (a reusable stamp buffer and queue, no per-call allocation on the worldgen path). Mirrors and 4-way are unchanged. Land and height painting both use the same closure, so line/rect/ellipse/fill strokes inherit it.
+* **Evidence:** `Phase9EditorTest.radialSymmetryTest` (6-way paint+line+ellipse, 8-way paint+filled rect) and the closure check over every painted pixel. The pre-fix failure coordinate is recorded in `FINDINGS.md`.
+
+### Decision 027: heightmap import uses land-only 25/50/75 % quantiles
+* **Question:** Requirement 9.6.5 says heightmap import should use the threshold for land and quantiles for tiers.
+* **Options:**
+  1. Map luminosity linearly from the threshold to 255.
+  2. Collect luminosity only on land pixels, sort, and split at q25/q50/q75; map `<=q25` to tier 0, `<=q50` to 1, `<=q75` to 2, else 3.
+* **Choice:** Option 2.
+* **Reason:** The threshold selects the mask; quantiles adapt tiers to the image's own contrast instead of assuming a 0–255 range. A flat land region has no quantile information, so it imports as tier 1. Excluded water keeps tier 1.
+* **Evidence:** `Phase9EditorTest.heightmapQuantileImportTest` (exact 0/85/170/255 → 0/1/2/3, flat → 1, inverted threshold). This also changes the Phase 7 PNG test: the exported 4-shade height layer is a visualization, not a standalone mask, so it is checked for exact shade encoding rather than re-imported as a land mask.
+
+### Decision 028: normalized viewport and one texture slot
+* **Question:** Zoom/pan must survive resolution changes and must not leak a `DynamicTexture` across editor sessions.
+* **Options:**
+  1. Store pan in preview pixels and release the texture in every screen lifecycle branch.
+  2. Store zoom/pan as normalized map coordinates (`PreviewViewport`) and route registration/release through `PreviewTextureSlot`.
+* **Choice:** Option 2.
+* **Reason:** Normalized coordinates are resolution-independent and unit-testable; the slot enforces exactly one release per registration and reuses the texture while resolution is unchanged. The preview is drawn with the verified 26.3 `GuiGraphicsExtractor.blit` 12-argument subregion overload (source UV + source width/height).
+* **Evidence:** `Phase9EditorTest.viewportZoomPanTest`, `PreviewTextureSlotTest` (50 sessions → 50/50), `UI_CHECKLIST.md`.
+
+### Decision 029: six tabs, compact layout, screenshots marked NOT DONE
+* **Question:** The old editor put every control in one column, which did not fit at GUI scale 4.
+* **Options:**
+  1. Keep one column and shrink labels.
+  2. Split controls into six tabs, two rows of three, with a compact row height; extract the math into `EditorLayout` and assert fit at scale 1–4 logical sizes.
+* **Choice:** Option 2.
+* **Reason:** At 1080p, GUI scale 4 gives 480×270 logical pixels. Compact mode uses 16-px rows/18-px steps, a 140-px preview and a 184-px control panel; content bottom 216, panel bottom 222, Done bottom 250. The biome/structure side list is hidden in compact mode; the existing `BiomeSelectionScreen` buttons remain the path to the full lists. Real screenshots were not captured in this environment (no automated client screenshot harness), so the screenshot acceptance item is explicitly NOT DONE rather than claimed.
+* **Evidence:** `EditorLayout`, `Phase9EditorTest.layoutFitsGuiScales`, `UI_CHECKLIST.md`, `docs/screens/README.md`.

@@ -146,31 +146,27 @@ public class Phase7EditorTest {
             }
         }
 
-        // Export height
+        // Export height and verify the documented 4-shade grayscale encoding
         ImageImportExport.exportHeight(draft, heightPath);
         assertTrue(Files.exists(heightPath));
 
-        // Import heightmap
         BufferedImage heightImg = ImageIO.read(heightPath.toFile());
-        ImageImportExport.ImportedDraftData importedHeightData = ImageImportExport.importHeightmap(heightImg, 192, 1, false);
-
         for (int z = 0; z < 192; z++) {
             for (int x = 0; x < 192; x++) {
-                if (draft.isLand(x, z)) {
-                    assertEquals(draft.tier(x, z), importedHeightData.height()[z * 192 + x],
-                        "Height tier mismatch at land pixel (" + x + ", " + z + ")");
-                }
+                int expectedGray = (draft.tier(x, z) & 3) * 85;
+                assertEquals(expectedGray, heightImg.getRGB(x, z) & 0xFF,
+                    "Height shade mismatch at (" + x + ", " + z + ")");
             }
         }
     }
 
     @Test
-    @DisplayName("7.4 Shape Presets Validation: Land fraction 12-55%, component >= 70%, 0 border pixels")
+    @DisplayName("7.4 Shape Presets Validation: 12 presets x 20 seeds, land fraction 12-55%, component >= 70%, 0 border pixels")
     void testAllShapePresets() {
         IslandDraft.Preset[] presets = IslandDraft.Preset.values();
 
         for (IslandDraft.Preset preset : presets) {
-            for (long seed = 1L; seed <= 5L; seed++) {
+            for (long seed = 1L; seed <= 20L; seed++) {
                 IslandDraft draft = new IslandDraft(192);
                 draft.setPreset(preset);
                 draft.setShapeSeed(seed);
