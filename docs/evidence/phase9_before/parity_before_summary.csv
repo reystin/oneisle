@@ -1,0 +1,8 @@
+scope,samples,matches,agreement
+overall,65536,65536,1.0
+ocean,37255,37255,1.0
+shore,3241,3241,1.0
+land,25040,25040,1.0
+land_family,25040,25040,1.0
+# 256x256 surface points; rivers disabled (draft.setRiverDensity(0.0)) because
+# OmniBiomeSource rivers are not represented in BiomePreview.surface in 0.6.0.

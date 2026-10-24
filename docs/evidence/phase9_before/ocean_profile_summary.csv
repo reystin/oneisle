@@ -1,0 +1,5 @@
+metric,value
+c_min_at_s>=350,-1.000000
+c_max_at_s>=350,-0.704052
+max_consecutive_deep_blocks,2880
+deep_fraction_of_ocean_samples,0.9402

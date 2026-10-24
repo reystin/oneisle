@@ -37,6 +37,8 @@ public class Phase5StructureTest {
                         IslandDraft draft = new IslandDraft();
                         draft.setPreset(preset);
                         draft.setIslandSize(size);
+                        draft.setShapeSeed(seed);
+                        draft.setBiomeSeed(seed);
                         draft.setGenerationVersion(v == 1 ? IslandDraft.GenerationVersion.V1 : IslandDraft.GenerationVersion.V2);
                         draft.rebuildShape();
 

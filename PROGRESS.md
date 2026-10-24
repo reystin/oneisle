@@ -72,3 +72,31 @@
 - [x] **8.3** World border option
 - [x] **8.4** `/omniisle debug` visual exporters
 - [x] **8.5** Dedicated server support
+
+---
+
+## Phase 9 — Audit & Redesign (0.7.0)
+
+### Phase 9.0 — Orientation
+- [x] **9.0.1** Baseline build green; LF normalization; mac JDK documented
+- [x] **9.0.2** Architecture map and contradiction list in `PHASE9_NOTES.md`
+
+### Phase 9.1 — Audit of 0.6.0 claims
+- [x] **9.1.1** Stronghold harness/ring geometry measured — fake 24.12 number explained
+- [x] **9.1.2** Ocean radial profiles + 6000×6000 height PNG — floor is soft −0.80, not flat −0.92
+- [x] **9.1.3** Density-sampler timing v1/v2; full chunk generation marked UNVERIFIED
+- [x] **9.1.4** Real source vs preview parity 256×256 (100 % rivers off; 88.3 % family with rivers)
+- [x] **9.1.5** Golden tests extended with real v1 `OmniBiomeSource` snapshot
+- [x] **9.1.6** Ancient City tag/placement audited (surface biome can host it)
+- [x] **9.1.7** World border default off; `copy()` bug recorded
+- [x] **9.1.8** Climate family fractions measured; theme gradient ineffective in ALL/STANDARD
+- [x] **9.1.9** Uniform shore ribbon measured: 100 % of coast samples
+
+Evidence: `docs/evidence/phase9_before/README.md`.
+
+### Phase 9.2 — Shoreline redesign [v3] (in progress)
+- [ ] **9.2.1** Shore weight field (patch, width, bayness, slope) in shared sampler
+- [ ] **9.2.2** `shore` config + `generation_version = 3`; v1/v2 unchanged
+- [ ] **9.2.3** Editor controls and `/omniisle debug shore`
+- [ ] **9.2.4** Acceptance metrics + before/after PNGs
+- [x] **9.1.10** Structure harness/test seeds fixed; report generation now deterministic

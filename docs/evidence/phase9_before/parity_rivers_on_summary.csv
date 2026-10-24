@@ -1,0 +1,6 @@
+scope,samples,matches,agreement
+overall,16384,16384,1.0
+land_family,5956,5259,0.8829751511081263
+river_columns,697
+# Same seed/config but river_density left at the 0.6.0 draft default 0.35.
+# BiomePreview.surface has no river parameter, so river columns cannot match.

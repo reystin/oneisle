@@ -1,0 +1,17 @@
+Before the fix (recorded in stronghold_harness_nondeterminism.csv):
+StructurePlacementHarness.evaluateLegacy/evaluateModern ignored their seed parameter
+and IslandDraft filled shapeSeed/biomeSeed with new Random().nextLong(), so the same
+arguments produced different islands and distances (e.g. ancient_city 1052.37 vs 1489.40).
+Fix: both methods now call setShapeSeed(seed) and setBiomeSeed(seed); Phase5StructureTest
+does the same. STRUCTURE_REPORT_*.csv reruns are byte-identical.
+
+structure,run1_distance,run2_distance,equal
+stronghold,24.12,24.12,true
+ancient_city,169.48,169.48,true
+ocean_monument,575.94,575.94,true
+village,771.82,771.82,true
+trial_chambers,1159.55,1159.55,true
+mansion,686.73,686.73,true
+shipwreck,582.58,582.58,true
+ocean_ruin,639.80,639.80,true
+abandoned_camp,1217.65,1217.65,true

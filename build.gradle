@@ -21,6 +21,11 @@ dependencies {
 
 test {
     useJUnitPlatform()
+    def evidence = System.getProperty("omniisle.evidence")
+    if (evidence != null) systemProperty "omniisle.evidence", evidence
+    def regen = System.getProperty("omniisle.regenerateGolden")
+    if (regen != null) systemProperty "omniisle.regenerateGolden", regen
+    testLogging { events "failed", "skipped" }
 }
 
 def generatedTargetSources = layout.buildDirectory.dir("generated/sources/omniisleTarget")

@@ -32,6 +32,8 @@ public class StructurePlacementHarness {
         IslandDraft draft = new IslandDraft();
         draft.setPreset(preset);
         draft.setIslandSize(islandSize);
+        draft.setShapeSeed(seed);
+        draft.setBiomeSeed(seed);
         draft.setGenerationVersion(IslandDraft.GenerationVersion.V1);
         draft.rebuildShape();
 
@@ -117,6 +119,8 @@ public class StructurePlacementHarness {
         IslandDraft draft = new IslandDraft();
         draft.setPreset(preset);
         draft.setIslandSize(islandSize);
+        draft.setShapeSeed(seed);
+        draft.setBiomeSeed(seed);
         draft.setGenerationVersion(generationVersion == 1 ? IslandDraft.GenerationVersion.V1 : IslandDraft.GenerationVersion.V2);
         draft.rebuildShape();
 

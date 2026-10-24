@@ -1,0 +1,9 @@
+golden_v1.bin.gz max difference between mask.sampleTerrainValue and LegacyTerrainV1: 0.0
+Coverage after the phase-9.1 extension: 30 configs (5 presets x 3 reliefs x 2 sizes),
+10000 LCG points per config, 200x200 preview grid, 20 deep-dark samples, plus a new
+real OmniBiomeSource snapshot (200x200 surface grid and 4 underground Y levels x 100 points)
+in src/test/resources/golden/v1/golden_v1_source.txt.
+Fixed caveats: generateGoldenData() now iterates the same 5 v1 presets instead of all 12,
+and the test no longer regenerates a missing golden file (missing resource = failure).
+Remaining caveat: the committed binary golden was produced by the old generator; its first
+30 records do match the 5-preset order, verified by this test (difference 0.0).

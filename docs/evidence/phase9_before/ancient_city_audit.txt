@@ -1,0 +1,27 @@
+Ancient City generated pack inspection
+
+tag has_structure/ancient_city:
+{
+  "replace": false,
+  "values": [
+    "minecraft:deep_dark",
+    "minecraft:jagged_peaks"
+  ]
+}
+
+structure_set ancient_cities:
+{
+  "structures": [{
+    "structure": "minecraft:ancient_city",
+    "weight": 1
+  }],
+  "placement": {
+    "type": "omniisle:fixed",
+    "chunk_x": 2,
+    "chunk_z": -73,
+    "enabled": true
+  }
+}
+
+Conclusion: the city is restricted to deep_dark plus one surface biome selected by the
+pack builder; the selected surface biome does not require the underground deep_dark biome.

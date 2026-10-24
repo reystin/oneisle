@@ -1,0 +1,4 @@
+scope,samples,matches,agreement
+v1_overall,40000,40000,1.0
+v1_exact_biome,40000,40000,1.0
+v1_land_family,15289,15289,1.0
