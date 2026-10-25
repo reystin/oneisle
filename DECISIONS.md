@@ -365,3 +365,41 @@ This log records every design choice, trade-off, and architectural resolution ma
 * **Choice:** Option 2. Zero removes the biome from the enabled set and its weight entry; re-enabling or resetting stores 100 as an absent entry. The editor's fingerprint is FNV-64 over the share-code JSON of the draft with calibration cleared; results whose fingerprint no longer matches are discarded. Share codes export `biome_share` only when weights are non-neutral or a bias is present; presets export it only for non-neutral weights and always include the freshly calibrated bias/achieved/target/feasible maps.
 * **Reason:** Absent-100 keeps the JSON small and makes the neutral case unambiguous for I1. Undo snapshots cover the weight map exactly like other draft fields. The debounce and fingerprint prevent out-of-order background results from overwriting newer edits, and no calibration work runs on the render thread.
 * **Evidence:** `Phase10BiomeShareTest.zeroEqualsDisabled`, `codecRoundTripsAndBadData`, `uiLogic`; `IslandDraft.applyBiomeWeightText`, `OmniIsleEditorScreen` calibration tick.
+
+### Decision 043: replace the per-block weighted ticket with a coherent field and a static quantile table
+* **Question:** In 0.8.0 every non-neutral weight turned the preview and the real world into 1-block noise because `BiomeShare.weightedTicketFor` hashed `(x, z)` independently. Calibration still needs an approximately uniform ticket so cumulative probabilities map to targets.
+* **Options:**
+  1. Reuse the legacy fBm ticket directly; it is coherent but strongly clustered, so weighted cumulative shares would jump and calibration would fight the bias.
+  2. Use a family-independent coherent fBm at the legacy 420-block scale, flatten it with a static empirical CDF, and cache it per column.
+  3. Keep the white hash and blur it in the preview only; real worldgen would stay noisy.
+* **Choice:** Option 2. `weightedTicketFor` samples 3-octave fBm at `x/420, z/420` salted with `biomeSeed ^ 7919`, then `ticketFromRaw` indexes a static 1024-bin CDF built once from 65,536 deterministic samples (`TICKET_LUT_SEED = 0x2C9277B5`, step 97 to avoid the noise lattice). The legend ignores the preferred family so adjacent columns cannot flicker across family borders. `OmniBiomeSource.ColumnCache` stores the y-independent ticket. The legacy ticket is still computed only for uniform factors.
+* **Reason:** Coherence is restored without changing the target math, the uniform short-circuit, or all-100 output. The 420-block scale matches the legacy patch size. The LUT is seed-independent, immutable and thread-safe; the hot path is allocation-free. Tests: adjacency `maxStep = 0.0101`, `meanStep = 0.00145`, full range `[0.0000, 0.9998]`, histogram deviation 1.06 % over 131,072 samples; the LUT is monotone. The 0.8.0-noise regression window improves from 21.8 % to 99.4 % 4-neighbour agreement and from 43.9 % to 0.0 % isolated pixels.
+* **Consequence:** 0.8.0 worlds with non-neutral weights generate differently in 0.8.1 (their old output is the bug). Unweighted/all-100 worlds remain bit-identical; no new `generation_version`.
+* **Evidence:** `WeightedTicketTest`, `Phase10BiomeShareTest.previewHasNoSpeckleAtCherry45`, `docs/evidence/phase10/cherry45_metrics.csv` and `cherry45_before_after.png`.
+
+### Decision 044: verify calibrated shares on a held-out grid and reproduce the reported 17.4 % case
+* **Question:** 0.8.0 measured `achieved` on the same 64×64 fit grid used to fit the bias, so it could not prove that the real biome source matches the target. The report's hidden biome seed also made the exact 17.4 % Cherry case ambiguous.
+* **Options:**
+  1. Trust the fit-grid `achieved` numbers.
+  2. Add an independent real-source measurement plus a seed sweep for the reported draft.
+* **Choice:** Option 2. `heldOutSharesMatchTarget` samples the real `OmniBiomeSource` on a 79×79 grid with pixel offset 0.31, excludes shore/river/terrain families, and compares every target biome. `cherry45Draft` uses shape seed `0x306d956984a4bf25` and biome seed `+5`, which reproduces the screenshot's 17.4 % Cherry target; a ±32 seed sweep was used to find it and then deleted as a temp harness.
+* **Reason:** The fit grid is no longer the judge of its own work. Result: Cherry 45 target 17.319 %, achieved 17.303 %, held-out 17.817 % (0.498 pp error, 1,869 land columns); worst target ≥0.5 % error is 0.92 pp. Calibration remains 45/45 feasible with max error 0.986 pp.
+* **Evidence:** `docs/evidence/phase10/heldout_shares.csv`, `calibration.csv`, `Phase10BiomeShareTest.heldOutSharesMatchTarget`.
+
+### Decision 045: validate the generated world preset through the live registry before enabling it
+* **Question:** The reported world-entry crash had no stack trace. A generated `world_preset/omniisle.json` that fails to decode under the live dynamic registries would crash exactly at world creation, and no test covered that decode.
+* **Options:**
+  1. Keep the existing export and assume the codec is correct.
+  2. Parse the generated zip with `WorldPreset.DIRECT_CODEC` inside the existing `RegistryOps` context before reloading/enabling the pack, and add a real-registry decode test plus a corrupt-preset test.
+* **Choice:** Option 2. `WorldPackBuilder.validatePreset(Path, HolderLookup.Provider)` reads `data/omniisle/worldgen/world_preset/omniisle.json`, decodes it, and requires an overworld. `commitDesign` captures `parent.getUiState().getSettings().worldgenLoadContext()` before the async export, validates in the worker, and on failure shows `omniisle.editor.error.preset` while re-enabling Done without adding the pack.
+* **Reason:** The test path matches production: `ServerPacksSource.createVanillaPackSource().fullResources()` + `RegistryDataLoader.WORLD_REGISTRIES` (unfiltered) + custom codecs registered after Bootstrap. A valid pack decodes to an `OmniBiomeSource` with Cherry weight 45 and a non-empty bias; a corrupt zip is rejected with a localized validation error and no exception escapes.
+* **Evidence:** `Phase10PresetDecodeTest` (10.11/10.12), `WorldPackBuilder.validatePreset`, `OmniIsleEditorScreen.commitDesign`.
+
+### Decision 046: report the client crash as UNVERIFIED, verify the server path, and mark the migration change
+* **Question:** The user reported a crash when entering the weighted world, but the instance contained no crash report, no `hs_err_pid*` and no recent DiagnosticReport; the only crash report predates 0.8.0.
+* **Options:**
+  1. Claim the coherent-ticket fix also fixes the crash.
+  2. Reproduce the world on a fresh dedicated server and the dev client, record exactly what was observed, and leave the client crash **UNVERIFIED** if it cannot be captured.
+* **Choice:** Option 2. A fresh dedicated server with the exact Cherry-45 draft reached `Done (1.504s)`, applied the pack, reported calibrated weights/achieved shares, and generated 512 forced chunks (27 region files, 33 MB) with zero errors/exceptions and a clean stop. The client instance ships `mcopt-metal 0.3.0-alpha.2`; no Prism mods were modified. The client crash remains **UNVERIFIED** and mcopt-metal is the leading environmental suspect. 0.8.0 weighted worlds are documented as intentionally generating differently in 0.8.1.
+* **Reason:** Claiming an unobserved crash fix would violate the evidence standard; the server run does prove the generated preset, worldgen path and startup are healthy. The preset preflight (Decision 045) reduces the blast radius of any future codec failure with a visible error instead of a crash.
+* **Evidence:** `docs/evidence/phase10/server_smoke.txt` (startup, `omniisle info`/`verify`, forced-chunk result), `CHANGELOG.md` 0.8.1, `README.md` migration note.

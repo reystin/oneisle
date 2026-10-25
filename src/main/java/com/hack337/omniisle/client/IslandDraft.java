@@ -1589,8 +1589,9 @@ public final class IslandDraft {
     public int selectWeightedLand(int preferredFamily, double temperature, double humidity,
                                   int worldX, int worldZ, int[] ids, double[] factors, int count,
                                   BiomeShare.SelectorScratch scratch) {
-        double ticket = BiomeShare.weightedTicketFor(preferredFamily, biomeSeed, worldX, worldZ);
-        double legacyTicket = BiomeShare.ticketFor(preferredFamily, biomeSeed, worldX, worldZ);
+        boolean uniform = BiomeShare.areFactorsUniform(factors, count);
+        double ticket = uniform ? 0.0 : BiomeShare.weightedTicketFor(biomeSeed, worldX, worldZ);
+        double legacyTicket = uniform ? BiomeShare.ticketFor(preferredFamily, biomeSeed, worldX, worldZ) : 0.0;
         return BiomeShare.select(preferredFamily, temperature, humidity, ids, factors, count,
             ticket, legacyTicket, scratch);
     }

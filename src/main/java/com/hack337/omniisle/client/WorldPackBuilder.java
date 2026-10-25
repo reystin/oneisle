@@ -3,12 +3,14 @@ package com.hack337.omniisle.client;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.hack337.omniisle.continent.BiomeShare;
 import com.hack337.omniisle.continent.IslandMask;
 import com.hack337.omniisle.continent.IslandTerrain;
 import com.hack337.omniisle.platform.TargetPlatform;
+import com.mojang.serialization.JsonOps;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
@@ -23,11 +25,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
 import java.util.zip.ZipOutputStream;
+import net.minecraft.core.HolderLookup;
+import net.minecraft.resources.RegistryOps;
+import net.minecraft.world.level.levelgen.presets.WorldPreset;
 
 /** Builds the temporary datapack that CreateWorldScreen later copies into the new world. */
 public final class WorldPackBuilder {
     public static final String FILE_NAME = "omniisle-generated.zip";
+    private static final String PRESET_ENTRY = "data/omniisle/worldgen/world_preset/omniisle.json";
     private static final double COAST_TRANSITION_WIDTH = 192.0;
     private static final double OCEAN_TRANSITION_WIDTH = 400.0;
     /** The v3 base reaches -0.62 at 0.4*Wo, the shallow edge of the monument band. */
@@ -99,7 +106,7 @@ public final class WorldPackBuilder {
                 putEntry(zip, "data/minecraft/worldgen/structure/jungle_pyramid.json",
                     relaxedPyramidJson("omniisle:relaxed_jungle_temple", "jungle_temple"));
             }
-            putEntry(zip, "data/omniisle/worldgen/world_preset/omniisle.json", createPresetJson(state));
+            putEntry(zip, PRESET_ENTRY, createPresetJson(state));
             exportStructureSets(zip, state, mask, halfSpan);
         } catch (Throwable throwable) {
             Files.deleteIfExists(temporary);
@@ -107,6 +114,47 @@ public final class WorldPackBuilder {
             throw new IOException("Could not build OmniIsle datapack", throwable);
         }
         Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING);
+    }
+
+    /** Preset preflight failure that the editor reports as a status message. */
+    public static final class PresetValidationException extends IOException {
+        public PresetValidationException(String message) { super(message); }
+        public PresetValidationException(String message, Throwable cause) { super(message, cause); }
+    }
+
+    /**
+     * Decodes the freshly exported preset with the same worldgen registries the create-world
+     * screen will use. A failure here becomes an editor status message instead of a crash on
+     * world entry.
+     */
+    public static void validatePreset(Path dataPackDirectory, HolderLookup.Provider registries) throws IOException {
+        Path target = dataPackDirectory.resolve(FILE_NAME);
+        JsonElement preset;
+        try (ZipFile zip = new ZipFile(target.toFile())) {
+            ZipEntry entry = zip.getEntry(PRESET_ENTRY);
+            if (entry == null) throw new PresetValidationException("Generated datapack is missing the world preset");
+            try (InputStreamReader reader = new InputStreamReader(zip.getInputStream(entry), StandardCharsets.UTF_8)) {
+                preset = JsonParser.parseReader(reader);
+            }
+        } catch (IOException exception) {
+            if (exception instanceof PresetValidationException validation) throw validation;
+            throw new PresetValidationException("Could not read the generated datapack: " + exception.getMessage(), exception);
+        } catch (RuntimeException exception) {
+            throw new PresetValidationException("Generated world preset is not valid JSON", exception);
+        }
+        try {
+            WorldPreset decoded = WorldPreset.DIRECT_CODEC
+                .parse(RegistryOps.create(JsonOps.INSTANCE, registries), preset)
+                .getOrThrow(message -> new PresetValidationException("Generated world preset is invalid: " + message));
+            if (decoded.overworld().isEmpty()) {
+                throw new PresetValidationException("Generated world preset has no overworld");
+            }
+        } catch (IOException exception) {
+            if (exception instanceof PresetValidationException validation) throw validation;
+            throw new PresetValidationException("Generated world preset could not be decoded: " + exception.getMessage(), exception);
+        } catch (RuntimeException exception) {
+            throw new PresetValidationException("Generated world preset could not be decoded", exception);
+        }
     }
 
     private static String packMetadata() {

@@ -4,6 +4,46 @@ All notable changes to OmniIsle are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.1+mc26.3-fabric] - 2026-10-26
+
+### Fixed
+- **Weighted biome ticket is coherent again.** 0.8.0 picked weighted land biomes
+  with an independent per-block hash, so any non-neutral weight turned the preview
+  and the real world into 1-block noise. 0.8.1 uses a family-independent 3-octave
+  fBm field at a 420-block scale, flattened through a static 1024-bin empirical CDF,
+  and caches the ticket per column in `OmniBiomeSource`. A 192×128 one-block window
+  changes from 21.8 % to 99.4 % 4-neighbour agreement and 43.9 % to 0.0 % isolated
+  pixels (`docs/evidence/phase10/cherry45_before_after.png`,
+  `cherry45_metrics.csv`). The island-wide 192×192 preview agreement rises from
+  19.1 % to 67.4 % (coastal shore/river pixels included).
+- **World-preset export is validated before it is added.** `WorldPackBuilder.validatePreset`
+  decodes the generated `world_preset/omniisle.json` through the live
+  `DynamicRegistry`/`WorldPreset.DIRECT_CODEC` context. A corrupt or undecodable
+  preset now shows `omniisle.editor.error.preset` and keeps the editor open instead
+  of failing at world entry.
+- **Corrected receipt:** Cherry Grove at 45 % targets **17.32 %** of land (the reported
+  editor showed 17.4 %); held-out real-source sampling on a grid different from the
+  calibrator gives 17.82 % (0.50 pp error, 1,869 columns). The biome "did not shrink"
+  because 45 % is a relative frequency, not a cap; the visible problem was the noise.
+
+### Changed
+- **Migration note:** worlds created with 0.8.0 non-neutral weights will generate
+  differently after updating. Their 0.8.0 output is the per-block noise bug; the
+  affected chunks keep the old noise, newly generated chunks use coherent patches.
+  Unweighted/all-100 worlds and share codes without `biome_share` stay bit-identical;
+  no `generation_version` was added.
+- Cherry-45 evidence and held-out CSVs are now written into
+  `docs/evidence/phase10/` (`calibration.csv`, `calibration_examples.csv`,
+  `heldout_shares.csv`, `cherry45_metrics.csv`, before/after PNG).
+
+### Known limitations
+- The reported **client crash is UNVERIFIED**: no crash report, `hs_err_pid*` or
+  DiagnosticReport was found; a fresh dedicated server with the exact draft reached
+  "Done" and generated 512 forced chunks without an error. The client instance also
+  ships `mcopt-metal 0.3.0-alpha.2`, which remains the leading environmental suspect.
+- Full 25×25 weighted chunk-generation timing is still **UNVERIFIED**; only the biome
+  lookup benchmark runs. GUI 2/4 screenshots remain **NOT DONE**.
+
 ## [0.8.0+mc26.3-fabric] - 2026-10-25
 
 ### Added

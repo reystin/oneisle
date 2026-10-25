@@ -1,4 +1,4 @@
-# OmniIsle 0.8.0 — Implementation Progress Tracker
+# OmniIsle 0.8.1 — Implementation Progress Tracker
 
 ## Global Invariants
 - [x] **I1.** Old worlds (0.5.0 / v1) keep generating identically (no seams).
@@ -212,7 +212,7 @@ v3 20.534 → 14.209 s; final inland medians v1 14.891 / v2 14.231 / v3 14.557 s
 034–038, `src/test/resources/golden/v2/`.
 
 ### Phase 10 — Biome frequency weights, 0–400 % (completed; chunk-gen perf UNVERIFIED; screenshots NOT DONE)
-- [x] **10.1** Optional `biome_share` (`weights`, `bias`, `achieved`, `target`, `feasible`) nested in the biome-source `ThemeShore` codec; absent field, explicit all-100 and neutral exports stay on the untouched legacy path. I1 hash `3408052023102023366` for absent and explicit-100; goldens v1/v2/v3 green; no new `generation_version`
+- [x] **10.1** Optional `biome_share` (`weights`, `bias`, `achieved`, `target`, `feasible`) nested in the biome-source `ThemeShore` codec; absent field, explicit all-100 and neutral exports stay on the untouched legacy path. I1 hash `2951624326361821806` for absent and explicit-100 (test now pins the active density function around the hash); goldens v1/v2/v3 green; no new `generation_version`
 - [x] **10.2** Side-neutral weighted selector `BiomeShare.select`: preferred family prior 1, neighbouring family prior `exp(−max(0, d − d_pref)/0.22)`, times `exp(bias)`; climate cap `R_max = 0.62`; weight 0 removes the candidate; uniform factors short-circuit to the legacy picker
 - [x] **10.3** `BiomeShareCalibrator`: fixed 64×64 mask-land grid, shore band/rivers/terrain-driven families excluded, baseline `s_f` with zero bias, target `s_f·w_f/100 / Σ(s_g·w_g/100)`, log-ratio damping 0.7, ≤24 iterations, ≤1 pp stop, mean bias 0, bias clamp ±8; identical code in the editor and `WorldPackBuilder.export`; 45/45 configurations feasible with max error 1.88 pp (`docs/evidence/phase10/calibration.csv`)
 - [x] **10.4** Editor UI: new drafts default to theme ALL with every biome enabled at 100; land rows have a 0–400 step-5 percent field with −/+, click-to-type and row reset; read-only actual % (green ≤3 pp, amber ≤6 pp, red beyond, grey terrain); header Reset all / Disable selected / + All / − None; typing 0 unticks, ticking restores 100; terrain-driven rows read-only; 150 ms recalibration debounce off the render thread; infeasible warning
@@ -226,3 +226,16 @@ Measured: monotonic cherry_grove 0 → 0.00 %, 50 → 20.13 %, 100 → 32.93 %,
 all 9 with no closer alternative (max distance 1.3717); calibration 45/45 feasible,
 max error 1.88 pp, 163–1358 samples, 3–24 iterations. Evidence:
 `docs/evidence/phase10/`, `FINDINGS.md` §16, `DECISIONS.md` 039–042.
+
+### Phase 10.5 — coherent weighted tickets, preset safety, 0.8.1 (completed)
+- [x] **10.5.1** Replaced the 0.8.0 per-block SplitMix weighted ticket with a family-independent 3-octave fBm at 420-block scale plus a static 1024-bin empirical CDF (65,536 fixed samples) and a per-column cache in `OmniBiomeSource.ColumnCache`. All-100/absent remains bit-identical; no new `generation_version`. `WeightedTicketTest` 10.5.1/10.5.2: adjacency max step 0.01013, mean 0.00145, range [0.0000, 0.9998], histogram deviation 1.06 % over 131,072 samples; LUT monotone
+- [x] **10.5.2** Reproduced the reported Cherry-45 draft: NATURAL/ALL/4000, shape seed `0x306d956984a4bf25`, biome seed `+5`, weight 45. Calibration target 17.319 %, achieved 17.303 %, held-out real-source 17.817 % (0.498 pp, 1,869 columns, worst target ≥0.5 % 0.92 pp). 45/45 calibration configs still feasible, max 0.986 pp, mean 0.726 pp (`docs/evidence/phase10/calibration*.csv`, `heldout_shares.csv`)
+- [x] **10.5.3** Speckle regression `previewHasNoSpeckleAtCherry45`: island preview 192×192 agreement 0.191→0.674 (isolated 49.1 %→5.1 %); 1-block 192×128 window agreement 0.217→0.994 and isolated 43.9 %→0.0 %. Evidence: `cherry45_before_after.png`, `cherry45_metrics.csv`
+- [x] **10.5.4** `WorldPackBuilder.validatePreset` decodes the generated preset through the live `RegistryOps` context before the editor enables it; failures show `omniisle.editor.error.preset` and keep Done enabled. `Phase10PresetDecodeTest` 10.11/10.12: full `RegistryDataLoader.WORLD_REGISTRIES` decode of a valid generated pack (Cherry weight 45, non-empty bias) and localized rejection of a corrupt zip
+- [x] **10.5.5** Fresh 0.8.1 dedicated server with the exact draft: pre-launch pack export, `Done (1.564s)`, spawn on land, `omniisle info` v3/calibrated with `cherry_grove=17.3%`, `omniisle verify` samples, 512 forced chunks (27 region files, 29 MB), 0 errors/exceptions, clean stop, no new crash report. Client crash remains **UNVERIFIED** (no crash artifacts; `mcopt-metal 0.3.0-alpha.2` is the environmental suspect; no Prism mods modified). Evidence: `docs/evidence/phase10/server_smoke.txt`
+- [x] **10.5.6** Full `./gradlew build` green: **113 tests, 0 failures, 0 errors, 2 assumption-gated skips**; jar `build/libs/OmniIsle-26.3-Fabric-0.8.1+mc26.3.jar`. Chunk-generation perf with weights remains **UNVERIFIED**; GUI 2/4 screenshots remain **NOT DONE**; Phase 9 structure matrix remains PARTIAL 15/45
+
+Measured: calibration 45/45 feasible, max 0.986 pp; held-out Cherry 17.817 % vs target
+17.319 % (0.498 pp); coherent window agreement 0.9938 vs 0.2175 and isolated 0.0000 vs
+0.4385; lookup benchmark −3.58 % (weighted faster; CPU-time median). Evidence:
+`docs/evidence/phase10/`, `FINDINGS.md` §16.1, `DECISIONS.md` 043–046.

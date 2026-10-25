@@ -464,7 +464,8 @@ conditional skips (`GoldenV1Test.regenerateGoldenIfRequested`,
 
 **I1 on the new optional field:** `Phase10BiomeShareTest.allHundredIsBitIdentical`
 hashes the biome source over 64×64 columns with the field absent and with an explicit
-all-100 `biome_share`: both are `3408052023102023366`. A neutral `WorldPackBuilder`
+all-100 `biome_share`: both are `2951624326361821806` (the test pins the active
+density function, so the fixture hash is stable across test order). A neutral `WorldPackBuilder`
 export contains no `biome_share` key, and `hasWeightedShares()` stays false, so the
 selector never leaves the legacy path. `GoldenV1Test`, `GoldenV2Test` and
 `BiomeSourceV2V3RegressionTest` pass in the same suite. No `generation_version` was
@@ -475,8 +476,9 @@ weight > 0. The preferred family keeps prior 1; another family gets
 `exp(−max(0, d − d_pref)/0.22)`; the variant probability is that prior times
 `exp(bias)`. Candidates farther than `R_max = 0.62` from the sample climate are
 dropped while any candidate lies inside the cap; if none does, the cap is relaxed so
-the palette still yields a biome. A deterministic SplitMix-style hash provides the
-uniform ticket (the legacy fbm ticket clusters and breaks calibration). Uniform
+the palette still yields a biome. A deterministic SplitMix-style hash provided the
+0.8.0 uniform ticket; it was replaced in 0.8.1 because the per-block hash made every
+weighted world noisy (see §16.1). Uniform
 factors short-circuit to `legacyEquivalent`, which is why all-100 is exact. Scratch
 buffers are per-thread and the hot path allocates nothing. Terrain-driven families
 (14/15/16: peaks, hills, mushroom fields) are never selected by the weighted climate
@@ -518,3 +520,64 @@ PARTIAL 15/45 full configs; Phase 9 editor screenshots remain NOT DONE.
 **Final build:** see the Phase 10 delivery report; 107 tests, 0 failures, 2
 assumption-gated skips (`GoldenV1Test.regenerateGoldenIfRequested`,
 `Phase9HarnessPacksTest.exportHarnessPacks`).
+
+### 16.1 [VERIFY] 0.8.1 — coherent weighted ticket, preset preflight, crash status
+
+**Root cause of the reported noise:** 0.8.0's `weightedTicketFor` hashed `(x, z)`
+independently for every block. Any non-neutral weight therefore re-rolled the weighted
+candidate per block while the legacy all-100 path used a coherent 420-block fBm. The
+reported Cherry 45 "did not shrink" because 45 is a relative frequency: the editor's
+17.4 % green value is a target, not a disabled budget. `docs/evidence/phase10/
+cherry45_before_after.png` shows the actual before/after.
+
+**Ticket fix:** family-independent 3-octave fBm at `x/420, z/420`, salted with
+`biomeSeed ^ 7919`, flattened by a static 1024-bin empirical CDF (65,536 fixed samples,
+step 97, `TICKET_LUT_SEED = 0x2C9277B5`); `ticketFromRaw` is a piecewise-linear,
+allocation-free lookup. The y-independent ticket is stored in
+`OmniBiomeSource.ColumnCache`. Uniform factors still short-circuit to the legacy picker,
+so all-100/absent is unchanged (I1 hash `2951624326361821806` with the active density
+function pinned); no `generation_version` was added. 0.8.0 worlds with non-neutral
+weights intentionally generate differently after updating (their old output was the
+noise bug); already-generated chunks are not rewritten.
+
+**Ticket tests:** `WeightedTicketTest` 10.5.1 measures adjacency along rows/columns
+with step 97 over ±2048: `maxStep = 0.01013`, `meanStep = 0.00145`, range
+`[0.0000, 0.9998]`, histogram deviation 1.06 % over 131,072 samples. 10.5.2 verifies
+the LUT is monotone, clamps low values to 0 and maps high values to >0.999.
+
+**Cherry-45 receipt:** shape seed `0x306d956984a4bf25`, biome seed `+5` (hidden in the
+report; found with a ±32 sweep), NATURAL/ALL/4000, weight 45. Calibration target
+17.319 %, achieved 17.303 %; held-out real-source sampling on a 79-grid with a
+different pixel offset gives 17.817 % (0.498 pp error, 1,869 land columns); worst
+target ≥0.5 % error is 0.92 pp (meadow). Calibration remains 45/45 feasible, max
+0.986 pp, mean 0.726 pp. Speckle: the island preview (192×192) agreement rises from
+0.1907 to 0.6741 and isolated pixels fall from 49.13 % to 5.12 % (coastal shore/river
+pixels included); a representative 1-block 192×128 window rises from 0.2175 to 0.9938
+and isolated pixels from 43.85 % to 0.00 %. Evidence:
+`docs/evidence/phase10/heldout_shares.csv`, `cherry45_metrics.csv`,
+`cherry45_before_after.png`.
+
+**Preset decode and preflight:** `Phase10PresetDecodeTest` 10.11 decodes a generated
+zip through `ServerPacksSource` + the full `RegistryDataLoader.WORLD_REGISTRIES`, with
+custom codecs registered after `Bootstrap`; the overworld exists and its biome source
+carries Cherry weight 45 with a non-empty bias. 10.12 rejects a corrupt zip via
+`WorldPackBuilder.validatePreset` with `Generated world preset is not valid JSON`.
+`commitDesign` now validates the exported zip through the captured live
+`RegistryOps` context before adding/reloading the pack, showing
+`omniisle.editor.error.preset` on failure instead of letting world entry crash.
+
+**Crash status:** a fresh 0.8.1 dedicated server with the exact draft reached
+`Done (1.564s)`, applied the pack, reported calibrated weights, generated 512 forced
+chunks (27 region files, 29 MB) with zero errors/exceptions, and stopped cleanly. There
+is no new crash report; the only report in `run/crash-reports/` is the unrelated 0.6.0
+watchdog from 2026-10-24. The reported **client crash is UNVERIFIED**: no
+crash-report, `hs_err_pid*`, or matching DiagnosticReport exists. The Prism instance
+also ships `mcopt-metal 0.3.0-alpha.2`, which remains the leading environmental suspect;
+no Prism mods were modified. Evidence: `docs/evidence/phase10/server_smoke.txt`.
+
+**Final build:** 113 tests, 0 failures, 0 errors, 2 assumption-gated skips
+(`GoldenV1Test.regenerateGoldenIfRequested`,
+`Phase9HarnessPacksTest.exportHarnessPacks`); jar
+`build/libs/OmniIsle-26.3-Fabric-0.8.1+mc26.3.jar`. Full 25×25 weighted chunk-gen
+timing remains **UNVERIFIED**; GUI 2/4 screenshots remain **NOT DONE**; the Phase 9
+structure matrix remains PARTIAL 15/45.

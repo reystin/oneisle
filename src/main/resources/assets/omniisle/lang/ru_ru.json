@@ -89,6 +89,7 @@
   "omniisle.editor.saving": "Подготавливаю остров...",
   "omniisle.editor.error.empty": "Нарисуйте хотя бы немного суши",
   "omniisle.editor.error.datapack": "Не удалось подключить сгенерированный датапак",
+  "omniisle.editor.error.preset": "Пресет мира не прошёл проверку: %s",
   "omniisle.editor.advanced": "Расширенные...",
   "omniisle.editor.advanced.tooltip": "Настройка расширенных параметров генерации мира",
   "omniisle.editor.advanced.title": "Расширенные настройки",

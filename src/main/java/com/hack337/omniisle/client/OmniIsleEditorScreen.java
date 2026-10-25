@@ -1910,9 +1910,12 @@ public final class OmniIsleEditorScreen extends Screen {
         doneButton.active = false;
         status = Component.translatable("omniisle.editor.saving");
         IslandDraft snapshot = state.copy();
+        var loadContext = parent.getUiState().getSettings() == null
+            ? null : parent.getUiState().getSettings().worldgenLoadContext();
         CompletableFuture.runAsync(() -> {
             try {
                 WorldPackBuilder.export(pair.getFirst(), snapshot);
+                if (loadContext != null) WorldPackBuilder.validatePreset(pair.getFirst(), loadContext);
             } catch (Exception exception) {
                 throw new RuntimeException(exception);
             }
@@ -1921,7 +1924,11 @@ public final class OmniIsleEditorScreen extends Screen {
                 saving = false;
                 doneButton.active = true;
                 Throwable cause = throwable.getCause() == null ? throwable : throwable.getCause();
-                status = Component.literal(cause.getMessage() == null ? cause.toString() : cause.getMessage());
+                if (cause instanceof WorldPackBuilder.PresetValidationException) {
+                    status = Component.translatable("omniisle.editor.error.preset", cause.getMessage());
+                } else {
+                    status = Component.literal(cause.getMessage() == null ? cause.toString() : cause.getMessage());
+                }
                 return;
             }
             PackRepository manager = pair.getSecond();

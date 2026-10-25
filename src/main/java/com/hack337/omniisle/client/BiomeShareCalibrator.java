@@ -116,7 +116,7 @@ public final class BiomeShareCalibrator {
                 humidities[samples] = selection.humidity();
                 int sampleX = (int) Math.floor(wx / 4.0) * 4;
                 int sampleZ = (int) Math.floor(wz / 4.0) * 4;
-                tickets[samples] = BiomeShare.weightedTicketFor(family, biomeSeed, sampleX, sampleZ);
+                tickets[samples] = BiomeShare.weightedTicketFor(biomeSeed, sampleX, sampleZ);
                 legacyTickets[samples] = BiomeShare.ticketFor(family, biomeSeed, sampleX, sampleZ);
                 samples++;
             }

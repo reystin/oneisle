@@ -39,6 +39,20 @@ public final class BiomeShare {
     public static final double MAX_BIAS = 8.0;
     private static final double EPSILON = 1.0e-9;
     private static final double TICKET_LIMIT = 0.999999999999;
+    /** Spatial scale of the coherent weighted ticket, matching the legacy patch field. */
+    public static final double TICKET_SCALE = 420.0;
+    private static final int TICKET_SALT = 7919;
+    private static final int TICKET_OCTAVES = 3;
+    private static final int TICKET_LUT_BINS = 1024;
+    private static final int TICKET_SAMPLE_EDGE = 256;
+    private static final double TICKET_SAMPLE_STEP = 97.0;
+    private static final int TICKET_LUT_SEED = 0x2C9277B5;
+    /**
+     * Empirical CDF of the raw fbm ticket over a fixed sample lattice. The field is
+     * stationary, so the mapping is seed-independent; flattening it keeps cumulative
+     * shares unbiased while the underlying values remain spatially coherent.
+     */
+    private static final double[] TICKET_CDF = buildTicketCdf();
 
     private static final int FAMILY_COUNT = 18;
 
@@ -175,7 +189,7 @@ public final class BiomeShare {
         return CENTER_HUMIDITY[Math.max(0, Math.min(CENTER_HUMIDITY.length - 1, family))];
     }
 
-    /** Patch ticket shared by the legacy variant picker and the weighted selector. */
+    /** Legacy patch ticket, still the exact picker when weighted factors are uniform. */
     public static double ticketFor(int preferredFamily, long biomeSeed, int x, int z) {
         double patch = IslandClimate.fbm(x / 420.0, z / 420.0,
             IslandClimate.saltedSeed(biomeSeed, 1201 + preferredFamily * 37));
@@ -183,19 +197,64 @@ public final class BiomeShare {
     }
 
     /**
-     * Uniform per-sample ticket for weighted selection. The legacy fbm ticket is
-     * intentionally not used here: its values cluster, which makes cumulative
-     * probabilities jump between candidates and breaks calibration.
+     * Coherent near-uniform ticket for weighted selection. Adjacent columns share a
+     * 420-block fbm patch (independent of the preferred family so biome borders do
+     * not flicker); the empirical CDF flattens its clustered values so cumulative
+     * probabilities stay unbiased. Never a per-block hash.
      */
-    public static double weightedTicketFor(int preferredFamily, long biomeSeed, int x, int z) {
-        long value = biomeSeed
-            ^ (x * 0x9E3779B97F4A7C15L)
-            ^ (z * 0xC2B2AE3D27D4EB4FL)
-            ^ (preferredFamily * 0x165667B19E3779F9L);
-        value = (value ^ (value >>> 30)) * 0xBF58476D1CE4E5B9L;
-        value = (value ^ (value >>> 27)) * 0x94D049BB133111EBL;
-        value = value ^ (value >>> 31);
-        return (value >>> 11) * 0x1.0p-53;
+    public static double weightedTicketFor(long biomeSeed, int x, int z) {
+        double raw = IslandClimate.fbm(x / TICKET_SCALE, z / TICKET_SCALE,
+            IslandClimate.saltedSeed(biomeSeed, TICKET_SALT), TICKET_OCTAVES);
+        return ticketFromRaw(raw);
+    }
+
+    /** Maps one raw ticket sample through the static quantile table; allocation-free. */
+    static double ticketFromRaw(double raw) {
+        if (!(raw > -1.0)) return 0.0;
+        if (raw >= 1.0) return TICKET_LIMIT;
+        double position = (raw + 1.0) * 0.5 * TICKET_LUT_BINS;
+        int bin = (int) position;
+        if (bin >= TICKET_LUT_BINS) bin = TICKET_LUT_BINS - 1;
+        double lower = bin == 0 ? 0.0 : TICKET_CDF[bin - 1];
+        double upper = TICKET_CDF[bin];
+        double frac = position - bin;
+        double value = lower + (upper - lower) * frac;
+        return Math.max(0.0, Math.min(TICKET_LIMIT, value));
+    }
+
+    private static double[] buildTicketCdf() {
+        int samples = TICKET_SAMPLE_EDGE * TICKET_SAMPLE_EDGE;
+        int[] histogram = new int[TICKET_LUT_BINS];
+        for (int gz = 0; gz < TICKET_SAMPLE_EDGE; gz++) {
+            double z = (gz + 0.5) * TICKET_SAMPLE_STEP / TICKET_SCALE;
+            for (int gx = 0; gx < TICKET_SAMPLE_EDGE; gx++) {
+                double x = (gx + 0.5) * TICKET_SAMPLE_STEP / TICKET_SCALE;
+                double raw = IslandClimate.fbm(x, z, TICKET_LUT_SEED, TICKET_OCTAVES);
+                int bin = (int) Math.floor((raw + 1.0) * 0.5 * TICKET_LUT_BINS);
+                if (bin < 0) bin = 0;
+                if (bin >= TICKET_LUT_BINS) bin = TICKET_LUT_BINS - 1;
+                histogram[bin]++;
+            }
+        }
+        double[] cdf = new double[TICKET_LUT_BINS];
+        int cumulative = 0;
+        for (int bin = 0; bin < TICKET_LUT_BINS; bin++) {
+            cumulative += histogram[bin];
+            cdf[bin] = cumulative / (double) samples;
+        }
+        return cdf;
+    }
+
+    /** True when every candidate has the same bias factor, i.e. the legacy picker applies. */
+    public static boolean areFactorsUniform(double[] factors, int count) {
+        if (count <= 1) return true;
+        double first = factors[0];
+        for (int i = 1; i < count; i++) {
+            if (Math.abs(factors[i] - first) > EPSILON * Math.max(1.0, Math.abs(first))) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /** Reusable per-thread buffers; the selector itself never allocates. */
@@ -211,7 +270,7 @@ public final class BiomeShare {
      * @param preferredFamily family produced by the legacy climate tree
      * @param ids enabled catalog indices in config order; may include terrain-driven rows
      * @param factors precomputed {@code exp(bias)} per candidate, aligned with {@code ids}
-     * @param ticket uniform ticket from {@link #weightedTicketFor(int, long, int, int)}
+     * @param ticket near-uniform ticket from {@link #weightedTicketFor(long, int, int)}
      * @param legacyTicket fbm patch ticket from {@link #ticketFor(int, long, int, int)}
      * @return the selected catalog index, or -1 when the caller should use the legacy fallback
      */
@@ -221,15 +280,9 @@ public final class BiomeShare {
         if (count <= 0 || preferredFamily < 0 || preferredFamily >= FAMILY_COUNT) return -1;
         if (isTerrainDriven(preferredFamily)) return -1;
 
-        double first = factors[0];
-        boolean uniform = true;
-        for (int i = 1; i < count; i++) {
-            if (Math.abs(factors[i] - first) > EPSILON * Math.max(1.0, Math.abs(first))) {
-                uniform = false;
-                break;
-            }
+        if (areFactorsUniform(factors, count)) {
+            return legacyEquivalent(preferredFamily, ids, count, legacyTicket);
         }
-        if (uniform) return legacyEquivalent(preferredFamily, ids, count, legacyTicket);
 
         double preferredDistance = Math.sqrt(distanceSquared(preferredFamily, temperature, humidity));
         double total = accumulate(preferredFamily, preferredDistance, temperature, humidity,

@@ -38,7 +38,7 @@ Every Overworld biome (all 56 vanilla biomes, including Pale Garden, Dappled For
 * **Latitudinal Temperature Gradients:** North-South, East-West, or Radial gradients with theme-aware amplitude compression.
 * **Noise-Jittered Blending:** Organic transitions between climate families with no straight-line borders.
 * **Dynamic Biome Discovery:** Automatically detects and integrates datapack and modded biomes from `WorldCreationContext`.
-* **Per-Biome Frequency:** Every climate-driven land biome has a 0–400 % relative-frequency field (default 100); 0 disables it and other biomes absorb the difference. A deterministic calibration writes per-biome biases into the optional `biome_share` config; all-100 remains bit-identical to 0.7.0.
+* **Per-Biome Frequency:** Every climate-driven land biome has a 0–400 % relative-frequency field (default 100); 0 disables it and other biomes absorb the difference. A deterministic calibration writes per-biome biases into the optional `biome_share` config; all-100 remains bit-identical to 0.7.0. The weighted picker uses a coherent 420-block fBm ticket (0.8.1), so weighted islands form continuous patches instead of 1-block noise.
 
 ### Structures & Safe Spawn
 * **Small-Island Scaling:** Stronghold rings scale with island size; v3 places exactly three starts inside the island.
@@ -56,6 +56,16 @@ Before/after the v3 shore redesign (same editor draft, `ROUND`, 4000 blocks, see
 | :---: | :---: |
 | ![Shore before](docs/evidence/shore/shore_before_ROUND.png) | ![Shore after](docs/evidence/shore/shore_after_ROUND.png) |
 
+Weighted biomes before/after the 0.8.1 coherent-ticket fix (NATURAL, 4000, Cherry Grove 45 %;
+the 0.8.0 side is per-block noise, the 0.8.1 side forms continuous patches):
+
+![Cherry 45 before/after](docs/evidence/phase10/cherry45_before_after.png)
+
+```text
+cherry weight 45 -> target 17.32 % of land, held-out 17.82 % (0.50 pp error)
+1-block window: agreement 0.218 -> 0.994, isolated pixels 43.9 % -> 0.0 %
+```
+
 More previews and measured datasets live in [`docs/evidence/`](docs/evidence/): coast overlays,
 climate family maps, relief maps, river-mouth probes, ocean depth maps, structure/spawn tables.
 UI screenshots at GUI scales 1–4 are still outstanding; see [`UI_CHECKLIST.md`](UI_CHECKLIST.md).
@@ -66,7 +76,10 @@ UI screenshots at GUI scales 1–4 are still outstanding; see [`UI_CHECKLIST.md`
 
 > [!IMPORTANT]
 > **Old Worlds Keep Generating Identically (Invariant I1):**
-> Worlds created with OmniIsle 0.5.0 (`generation_version = 1`) and 0.6.0 (`generation_version = 2`) load in 0.8.0 and generate later chunks **bit-for-bit identically** — no seams, no biome drift. `GoldenV1Test` and `GoldenV2Test` compare sampled doubles/bit patterns exactly. New worlds default to **v3**; existing worlds keep their stored version.
+> Worlds created with OmniIsle 0.5.0 (`generation_version = 1`) and 0.6.0 (`generation_version = 2`) load in 0.8.1 and generate later chunks **bit-for-bit identically** — no seams, no biome drift. `GoldenV1Test` and `GoldenV2Test` compare sampled doubles/bit patterns exactly. New worlds default to **v3**; existing worlds keep their stored version. Weighted worlds (`biome_share` present with non-neutral weights) are the exception: 0.8.0 used a per-block noise ticket, so 0.8.1 fixes their generation; chunks already generated keep the 0.8.0 output.
+
+> [!NOTE]
+> **0.8.1 world-preset safety:** the editor validates the generated datapack preset through the live worldgen registry before enabling it. If validation fails, the editor shows a localized error instead of letting world creation crash.
 
 ---
 
@@ -107,7 +120,7 @@ cd OmniIsle
 ./gradlew build
 ```
 
-The resulting mod JAR will be located in `build/libs/OmniIsle-26.3-Fabric-0.8.0+mc26.3.jar`.
+The resulting mod JAR will be located in `build/libs/OmniIsle-26.3-Fabric-0.8.1+mc26.3.jar`.
 
 ---
 

@@ -89,6 +89,7 @@
   "omniisle.editor.saving": "Preparing island...",
   "omniisle.editor.error.empty": "Draw at least some land",
   "omniisle.editor.error.datapack": "Could not attach the generated datapack",
+  "omniisle.editor.error.preset": "World preset validation failed: %s",
   "omniisle.editor.advanced": "Advanced...",
   "omniisle.editor.advanced.tooltip": "Configure advanced world generation settings",
   "omniisle.editor.advanced.title": "Advanced Settings",

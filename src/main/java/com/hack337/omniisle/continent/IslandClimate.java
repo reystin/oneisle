@@ -294,10 +294,14 @@ public final class IslandClimate {
     }
 
     public static double fbm(double x, double z, int seed) {
+        return fbm(x, z, seed, 4);
+    }
+
+    public static double fbm(double x, double z, int seed, int octaves) {
         double value = 0.0;
         double amplitude = 0.58;
         double sum = 0.0;
-        for (int octave = 0; octave < 4; octave++) {
+        for (int octave = 0; octave < octaves; octave++) {
             value += valueNoise(x, z, seed + octave * 1013) * amplitude;
             sum += amplitude;
             x = x * 2.03 + 17.17;

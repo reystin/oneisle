@@ -91,6 +91,7 @@ public final class OmniBiomeSource extends BiomeSource {
     private final double[] shareFactors;
     private final Holder<Biome>[] shareHolders;
     private final int shareCount;
+    private final boolean shareUniform;
     private final ThreadLocal<BiomeShare.SelectorScratch> selectorScratch =
         ThreadLocal.withInitial(BiomeShare.SelectorScratch::new);
     // Slope neighbors, signed distance and shore outcome depend only on the XZ column,
@@ -226,6 +227,7 @@ public final class OmniBiomeSource extends BiomeSource {
         this.shareFactors = java.util.Arrays.copyOf(factors, count);
         this.shareHolders = holders;
         this.shareCount = count;
+        this.shareUniform = BiomeShare.areFactorsUniform(this.shareFactors, count);
     }
 
     @Override
@@ -284,11 +286,13 @@ public final class OmniBiomeSource extends BiomeSource {
         double halfSpan;
         double distance;
         int shoreOutcome;
+        double weightedTicket;
         if (hit) {
             slope = cache.slope[slot];
             halfSpan = cache.halfSpan[slot];
             distance = cache.distance[slot];
             shoreOutcome = cache.shoreOutcome[slot];
+            weightedTicket = cache.weightedTicket[slot];
         } else {
             double cE = net.minecraft.world.level.biome.Climate.unquantizeCoord(sampler.sample(biomeX + 1, biomeY, biomeZ).continentalness());
             double cW = net.minecraft.world.level.biome.Climate.unquantizeCoord(sampler.sample(biomeX - 1, biomeY, biomeZ).continentalness());
@@ -317,6 +321,8 @@ public final class OmniBiomeSource extends BiomeSource {
                 }
             }
 
+            weightedTicket = weighted && !shareUniform
+                ? BiomeShare.weightedTicketFor(biomeSeed, x, z) : 0.0;
             cache.owners[slot] = terrain;
             cache.colX[slot] = biomeX;
             cache.colZ[slot] = biomeZ;
@@ -324,6 +330,7 @@ public final class OmniBiomeSource extends BiomeSource {
             cache.halfSpan[slot] = halfSpan;
             cache.distance[slot] = distance;
             cache.shoreOutcome[slot] = shoreOutcome;
+            cache.weightedTicket[slot] = weightedTicket;
             cache.valid[slot] = true;
         }
 
@@ -368,7 +375,8 @@ public final class OmniBiomeSource extends BiomeSource {
             return caveBiome(new Climate(res.temperature(), res.humidity(), res.mountains(), 0, 0), x, y, z);
         }
 
-        Holder<Biome> weightedChoice = weightedLand(res.landFamily(), res.temperature(), res.humidity(), x, z);
+        Holder<Biome> weightedChoice = weightedLand(res.landFamily(), res.temperature(),
+            res.humidity(), x, z, weightedTicket);
         return weightedChoice != null ? weightedChoice : enabledLand(res.landFamily(), x, z);
     }
 
@@ -445,8 +453,14 @@ public final class OmniBiomeSource extends BiomeSource {
 
     private Holder<Biome> weightedLand(int preferredFamily, double temperature, double humidity, int x, int z) {
         if (!weighted || shareCount <= 0 || BiomeShare.isTerrainDriven(preferredFamily)) return null;
-        double ticket = BiomeShare.weightedTicketFor(preferredFamily, biomeSeed, x, z);
-        double legacyTicket = BiomeShare.ticketFor(preferredFamily, biomeSeed, x, z);
+        double ticket = shareUniform ? 0.0 : BiomeShare.weightedTicketFor(biomeSeed, x, z);
+        return weightedLand(preferredFamily, temperature, humidity, x, z, ticket);
+    }
+
+    private Holder<Biome> weightedLand(int preferredFamily, double temperature, double humidity,
+                                       int x, int z, double ticket) {
+        if (!weighted || shareCount <= 0 || BiomeShare.isTerrainDriven(preferredFamily)) return null;
+        double legacyTicket = shareUniform ? BiomeShare.ticketFor(preferredFamily, biomeSeed, x, z) : 0.0;
         int selected = BiomeShare.select(preferredFamily, temperature, humidity,
             shareIds, shareFactors, shareCount, ticket, legacyTicket, selectorScratch.get());
         if (selected >= 0 && shareHolders[selected] != null) return shareHolders[selected];
@@ -620,6 +634,7 @@ public final class OmniBiomeSource extends BiomeSource {
         final double[] halfSpan = new double[SIZE];
         final double[] distance = new double[SIZE];
         final int[] shoreOutcome = new int[SIZE];
+        final double[] weightedTicket = new double[SIZE];
         final boolean[] valid = new boolean[SIZE];
 
         int slot(int x, int z) {

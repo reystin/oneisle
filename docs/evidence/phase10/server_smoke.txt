@@ -1,0 +1,96 @@
+# OmniIsle 0.8.1 — fresh dedicated-server smoke (Cherry Grove 45%)
+
+Date: 2026-10-26 00:25 MSK
+Environment: macOS arm64, Java 25, Minecraft 26.3, Fabric Loader 0.19.3 (dev),
+OmniIsle 0.8.1+mc26.3 (log: `- omniisle 0.8.1+mc26.3`).
+Draft: NATURAL / theme ALL / island 4000 / v3;
+shape seed `0x306d956984a4bf25` (unsigned `3489609566711496485`), biome seed `+5`
+(`3489609566711496490`); Cherry Grove weight 45; calibration feasible with
+target 17.319 %, achieved 17.303 %, bias `+4.86864690939113`.
+
+## Commands
+
+```
+./gradlew runServer --args="--universe /tmp/omniisle-cherry45-081 --nogui"
+```
+
+Fresh universe; `run/config/omniisle.json` was the calibrated draft above.
+
+## Startup
+
+```
+[00:25:11] [main/INFO] (OmniIslePreLaunch) OmniIsle: Automatically generated island datapack at /tmp/omniisle-cherry45-081/cherry45_081/datapacks/omniisle-generated.zip from config/omniisle.json
+[00:25:16] [Server thread/INFO] (Minecraft) Starting minecraft server version 26.3
+[00:25:18] [Server thread/INFO] (Minecraft) Done (1.564s)! For help, type "help"
+[00:25:19] [Server thread/INFO] (OmniIsleMod) OmniIsle: Applied world spawn at BlockPos{x=14, y=95, z=-1062} (previous BlockPos{x=0, y=133, z=0}, marker [14, -1062]), land=true
+```
+
+## RCON verification
+
+```
+>>> datapack list enabled
+There are 5 data pack(s) enabled: [vanilla (built-in)], [fabric-convention-tags-v2 (Fabric mod)], [fabric-gametest-api-v1 (Fabric mod)], [omniisle (Fabric mod)], [file/omniisle-generated.zip (world)]
+>>> omniisle info
+=== OmniIsle World Info ===
+Generation Version: 3 (modern)
+Resolution: 192x192
+Island Size: 5440 blocks
+Bounding Box: [-2720, -2720] to [2720, 2720]
+World Spawn: 14, 95, -1062
+World Border: Disabled
+Enabled Layers: Land (Mask), Rivers (35%)
+Biome Share: calibrated
+Weights: cherry_grove=45%
+Achieved: old_growth_pine_taiga=0.4%, old_growth_spruce_taiga=0.1%, birch_forest=5.5%, old_growth_birch_forest=7.0%, forest=0.2%, flower_forest=7.0%, windswept_forest=3.3%, plains=2.1%, sunflower_plains=11.1%, meadow=17.3%, grove=13.1%, cherry_grove=17.3%, dark_forest=2.4%, swamp=8.0%, pale_garden=5.2%
+>>> omniisle verify
+BiomeSource=com.hack337.omniisle.worldgen.OmniBiomeSource, rework=true; samples: 0/0=minecraft:pale_garden@133:block.minecraft.pale_oak_leaves, 256/0=minecraft:grove@148:block.minecraft.snow, -256/0=minecraft:sunflower_plains@66:block.minecraft.short_grass, 0/256=minecraft:plains@134:block.minecraft.grass_block, 0/-256=minecraft:dark_forest@63:block.minecraft.water, 768/0=minecraft:sunflower_plains@67:block.minecraft.grass_block, -768/0=minecraft:flower_forest@64:block.minecraft.grass_block, 0/768=minecraft:flower_forest@107:block.minecraft.oak_leaves, 0/-768=minecraft:grove@80:block.minecraft.snow, 1536/1536=minecraft:deep_ocean@63:block.minecraft.water; surface scan (biome=first x/z): {minecraft:deep_ocean=-2048/-2048, minecraft:deep_cold_ocean=-1344/-2048, minecraft:cold_ocean=-64/-1984, minecraft:ocean=-576/-1856, minecraft:beach=-128/-1856, minecraft:meadow=-64/-1856, minecraft:grove=0/-1856, minecraft:birch_forest=-1856/-1792, minecraft:old_growth_birch_forest=-1792/-1792, minecraft:river=-320/-1792, minecraft:cherry_grove=128/-1792, minecraft:sunflower_plains=-320/-1728, minecraft:pale_garden=256/-1728, minecraft:stony_shore=576/-1728, minecraft:plains=-320/-1664, minecraft:dark_forest=448/-1664, minecraft:flower_forest=704/-1600, minecraft:windswept_forest=-256/-1536, minecraft:swamp=128/-1536, minecraft:old_growth_spruce_taiga=-896/-896, minecraft:old_growth_pine_taiga=-896/-832, minecraft:forest=1664/-256, minecraft:mushroom_fields=-640/192, minecraft:deep_lukewarm_ocean=-1984/960, minecraft:lukewarm_ocean=-1728/1024, minecraft:eroded_badlands=320/1664}
+```
+
+The identical output was produced by a separate 0.8.1 run (`/tmp/omniisle-cherry45b`,
+00:15 MSK) before the version bump, confirming deterministic worldgen across boots.
+
+## Forced chunk generation
+
+```
+>>> forceload add -120 -120 120 120
+Marked 256 chunks in minecraft:overworld from [-8, -8] to [7, 7] to be force loaded
+>>> forceload add 136 -120 376 120
+Marked 256 chunks in minecraft:overworld from [8, -8] to [23, 7] to be force loaded
+>>> forceload query
+512 force loaded chunks were found in minecraft:overworld at: [0, -8], [1, -8], ...
+```
+
+After 30 s and `save-all flush`: 27 region files, 29 MB in
+`/tmp/omniisle-cherry45-081/cherry45_081`. Two `Can't keep up!` warnings occurred
+during the bulk force-load bursts (3787 ms / 75 ticks and 2296 ms / 45 ticks); this is
+expected chunk-generation burst behaviour and was not measured as a weighted-vs-neutral
+comparison. Full 25×25 weighted chunk-generation timing remains **UNVERIFIED**.
+
+## Stop and crash status
+
+```
+[00:26:15] [Server thread/INFO] (Minecraft) Stopping server
+[00:26:15] [Server thread/INFO] (Minecraft) Saving chunks for level 'ServerLevel[cherry45_081]'/minecraft:overworld
+...
+```
+
+* `ERROR|Exception|crash report|FATAL` matches in `latest.log`: **0**.
+* `run/crash-reports/` contains only the pre-existing
+  `crash-2026-10-24_17.15.52-server.txt` (0.6.0 watchdog, unrelated); no new report.
+* Remaining warnings are the four expected offline-mode notices plus the two bulk
+  force-load tick-lag warnings above.
+
+## Client crash investigation
+
+The reported client crash could not be reproduced or captured: no `crash-report`, no
+`hs_err_pid*`, and no matching `~/Library/Logs/DiagnosticReports` entry was found. The
+Prism instance ships `mcopt-metal 0.3.0-alpha.2`; no Prism mods were modified and the
+client-side crash remains **UNVERIFIED**. The dedicated-server path, generated preset,
+weighted biome source and chunk generation are verified healthy by this run.
+
+## Preset-safety cross-reference
+
+`Phase10PresetDecodeTest` 10.11 decodes a generated zip through the real worldgen
+registries (`ServerPacksSource` + `RegistryDataLoader.WORLD_REGISTRIES`) and 10.12
+rejects a corrupt preset with `Generated world preset is not valid JSON`. The editor’s
+`WorldPackBuilder.validatePreset` preflight uses the same codec path.
