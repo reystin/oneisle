@@ -85,7 +85,18 @@ public final class BiomePreview {
         public String translationKey() { return "biome.minecraft." + id; }
     }
 
+    /** Climate selection result used by weighted previews; type is the preferred variant. */
+    public record Selection(Type type, int landFamily, double temperature, double humidity) {
+        public boolean isLand() { return type != null && type.isLand(); }
+    }
+
     private BiomePreview() {}
+
+    /** Catalog indices follow the land portion of the Type enum one-to-one. */
+    public static Type landTypeForCatalog(int index) {
+        Type[] values = Type.values();
+        return index >= 0 && index < values.length && values[index].isLand() ? values[index] : null;
+    }
 
     /** Legacy 0.5.0 surface biome preview. */
     public static Type surface(double continentalness, double x, double z, long seed) {
@@ -175,18 +186,28 @@ public final class BiomePreview {
                                  double islandHalfSpan, com.hack337.omniisle.continent.IslandRivers rivers,
                                  com.hack337.omniisle.continent.IslandTerrain terrain,
                                  com.hack337.omniisle.continent.ShoreSettings shore, boolean shoreAllowed) {
+        return selectionV3(continentalness, x, z, seed, climateScale, gradientMode, gradientStrength,
+            theme, slope, version, islandHalfSpan, rivers, terrain, shore, shoreAllowed).type();
+    }
+
+    public static Selection selectionV3(double continentalness, double x, double z, long seed,
+                                        int climateScale, com.hack337.omniisle.continent.IslandClimate.GradientMode gradientMode,
+                                        double gradientStrength, IslandDraft.BiomeTheme theme, double slope, int version,
+                                        double islandHalfSpan, com.hack337.omniisle.continent.IslandRivers rivers,
+                                        com.hack337.omniisle.continent.IslandTerrain terrain,
+                                        com.hack337.omniisle.continent.ShoreSettings shore, boolean shoreAllowed) {
         if (version < 3 || terrain == null) {
-            return surface(continentalness, x, z, seed, climateScale, gradientMode, gradientStrength,
-                theme, slope, version, islandHalfSpan, rivers);
+            return selection(continentalness, x, z, seed, climateScale, gradientMode,
+                gradientStrength, theme, slope, version, islandHalfSpan, rivers);
         }
+        com.hack337.omniisle.continent.IslandClimate.SampleResult riverRes = null;
         if (rivers != null && rivers.isEnabled() && rivers.isRiver(x, z)) {
-            com.hack337.omniisle.continent.IslandClimate.SampleResult res =
-                com.hack337.omniisle.continent.IslandClimate.sample(
-                    continentalness, x, z, 64.0, slope, climateScale, seed,
-                    gradientMode, gradientStrength, theme != null ? theme.name() : "standard",
-                    islandHalfSpan, 2
-                );
-            return res.temperature() < 0.26 ? Type.FROZEN_RIVER : Type.RIVER;
+            riverRes = com.hack337.omniisle.continent.IslandClimate.sample(
+                continentalness, x, z, 64.0, slope, climateScale, seed,
+                gradientMode, gradientStrength, theme != null ? theme.name() : "standard",
+                islandHalfSpan, 2);
+            Type riverType = riverRes.temperature() < 0.26 ? Type.FROZEN_RIVER : Type.RIVER;
+            return new Selection(riverType, -1, riverRes.temperature(), riverRes.humidity());
         }
         double distance = terrain.signedDistance(x, z);
         int shoreOutcome = com.hack337.omniisle.continent.ShoreField.NONE;
@@ -200,13 +221,54 @@ public final class BiomePreview {
             com.hack337.omniisle.continent.IslandClimate.sampleV3(
                 continentalness, x, z, slope, climateScale, seed,
                 gradientMode, gradientStrength, theme != null ? theme.name() : "standard",
-                islandHalfSpan, version, distance, shoreOutcome
-            );
-        return switch (res.zone()) {
+                islandHalfSpan, version, distance, shoreOutcome);
+        Type type = switch (res.zone()) {
             case OCEAN -> oceanTypeFromId(res.subType());
             case SHORE -> shoreTypeFromId(res.subType());
             case LAND -> landTypeFromFamily(res.landFamily());
         };
+        return new Selection(type, res.landFamily(), res.temperature(), res.humidity());
+    }
+
+    public static Selection selection(double continentalness, double x, double z, long seed,
+                                      int climateScale, com.hack337.omniisle.continent.IslandClimate.GradientMode gradientMode,
+                                      double gradientStrength, IslandDraft.BiomeTheme theme, double slope, int version,
+                                      double islandHalfSpan) {
+        return selection(continentalness, x, z, seed, climateScale, gradientMode, gradientStrength,
+            theme, slope, version, islandHalfSpan, null);
+    }
+
+    public static Selection selection(double continentalness, double x, double z, long seed,
+                                      int climateScale, com.hack337.omniisle.continent.IslandClimate.GradientMode gradientMode,
+                                      double gradientStrength, IslandDraft.BiomeTheme theme, double slope, int version,
+                                      double islandHalfSpan,
+                                      com.hack337.omniisle.continent.IslandRivers rivers) {
+        if (version <= 1) {
+            Type type = surface(continentalness, x, z, seed);
+            int family = type.isLand() ? type.family : -1;
+            Climate c = climateAt(x, z, 720.0, seed);
+            return new Selection(type, family, c.temperature, c.humidity);
+        }
+        if (rivers != null && rivers.isEnabled() && rivers.isRiver(x, z)) {
+            com.hack337.omniisle.continent.IslandClimate.SampleResult riverRes =
+                com.hack337.omniisle.continent.IslandClimate.sample(
+                    continentalness, x, z, 64.0, slope, climateScale, seed,
+                    gradientMode, gradientStrength, theme != null ? theme.name() : "standard",
+                    islandHalfSpan, version);
+            Type riverType = riverRes.temperature() < 0.26 ? Type.FROZEN_RIVER : Type.RIVER;
+            return new Selection(riverType, -1, riverRes.temperature(), riverRes.humidity());
+        }
+        com.hack337.omniisle.continent.IslandClimate.SampleResult res =
+            com.hack337.omniisle.continent.IslandClimate.sample(
+                continentalness, x, z, 64.0, slope, climateScale, seed,
+                gradientMode, gradientStrength, theme != null ? theme.name() : "standard",
+                islandHalfSpan, version);
+        Type type = switch (res.zone()) {
+            case OCEAN -> oceanTypeFromId(res.subType());
+            case SHORE -> shoreTypeFromId(res.subType());
+            case LAND -> landTypeFromFamily(res.landFamily());
+        };
+        return new Selection(type, res.landFamily(), res.temperature(), res.humidity());
     }
 
     public static Type landTypeFromFamily(int family) {

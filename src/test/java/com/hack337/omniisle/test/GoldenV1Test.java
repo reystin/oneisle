@@ -77,6 +77,7 @@ public class GoldenV1Test {
                             assertEquals(size, savedSize);
 
                             IslandDraft draft = new IslandDraft();
+                            draft.applyTheme(IslandDraft.BiomeTheme.STANDARD);
                             draft.setPreset(preset);
                             draft.setRelief(relief);
                             draft.setIslandSize(size);
@@ -178,6 +179,7 @@ public class GoldenV1Test {
 
     private static IslandDraft goldenDraft(IslandDraft.Preset preset, IslandDraft.Relief relief, int size) {
         IslandDraft draft = new IslandDraft();
+        draft.applyTheme(IslandDraft.BiomeTheme.STANDARD);
         draft.setPreset(preset);
         draft.setRelief(relief);
         draft.setIslandSize(size);
@@ -270,6 +272,7 @@ public class GoldenV1Test {
                         dos.writeInt(size);
 
                         IslandDraft draft = new IslandDraft();
+                        draft.applyTheme(IslandDraft.BiomeTheme.STANDARD);
                         draft.setPreset(preset);
                         draft.setRelief(relief);
                         draft.setIslandSize(size);

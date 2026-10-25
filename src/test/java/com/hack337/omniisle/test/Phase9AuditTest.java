@@ -765,6 +765,7 @@ public class Phase9AuditTest {
 
     private static IslandDraft baseDraft(IslandDraft.Preset preset, int size, long seed, int version, double islet) {
         IslandDraft draft = new IslandDraft();
+        draft.applyTheme(IslandDraft.BiomeTheme.STANDARD);
         draft.setPreset(preset);
         draft.setIslandSize(size);
         draft.setShapeSeed(seed);

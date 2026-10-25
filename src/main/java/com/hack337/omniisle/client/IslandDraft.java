@@ -1,13 +1,17 @@
 package com.hack337.omniisle.client;
 
+import com.hack337.omniisle.continent.BiomeShare;
 import com.hack337.omniisle.platform.TargetPlatform;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.Collections;
+import java.util.EnumMap;
 import java.util.EnumSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 
 /** Small editable bitmap used by the in-game editor. Expensive world data is built only on Save. */
@@ -132,7 +136,13 @@ public final class IslandDraft {
         .filter(option -> TargetPlatform.HAS_ABANDONED_CAMP || option != StructureOption.ABANDONED_CAMP)
         .toList();
 
-    public record DraftSnapshot(boolean[] land, byte[] height, Integer spawnPx, Integer spawnPz, int resolution) {}
+    public record DraftSnapshot(boolean[] land, byte[] height, Integer spawnPx, Integer spawnPz, int resolution,
+                                EnumSet<BiomePreview.Type> enabledBiomes,
+                                Map<BiomePreview.Type, Integer> weights,
+                                Map<BiomePreview.Type, Double> bias,
+                                Map<BiomePreview.Type, Double> achieved,
+                                Map<BiomePreview.Type, Double> target,
+                                boolean feasible) {}
 
     private int resolution = RESOLUTION;
     private boolean[] land;
@@ -144,7 +154,7 @@ public final class IslandDraft {
     private long biomeSeed;
     private Preset preset;
     private Relief relief = Relief.BALANCED;
-    private BiomeTheme theme = BiomeTheme.STANDARD;
+    private BiomeTheme theme = BiomeTheme.ALL;
     private GenerationVersion generationVersion = GenerationVersion.V3;
     private double shoreDensity = com.hack337.omniisle.continent.ShoreSettings.DEFAULT.density();
     private double shoreVariety = com.hack337.omniisle.continent.ShoreSettings.DEFAULT.variety();
@@ -160,6 +170,21 @@ public final class IslandDraft {
     private int worldBorderMargin = 1000;
     private EnumSet<BiomePreview.Type> enabledBiomes;
     private EnumSet<StructureOption> enabledStructures;
+    private final EnumMap<BiomePreview.Type, Integer> biomeWeights = new EnumMap<>(BiomePreview.Type.class);
+    private final EnumMap<BiomePreview.Type, Double> biomeBias = new EnumMap<>(BiomePreview.Type.class);
+    private final EnumMap<BiomePreview.Type, Double> achievedShares = new EnumMap<>(BiomePreview.Type.class);
+    private final EnumMap<BiomePreview.Type, Double> targetShares = new EnumMap<>(BiomePreview.Type.class);
+    private boolean sharesFeasible = true;
+    private double sharesMaxErrorPp;
+    private int calibrationSamples;
+
+    private static final class ShareScratch {
+        private final int[] ids = new int[BiomeShare.CATALOG_SIZE];
+        private final double[] factors = new double[BiomeShare.CATALOG_SIZE];
+        private final BiomeShare.SelectorScratch selector = new BiomeShare.SelectorScratch();
+    }
+
+    private final ThreadLocal<ShareScratch> shareScratch = ThreadLocal.withInitial(ShareScratch::new);
 
     private final ArrayDeque<DraftSnapshot> undoStack = new ArrayDeque<>();
     private final ArrayDeque<DraftSnapshot> redoStack = new ArrayDeque<>();
@@ -171,9 +196,13 @@ public final class IslandDraft {
 
     public IslandDraft(int resolution) {
         this(resolution, new boolean[resolution * resolution], defaultHeight(resolution), DEFAULT_ISLAND_SIZE,
-            new Random().nextLong(), new Random().nextLong(), Preset.NATURAL, defaultBiomes(),
+            new Random().nextLong(), new Random().nextLong(), Preset.NATURAL, allBiomes(),
             defaultStructures());
         rebuildShape();
+    }
+
+    private static EnumSet<BiomePreview.Type> allBiomes() {
+        return EnumSet.copyOf(OVERWORLD_BIOMES);
     }
 
     private static byte[] defaultHeight(int res) {
@@ -227,6 +256,13 @@ public final class IslandDraft {
         draft.worldBorderMargin = this.worldBorderMargin;
         draft.spawnPx = this.spawnPx;
         draft.spawnPz = this.spawnPz;
+        draft.biomeWeights.putAll(this.biomeWeights);
+        draft.biomeBias.putAll(this.biomeBias);
+        draft.achievedShares.putAll(this.achievedShares);
+        draft.targetShares.putAll(this.targetShares);
+        draft.sharesFeasible = this.sharesFeasible;
+        draft.sharesMaxErrorPp = this.sharesMaxErrorPp;
+        draft.calibrationSamples = this.calibrationSamples;
         return draft;
     }
 
@@ -483,8 +519,34 @@ public final class IslandDraft {
         if (undoStack.size() >= MAX_UNDO_STEPS) {
             undoStack.removeLast();
         }
-        undoStack.push(new DraftSnapshot(Arrays.copyOf(land, land.length), Arrays.copyOf(height, height.length), spawnPx, spawnPz, resolution));
+        undoStack.push(captureSnapshot());
         redoStack.clear();
+    }
+
+    private DraftSnapshot captureSnapshot() {
+        return new DraftSnapshot(Arrays.copyOf(land, land.length), Arrays.copyOf(height, height.length),
+            spawnPx, spawnPz, resolution, EnumSet.copyOf(enabledBiomes),
+            new EnumMap<>(biomeWeights), new EnumMap<>(biomeBias),
+            new EnumMap<>(achievedShares), new EnumMap<>(targetShares), sharesFeasible);
+    }
+
+    private void restoreSnapshot(DraftSnapshot snap) {
+        this.resolution = snap.resolution();
+        this.land = snap.land();
+        this.height = snap.height();
+        this.spawnPx = snap.spawnPx();
+        this.spawnPz = snap.spawnPz();
+        this.enabledBiomes.clear();
+        this.enabledBiomes.addAll(snap.enabledBiomes());
+        this.biomeWeights.clear();
+        this.biomeWeights.putAll(snap.weights());
+        this.biomeBias.clear();
+        this.biomeBias.putAll(snap.bias());
+        this.achievedShares.clear();
+        this.achievedShares.putAll(snap.achieved());
+        this.targetShares.clear();
+        this.targetShares.putAll(snap.target());
+        this.sharesFeasible = snap.feasible();
     }
 
     public boolean canUndo() { return !undoStack.isEmpty(); }
@@ -492,25 +554,15 @@ public final class IslandDraft {
 
     public boolean undo() {
         if (undoStack.isEmpty()) return false;
-        redoStack.push(new DraftSnapshot(Arrays.copyOf(land, land.length), Arrays.copyOf(height, height.length), spawnPx, spawnPz, resolution));
-        DraftSnapshot snap = undoStack.pop();
-        this.resolution = snap.resolution;
-        this.land = snap.land;
-        this.height = snap.height;
-        this.spawnPx = snap.spawnPx;
-        this.spawnPz = snap.spawnPz;
+        redoStack.push(captureSnapshot());
+        restoreSnapshot(undoStack.pop());
         return true;
     }
 
     public boolean redo() {
         if (redoStack.isEmpty()) return false;
-        undoStack.push(new DraftSnapshot(Arrays.copyOf(land, land.length), Arrays.copyOf(height, height.length), spawnPx, spawnPz, resolution));
-        DraftSnapshot snap = redoStack.pop();
-        this.resolution = snap.resolution;
-        this.land = snap.land;
-        this.height = snap.height;
-        this.spawnPx = snap.spawnPx;
-        this.spawnPz = snap.spawnPz;
+        undoStack.push(captureSnapshot());
+        restoreSnapshot(redoStack.pop());
         return true;
     }
 
@@ -1293,6 +1345,283 @@ public final class IslandDraft {
     public double worldSpan() { return islandSize * 1.36; }
     public double worldX(int pixelX) { return ((pixelX + 0.5) / resolution - 0.5) * worldSpan(); }
     public double worldZ(int pixelZ) { return ((pixelZ + 0.5) / resolution - 0.5) * worldSpan(); }
+
+    public com.hack337.omniisle.continent.IslandTerrain createTerrain() {
+        double halfSpan = worldSpan() / 2.0;
+        int[] sp = effectiveSpawnPx();
+        com.hack337.omniisle.continent.IslandShapeConfig cfg = new com.hack337.omniisle.continent.IslandShapeConfig(
+            generationVersionNumber(), isletDensity, riverDensity,
+            isWorldBorderEnabled(), worldBorderMargin,
+            hasCustomHeight()
+                ? java.util.Optional.of(new com.hack337.omniisle.continent.IslandShapeConfig.HeightLayer(2, packedHeight()))
+                : java.util.Optional.empty(),
+            java.util.Optional.of(new com.hack337.omniisle.continent.IslandShapeConfig.SpawnPos(
+                (int) Math.round(worldX(sp[0])), (int) Math.round(worldZ(sp[1])))),
+            java.util.Collections.emptyList(),
+            java.util.Optional.of(new com.hack337.omniisle.continent.IslandMask(
+                resolution, resolution,
+                -halfSpan, halfSpan, -halfSpan, halfSpan,
+                relief.coastWidth, 400.0,
+                packedMask())),
+            biomeSeed,
+            generationVersionNumber() >= 3
+                ? java.util.Optional.of(shoreSettings())
+                : java.util.Optional.empty());
+        return com.hack337.omniisle.continent.IslandTerrain.create(cfg);
+    }
+
+    public int biomeWeight(BiomePreview.Type type) {
+        Integer value = biomeWeights.get(type);
+        return value != null ? BiomeShare.clampWeight(value) : BiomeShare.DEFAULT_WEIGHT;
+    }
+
+    public static boolean isBiomeWeightEditable(BiomePreview.Type type) {
+        return type != null && type.isLand() && !BiomeShare.isTerrainDriven(type.family);
+    }
+
+    public void setBiomeWeight(BiomePreview.Type type, int weight) {
+        if (!isBiomeWeightEditable(type)) return;
+        int clamped = BiomeShare.clampWeight(weight);
+        if (clamped <= 0) {
+            enabledBiomes.remove(type);
+            biomeWeights.remove(type);
+            return;
+        }
+        enabledBiomes.add(type);
+        if (clamped == BiomeShare.DEFAULT_WEIGHT) {
+            biomeWeights.remove(type);
+        } else {
+            biomeWeights.put(type, clamped);
+        }
+    }
+
+    public void resetBiomeWeight(BiomePreview.Type type) {
+        if (isBiomeWeightEditable(type)) {
+            setBiomeWeight(type, BiomeShare.DEFAULT_WEIGHT);
+        }
+    }
+
+    /** Applies an inline percent-field edit; returns true when the draft actually changed. */
+    public boolean applyBiomeWeightText(BiomePreview.Type type, String text) {
+        if (!isBiomeWeightEditable(type) || text == null) return false;
+        int parsed;
+        try {
+            parsed = Integer.parseInt(text.trim());
+        } catch (NumberFormatException ignored) {
+            return false;
+        }
+        int target = BiomeShare.clampWeight(parsed);
+        boolean enabled = isBiomeEnabled(type);
+        if (target <= 0) {
+            if (!enabled) return false;
+            pushUndo();
+            setBiomeWeight(type, 0);
+            return true;
+        }
+        if (enabled && biomeWeight(type) == target) return false;
+        pushUndo();
+        setBiomeWeight(type, target);
+        return true;
+    }
+
+    public void resetAllBiomeWeights() {
+        for (BiomePreview.Type type : BiomePreview.Type.values()) {
+            if (type.isLand() && enabledBiomes.contains(type)) biomeWeights.remove(type);
+        }
+    }
+
+    public boolean hasNonNeutralWeights() {
+        for (BiomePreview.Type type : enabledBiomes) {
+            if (type.isLand() && biomeWeight(type) != BiomeShare.DEFAULT_WEIGHT) return true;
+        }
+        return false;
+    }
+
+    public Map<BiomePreview.Type, Integer> biomeWeightsView() {
+        return Map.copyOf(biomeWeights);
+    }
+
+    public double biomeBias(BiomePreview.Type type) {
+        Double value = biomeBias.get(type);
+        return value != null ? BiomeShare.clampBias(value) : 0.0;
+    }
+
+    public double achievedShare(BiomePreview.Type type) {
+        Double value = achievedShares.get(type);
+        return value != null ? value : -1.0;
+    }
+
+    public double targetShare(BiomePreview.Type type) {
+        Double value = targetShares.get(type);
+        return value != null ? value : -1.0;
+    }
+
+    public boolean sharesFeasible() { return sharesFeasible; }
+    public double sharesMaxErrorPp() { return sharesMaxErrorPp; }
+    public int calibrationSamples() { return calibrationSamples; }
+
+    public void applyCalibration(BiomeShareCalibrator.Result result) {
+        biomeBias.clear();
+        achievedShares.clear();
+        targetShares.clear();
+        if (result == null) return;
+        sharesFeasible = result.feasible();
+        sharesMaxErrorPp = result.maxErrorPp();
+        calibrationSamples = result.samples();
+        for (Map.Entry<String, Double> entry : result.bias().entrySet()) {
+            BiomePreview.Type type = biomeType(entry.getKey());
+            if (type != null) biomeBias.put(type, BiomeShare.clampBias(entry.getValue()));
+        }
+        for (Map.Entry<String, Double> entry : result.achieved().entrySet()) {
+            BiomePreview.Type type = biomeType(entry.getKey());
+            if (type != null) achievedShares.put(type, entry.getValue());
+        }
+        for (Map.Entry<String, Double> entry : result.target().entrySet()) {
+            BiomePreview.Type type = biomeType(entry.getKey());
+            if (type != null) targetShares.put(type, entry.getValue());
+        }
+    }
+
+    public void applySharedSettings(Map<String, Integer> weights, Map<String, Double> bias,
+                                    Map<String, Double> achieved, Map<String, Double> target,
+                                    boolean feasible) {
+        biomeWeights.clear();
+        if (weights != null) {
+            for (Map.Entry<String, Integer> entry : weights.entrySet()) {
+                BiomePreview.Type type = biomeType(entry.getKey());
+                if (type == null || entry.getValue() == null) continue;
+                setBiomeWeight(type, entry.getValue());
+            }
+        }
+        applyCalibration(new BiomeShareCalibrator.Result(
+            weights != null ? weights : Map.of(), bias != null ? bias : Map.of(),
+            achieved != null ? achieved : Map.of(), target != null ? target : Map.of(),
+            feasible, 0.0, 0, 0));
+    }
+
+    public void clearCalibration() {
+        biomeBias.clear();
+        achievedShares.clear();
+        targetShares.clear();
+        sharesFeasible = true;
+        sharesMaxErrorPp = 0.0;
+        calibrationSamples = 0;
+    }
+
+    private static BiomePreview.Type biomeType(String id) {
+        int index = BiomeShare.indexOf(id);
+        if (index < 0 || index >= BiomePreview.Type.values().length) return null;
+        BiomePreview.Type type = BiomePreview.Type.values()[index];
+        return type.isLand() && type.id.equals(BiomeShare.pathOf(id)) ? type : null;
+    }
+
+    public Map<String, Integer> biomeShareWeights() {
+        Map<String, Integer> weights = new LinkedHashMap<>();
+        for (Map.Entry<String, Integer> entry : draftLandWeightMap().entrySet()) {
+            if (entry.getValue() != BiomeShare.DEFAULT_WEIGHT) weights.put(entry.getKey(), entry.getValue());
+        }
+        return weights;
+    }
+
+    public Map<String, Integer> draftLandWeightMap() {
+        Map<String, Integer> weights = new LinkedHashMap<>();
+        for (BiomePreview.Type type : BiomePreview.Type.values()) {
+            if (!type.isLand() || !enabledBiomes.contains(type)) continue;
+            int weight = biomeWeight(type);
+            if (weight > 0) weights.put(type.id, weight);
+        }
+        return weights;
+    }
+
+    public Map<String, Double> biomeShareBias() {
+        Map<String, Double> bias = new LinkedHashMap<>();
+        for (BiomePreview.Type type : BiomePreview.Type.values()) {
+            double value = biomeBias(type);
+            if (type.isLand() && !BiomeShare.isZeroBias(value)) bias.put(type.id, value);
+        }
+        return bias;
+    }
+
+    public Map<String, Double> biomeShareAchieved() {
+        Map<String, Double> achieved = new LinkedHashMap<>();
+        for (Map.Entry<BiomePreview.Type, Double> entry : achievedShares.entrySet()) {
+            achieved.put(entry.getKey().id, entry.getValue());
+        }
+        return achieved;
+    }
+
+    public Map<String, Double> biomeShareTarget() {
+        Map<String, Double> target = new LinkedHashMap<>();
+        for (Map.Entry<BiomePreview.Type, Double> entry : targetShares.entrySet()) {
+            target.put(entry.getKey().id, entry.getValue());
+        }
+        return target;
+    }
+
+    public BiomeShare.Settings biomeShareSettings() {
+        return BiomeShare.Settings.fromMaps(biomeShareWeights(), biomeShareBias(),
+            biomeShareAchieved(), biomeShareTarget(), sharesFeasible).sanitized();
+    }
+
+    /**
+     * Fills the weighted land candidate arrays in config/enum order.
+     * Terrain-driven variants stay in the list so zero-bias selection stays legacy-exact.
+     */
+    public int fillLandCandidates(int[] ids, double[] factors) {
+        int count = 0;
+        for (BiomePreview.Type type : BiomePreview.Type.values()) {
+            if (!type.isLand() || !OVERWORLD_BIOMES.contains(type) || !enabledBiomes.contains(type)) continue;
+            if (BiomeShare.isTerrainDriven(type.family)) {
+                ids[count] = BiomeShare.indexOf(type.id);
+                factors[count] = 1.0;
+                count++;
+                continue;
+            }
+            int weight = biomeWeight(type);
+            if (weight <= 0) continue;
+            ids[count] = BiomeShare.indexOf(type.id);
+            factors[count] = BiomeShare.biasFactor(biomeBias(type));
+            count++;
+        }
+        return count;
+    }
+
+    public int selectWeightedLand(int preferredFamily, double temperature, double humidity,
+                                  int worldX, int worldZ, int[] ids, double[] factors, int count,
+                                  BiomeShare.SelectorScratch scratch) {
+        double ticket = BiomeShare.weightedTicketFor(preferredFamily, biomeSeed, worldX, worldZ);
+        double legacyTicket = BiomeShare.ticketFor(preferredFamily, biomeSeed, worldX, worldZ);
+        return BiomeShare.select(preferredFamily, temperature, humidity, ids, factors, count,
+            ticket, legacyTicket, scratch);
+    }
+
+    /** Resolves a preview selection, applying calibrated shares exactly like the worldgen source. */
+    public BiomePreview.Type selectPreviewBiome(BiomePreview.Selection selection, int worldX, int worldZ) {
+        return resolvePreviewBiome(selection, worldX, worldZ, worldX, worldZ);
+    }
+
+    public BiomePreview.Type selectPreviewBiome(BiomePreview.Selection selection, double worldX, double worldZ) {
+        return resolvePreviewBiome(selection, (int)Math.floor(worldX), (int)Math.floor(worldZ), worldX, worldZ);
+    }
+
+    private BiomePreview.Type resolvePreviewBiome(BiomePreview.Selection selection,
+                                                  int weightX, int weightZ, double worldX, double worldZ) {
+        if (selection == null) return null;
+        if (!selection.isLand() || !hasNonNeutralWeights()
+            || BiomeShare.isTerrainDriven(selection.landFamily())) {
+            return selectBiome(selection.type(), worldX, worldZ);
+        }
+        ShareScratch scratch = shareScratch.get();
+        int count = fillLandCandidates(scratch.ids, scratch.factors);
+        if (count > 0) {
+            int selected = selectWeightedLand(selection.landFamily(), selection.temperature(),
+                selection.humidity(), weightX, weightZ, scratch.ids, scratch.factors, count, scratch.selector);
+            BiomePreview.Type chosen = selected >= 0 ? BiomePreview.landTypeForCatalog(selected) : null;
+            if (chosen != null) return chosen;
+        }
+        return selectBiome(selection.type(), worldX, worldZ);
+    }
+
     public int islandSize() { return islandSize; }
     public void setIslandSize(int islandSize) { this.islandSize = Math.max(2500, Math.min(8000, islandSize)); }
     public SetView enabledBiomes() { return new SetView(EnumSet.copyOf(enabledBiomes)); }
@@ -1302,13 +1631,16 @@ public final class IslandDraft {
         if (!enabledBiomes.remove(type)) {
             enabledBiomes.add(type);
         }
+        if (type.isLand()) {
+            biomeWeights.remove(type);
+        }
         return true;
     }
 
     public void selectAllBiomes(BiomePreview.Category category) {
         for (BiomePreview.Type type : OVERWORLD_BIOMES) {
             if (category == null || type.category == category) {
-                enabledBiomes.add(type);
+                if (enabledBiomes.add(type) && type.isLand()) biomeWeights.remove(type);
             }
         }
     }
@@ -1316,13 +1648,16 @@ public final class IslandDraft {
     public void deselectAllBiomes(BiomePreview.Category category) {
         if (category == null) {
             enabledBiomes.clear();
+            biomeWeights.clear();
         } else {
             enabledBiomes.removeIf(type -> type.category == category);
+            if (category == BiomePreview.Category.LAND) biomeWeights.clear();
         }
     }
 
     public void restoreBiomesFromIds(List<String> ids) {
         enabledBiomes.clear();
+        biomeWeights.clear();
         for (String id : ids) {
             for (BiomePreview.Type type : OVERWORLD_BIOMES) {
                 if (type.id.equals(id)) {
@@ -1348,6 +1683,11 @@ public final class IslandDraft {
     public void applyTheme(BiomeTheme theme) {
         this.theme = theme;
         enabledBiomes.clear();
+        biomeWeights.clear();
+        biomeBias.clear();
+        achievedShares.clear();
+        targetShares.clear();
+        sharesFeasible = true;
         switch (theme) {
             case ALL -> enabledBiomes.addAll(OVERWORLD_BIOMES);
             case STANDARD -> enabledBiomes.addAll(defaultBiomes());
