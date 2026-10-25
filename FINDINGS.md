@@ -459,3 +459,62 @@ conditional skips (`GoldenV1Test.regenerateGoldenIfRequested`,
 `Phase9HarnessPacksTest.exportHarnessPacks`, both assumption-gated). Jar:
 `build/libs/OmniIsle-26.3-Fabric-0.7.0+mc26.3.jar`, `fabric.mod.json` version
 `0.7.0+mc26.3`.
+
+## 16. [VERIFY] Phase 10 — per-biome frequency weights (0.8.0)
+
+**I1 on the new optional field:** `Phase10BiomeShareTest.allHundredIsBitIdentical`
+hashes the biome source over 64×64 columns with the field absent and with an explicit
+all-100 `biome_share`: both are `3408052023102023366`. A neutral `WorldPackBuilder`
+export contains no `biome_share` key, and `hasWeightedShares()` stays false, so the
+selector never leaves the legacy path. `GoldenV1Test`, `GoldenV2Test` and
+`BiomeSourceV2V3RegressionTest` pass in the same suite. No `generation_version` was
+added.
+
+**Selector model:** land candidates are the enabled climate-driven variants with
+weight > 0. The preferred family keeps prior 1; another family gets
+`exp(−max(0, d − d_pref)/0.22)`; the variant probability is that prior times
+`exp(bias)`. Candidates farther than `R_max = 0.62` from the sample climate are
+dropped while any candidate lies inside the cap; if none does, the cap is relaxed so
+the palette still yields a biome. A deterministic SplitMix-style hash provides the
+uniform ticket (the legacy fbm ticket clusters and breaks calibration). Uniform
+factors short-circuit to `legacyEquivalent`, which is why all-100 is exact. Scratch
+buffers are per-thread and the hot path allocates nothing. Terrain-driven families
+(14/15/16: peaks, hills, mushroom fields) are never selected by the weighted climate
+path; their legacy terrain selection is unchanged.
+
+**Calibration:** 64×64 mask-land samples per config; v3 excludes
+`signedDistance <= ShoreField.MAX_INLAND`, v1/v2 exclude `c <= 0.06`; rivers and
+terrain-driven families are excluded. The zero-bias baseline is measured with the
+legacy-equivalent selector, so `s_f` is the current natural share. Targets
+`t_f = s_f·w_f/100 / Σ(s_g·w_g/100)`. Initial bias is
+`ln(t_f) − ln(max(s_f, 0.5 %))`; each iteration adds
+`0.7·(ln t_f − ln max(actual_f, 0.5 %))`, subtracts the mean and clamps to ±8; stop at
+1 pp or 24 iterations; feasible iff max error ≤3 pp and every weighted biome is
+reachable. 45/45 configurations (5 presets × 3 themes × 3 vectors) are feasible:
+samples 163–1358, iterations 3–24, max error 1.88 pp, mean 0.79 pp
+(`docs/evidence/phase10/calibration.csv`). `NATURAL`/`NORDIC` with desert at 200 is
+flagged infeasible and still returns a valid map.
+
+**Achieved vs target examples** (`calibration_examples.csv`): NATURAL/ALL
+cherry_grove 31.645 → 31.214 %, plains at 300 13.796 → 12.958 %; ROUND/NORDIC
+snowy_plains at 150 24.565 → 23.962 %, snowy_taiga at 200 23.746 → 24.281 %;
+ARCHIPELAGO/TROPICAL mangrove_swamp at 300 46.362 → 45.870 %, bamboo_jungle
+22.656 → 23.261 %.
+
+**Acceptance results:** monotonic cherry_grove 0 → 0.00, 50 → 20.13, 100 → 32.93,
+200 → 48.98, 400 → 66.10 %; zero weight equals unticking (same preview hash and bias,
+re-enable restores 100); 8-thread fingerprints identical; 20,000 extreme samples have
+9 selections beyond `R_max`, all 9 with no closer candidate (max distance 1.3717);
+preview/real parity 9836/9836 = 100.00 %; codec/share/preset/undo/bad-data round trips
+pass; UI logic test passes. The lookup benchmark medians are 8.623 ms neutral vs
+7.457 ms weighted (−13.52 %; run noise, but inside the +3 % gate).
+
+**Limitations:** the benchmark covers biome lookups, not full 25×25 chunk generation;
+real chunk timing with weights was not rerun and is **UNVERIFIED**. Panel screenshots
+at GUI scales 2 and 4 are **NOT DONE** (headless test environment). Percent entry has
+click-to-type and −/+, but no drag slider. The Phase 9 structure matrix remains
+PARTIAL 15/45 full configs; Phase 9 editor screenshots remain NOT DONE.
+
+**Final build:** see the Phase 10 delivery report; 107 tests, 0 failures, 2
+assumption-gated skips (`GoldenV1Test.regenerateGoldenIfRequested`,
+`Phase9HarnessPacksTest.exportHarnessPacks`).

@@ -38,6 +38,7 @@ Every Overworld biome (all 56 vanilla biomes, including Pale Garden, Dappled For
 * **Latitudinal Temperature Gradients:** North-South, East-West, or Radial gradients with theme-aware amplitude compression.
 * **Noise-Jittered Blending:** Organic transitions between climate families with no straight-line borders.
 * **Dynamic Biome Discovery:** Automatically detects and integrates datapack and modded biomes from `WorldCreationContext`.
+* **Per-Biome Frequency:** Every climate-driven land biome has a 0–400 % relative-frequency field (default 100); 0 disables it and other biomes absorb the difference. A deterministic calibration writes per-biome biases into the optional `biome_share` config; all-100 remains bit-identical to 0.7.0.
 
 ### Structures & Safe Spawn
 * **Small-Island Scaling:** Stronghold rings scale with island size; v3 places exactly three starts inside the island.
@@ -65,7 +66,7 @@ UI screenshots at GUI scales 1–4 are still outstanding; see [`UI_CHECKLIST.md`
 
 > [!IMPORTANT]
 > **Old Worlds Keep Generating Identically (Invariant I1):**
-> Worlds created with OmniIsle 0.5.0 (`generation_version = 1`) and 0.6.0 (`generation_version = 2`) load in 0.7.0 and generate later chunks **bit-for-bit identically** — no seams, no biome drift. `GoldenV1Test` and `GoldenV2Test` compare sampled doubles/bit patterns exactly. New worlds default to **v3**; existing worlds keep their stored version.
+> Worlds created with OmniIsle 0.5.0 (`generation_version = 1`) and 0.6.0 (`generation_version = 2`) load in 0.8.0 and generate later chunks **bit-for-bit identically** — no seams, no biome drift. `GoldenV1Test` and `GoldenV2Test` compare sampled doubles/bit patterns exactly. New worlds default to **v3**; existing worlds keep their stored version.
 
 ---
 
@@ -106,7 +107,7 @@ cd OmniIsle
 ./gradlew build
 ```
 
-The resulting mod JAR will be located in `build/libs/OmniIsle-26.3-Fabric-0.7.0+mc26.3.jar`.
+The resulting mod JAR will be located in `build/libs/OmniIsle-26.3-Fabric-0.8.0+mc26.3.jar`.
 
 ---
 

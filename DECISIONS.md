@@ -329,3 +329,39 @@ This log records every design choice, trade-off, and architectural resolution ma
 * **Choice:** Option 2.
 * **Reason:** No measurable benefit; goldens passed either way. The real redundancy was in `OmniBiomeSource` (Y-repeated column lookups), where the cache is ~30 % faster. Keeping dead complexity would violate the simplicity invariant.
 * **Evidence:** pre-cache/post-revert runs in `docs/evidence/perf/README.md`; `git diff` shows no remaining cache in `ModernTerrainV2`.
+
+### Decision 039: nest optional `biome_share` in the biome source and keep neutral configurations byte-identical
+* **Question:** The biome source codec already has many top-level fields; DataFixerUpper records are limited to 16 fields. Where should the new optional weights/bias live, and how do old configs stay untouched?
+* **Options:**
+  1. Add five new top-level fields to `OmniBiomeSource`.
+  2. Nest one optional `biome_share` record (`weights`, `bias`, `achieved`, `target`, `feasible`) inside the existing `ThemeShore` group that already carries `biome_theme` and `shore`.
+* **Choice:** Option 2. Worldgen consumes the sanitized `bias` map; zero weights are expressed by the enabled list (typing 0 unticks), so the field is emitted only when at least one climate-driven weight differs from 100.
+* **Reason:** The nested record stays under the DFU field limit and keeps the base codec unchanged. `Settings.sanitized()` normalizes keys to path-only ids, logs unknown ids, clamps weights to 0–400 and bias to ±8, and drops non-finite values. A missing field, an explicit all-100 map and a neutral export all leave `hasNonNeutralWeight()` false, which selects the legacy code path — no new `generation_version` and no output change (I1 hash `3408052023102023366` in both cases).
+* **Evidence:** `Phase10BiomeShareTest.allHundredIsBitIdentical`, `codecRoundTripsAndBadData`; `GoldenV1Test`, `GoldenV2Test`, `BiomeSourceV2V3RegressionTest`.
+
+### Decision 040: multiply the family prior by `exp(bias)` and cap climate distance at 0.62
+* **Question:** Calibrated biases must shift shares without placing snowy biomes in hot climate cells. How should bias affect selection while preserving I1 when all biases are zero?
+* **Options:**
+  1. Pick the highest biased score directly; a large bias can override any climate distance.
+  2. Keep the legacy family prior (`1` for the preferred family, `exp(−max(0, d − d_pref)/0.22)` otherwise), multiply by `exp(bias)`, and drop candidates whose normalized centre distance exceeds `R_max`.
+* **Choice:** Option 2 with `R_max = 0.62`, bias clamp ±8 and a deterministic uniform hash ticket. If every candidate is outside the cap, the selector retries without the cap so a biome is always returned when the palette is non-empty; uniform factors short-circuit to `legacyEquivalent`.
+* **Reason:** A multiplicative factor preserves the climate ordering while allowing large share changes inside the feasible climate neighbourhood. The uniform-ticket path is required because the legacy fbm ticket clusters and makes cumulative shares jump. `R_max` was measured with 20,000 extreme-weight samples: 9 selections exceeded it and all 9 had no candidate inside the cap (maximum distance 1.3717). Allocation-free per-thread scratch buffers keep the hot path clean.
+* **Evidence:** `Phase10BiomeShareTest.climateCoherence`, `monotonicWeights`, `deterministicAcrossThreads`, `weightedLookupOverhead`.
+
+### Decision 041: calibrate on a frozen 64×64 land grid with a legacy baseline
+* **Question:** Weights define target relative shares, but the noise selector does not produce shares linearly. Where and how should bias be fitted so the editor preview and the exported datapack agree?
+* **Options:**
+  1. Fit against the live preview texture resolution and render thread, or use random sampling.
+  2. Use a fixed 64×64 mask-land grid, exclude the shore band, rivers and terrain-driven families, measure the zero-bias baseline (which is exactly the legacy distribution), then apply damped log-ratio updates.
+* **Choice:** Option 2, shared by `BiomeShareCalibrator` (editor) and `WorldPackBuilder.export` (datapack). Targets are `s_f·w_f/100 / Σ(s_g·w_g/100)`; update `bias += 0.7·(ln target − ln max(actual, 0.5 %))`; stop at 1 pp or 24 iterations; subtract the mean bias each round; flag infeasible when max error >3 pp or a weighted biome is unreachable.
+* **Reason:** The fixed grid is deterministic, resolution-independent and cheap enough to rerun while editing. Excluding shore/river/terrain cells avoids calibrating biomes whose selection is not climate-share-driven. Damping prevents oscillation from the piecewise family picker. 45/45 preset×theme×vector configurations converge with max error 1.88 pp; out-of-theme targets are flagged instead of forced.
+* **Evidence:** `docs/evidence/phase10/calibration.csv`, `calibration_examples.csv`, `Phase10BiomeShareTest.calibrationConverges`.
+
+### Decision 042: keep weights in the draft, recompute off the render thread, and store all-100 as "absent"
+* **Question:** Percent editing must be undoable, round-trip through share codes/presets, and refresh the preview without stuttering.
+* **Options:**
+  1. Recalibrate synchronously on every click and persist every weight, including 100.
+  2. Store only non-100 land weights in `IslandDraft`, push undo snapshots on committed edits, debounce recalibration by 150 ms on a daemon executor, and reject stale results with a fingerprint.
+* **Choice:** Option 2. Zero removes the biome from the enabled set and its weight entry; re-enabling or resetting stores 100 as an absent entry. The editor's fingerprint is FNV-64 over the share-code JSON of the draft with calibration cleared; results whose fingerprint no longer matches are discarded. Share codes export `biome_share` only when weights are non-neutral or a bias is present; presets export it only for non-neutral weights and always include the freshly calibrated bias/achieved/target/feasible maps.
+* **Reason:** Absent-100 keeps the JSON small and makes the neutral case unambiguous for I1. Undo snapshots cover the weight map exactly like other draft fields. The debounce and fingerprint prevent out-of-order background results from overwriting newer edits, and no calibration work runs on the render thread.
+* **Evidence:** `Phase10BiomeShareTest.zeroEqualsDisabled`, `codecRoundTripsAndBadData`, `uiLogic`; `IslandDraft.applyBiomeWeightText`, `OmniIsleEditorScreen` calibration tick.

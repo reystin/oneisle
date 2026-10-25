@@ -4,6 +4,38 @@ All notable changes to OmniIsle are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0+mc26.3-fabric] - 2026-10-25
+
+### Added
+- **Per-biome frequency weights:** every climate-driven land biome has a 0–400 %
+  relative-frequency field (default 100, step 5) in the editor biome panel.
+  0 disables a biome exactly like unticking it; other biomes absorb the difference.
+  Terrain-driven rows (peaks, hills, mushroom fields) are read-only; shore, ocean,
+  river and cave rows keep checkbox-only selection.
+- **Optional `biome_share` config:** `weights` (UI intent), `bias` (calibrated
+  worldgen input), `achieved`, `target` and `feasible`. Missing field and all-100
+  weights are bit-identical to 0.7.0; no new `generation_version`.
+- **Calibration:** deterministic 64×64 mask-land fitting shared by the live editor and
+  datapack export (log-ratio damping 0.7, ≤24 iterations, mean bias 0, ±8 clamp,
+  feasibility threshold 3 pp). 45/45 preset×theme×vector configurations converge.
+- **Editor panel:** read-only actual share per biome (green ≤3 pp, amber ≤6 pp, red
+  beyond, grey for terrain-driven), ±/click-to-type entry, row reset, Reset all,
+  Disable selected, + All/− None, infeasible warning, 150 ms off-thread recalibration,
+  undo/redo, share-code and preset round-trip.
+- `/omniisle info` now prints weights and achieved shares; `/omniisle debug biome`
+  renders through the weighted source.
+- Tests 10.1–10.10 (`Phase10BiomeShareTest`) plus `docs/evidence/phase10/`.
+
+### Changed
+- New drafts default to theme **ALL** with every biome enabled at 100; existing
+  drafts, presets and share codes keep their saved biome sets.
+- All-100 weights are stored as absent entries; neutral exports omit `biome_share`.
+
+### Known limitations
+- Real chunk-generation timing with non-neutral weights was not rerun; only a biome
+  lookup benchmark exists (status UNVERIFIED).
+- Panel screenshots at GUI scales 2/4 are not captured; no drag slider.
+
 ## [0.7.0+mc26.3-fabric] - 2026-10-24
 
 ### Added

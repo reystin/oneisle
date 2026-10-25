@@ -1,6 +1,6 @@
 # OmniIsle: Technical Specification & AI Agent Reference Manual
 > **Target Audience:** Autonomous Coding Agents, LLM Pair Programmers, Modding Architects.  
-> **Mod version:** 0.7.0+mc26.3-fabric  
+> **Mod version:** 0.8.0+mc26.3-fabric  
 > **Minecraft Version:** 26.3  
 > **Mod Loader:** Fabric Loader (`>= 0.19.3`)  
 > **Fabric API:** `0.165.0+26.3`  
@@ -19,7 +19,7 @@
    * **v1** — legacy 0.5.0 sampler (`LegacyTerrainV1`), bit-for-bit compatible.
    * **v2** — modern SDF terrain (`ModernTerrainV2`): EDT + Catmull-Rom, domain warp, ridged mountains, height tiers, bathymetry, satellite islets, carved rivers. This is the exact 0.6.0 output, bit-for-bit frozen by `GoldenV2Test`.
    * **v3** — v2 plus a deterministic **shore field** (patchy sand/stony/rocky coasts), a smooth ocean depth ramp that reaches the monument band before `0.4·Wo`, islets moved beyond the monument band, river mouths carved across the waterline, and a spawn plateau under the editor marker. **Default for new worlds.**
-4. A climate-driven custom **BiomeSource** (`omniisle:island_biomes`) using the shared side-neutral `IslandClimate`; every vanilla Overworld biome plus dynamically discovered datapack/modded biomes.
+4. A climate-driven custom **BiomeSource** (`omniisle:island_biomes`) using the shared side-neutral `IslandClimate`; every vanilla Overworld biome plus dynamically discovered datapack/modded biomes. Since 0.8.0 climate-driven land biomes also have optional **relative-frequency weights** (0–400 %, default 100) calibrated into per-biome biases; absent/all-100 is bit-identical to 0.7.0.
 5. Automatic generation and injection of a self-contained worldgen datapack (`omniisle-generated.zip`) at world creation or dedicated-server first boot.
 
 ---
@@ -81,14 +81,15 @@
 ## 4. Codebase Architecture & Class Roles
 
 ### 4.1. Client / GUI (`com.hack337.omniisle.client`)
-* **`IslandDraft.java`:** Draft data model. Resolutions 192/256/384 (bilinear resampling), `boolean[] land` + `byte[] height` (0–3), undo/redo snapshots, 12 seeded presets, 6 symmetry modes, climate/gradient/shore/river/islet/structure settings, **generation version default V3**, world border, largest-SDF spawn selection.
-* **`OmniIsleEditorScreen.java`:** Six-tab editor (`SHAPE`, `TERRAIN`, `CLIMATE`, `BIOMES`, `STRUCTURES`, `TOOLS`), zoom/pan (1×–8×), 16-px grid, brush/line/rect/ellipse/fill/smooth, seed fields with dice, inspector (biome, surface Y, coast distance, islet, height tier, shore outcome).
+* **`IslandDraft.java`:** Draft data model. Resolutions 192/256/384 (bilinear resampling), `boolean[] land` + `byte[] height` (0–3), undo/redo snapshots, 12 seeded presets, 6 symmetry modes, climate/gradient/shore/river/islet/structure settings, **generation version default V3**, world border, largest-SDF spawn selection. New drafts default to theme ALL; per-biome land weights (0–400, step 5) and calibrated bias/achieved/target are draft state covered by undo/redo and share codes.
+* **`OmniIsleEditorScreen.java`:** Six-tab editor (`SHAPE`, `TERRAIN`, `CLIMATE`, `BIOMES`, `STRUCTURES`, `TOOLS`), zoom/pan (1×–8×), 16-px grid, brush/line/rect/ellipse/fill/smooth, seed fields with dice, inspector (biome, surface Y, coast distance, islet, height tier, shore outcome). Biome rows show a percent field (−/+, click-to-type, reset), read-only actual share, and a terrain/climate tooltip; recalibration is debounced 150 ms on a daemon executor and stale results are rejected by fingerprint.
 * **`AdvancedSettingsScreen.java`:** Generation version (v1/v2/v3), climate scale (384–1536), gradient mode/strength, islet/river/structure density, shore density/variety/rocky, world border margin, seed and share-code actions.
 * **`ShareCode.java`:** `OMNI2-<base64url(deflate(json))>-<crc16>` with CRC16 check and 256 KiB decompressed cap. Missing `river_density`/`shore`/`height_layer` keys keep legacy defaults.
 * **`ImageImportExport.java`:** grayscale mask import (threshold/invert/letterbox), heightmap import (25/50/75 % quantiles → tiers 0–3), exports mask, height, biome color map, NW hillshade and shore map.
 * **`BiomePreview.java`:** Client mirror of `OmniBiomeSource` built on the same `IslandClimate`, `IslandRivers`, `ShoreField` and `IslandTerrain` classes. Preview textures upload `NativeImage` into a registered `DynamicTexture` and release it exactly once.
 * **`DynamicBiomeRegistry.java`:** Scans `WorldCreationContext`; categorizes biomes into LAND/SHORE/OCEAN/RIVER/CAVE with structure tags; falls back to 56 vanilla biomes.
-* **`WorldPackBuilder.java`:** Writes `omniisle-generated.zip` (schema in §6), including scaled structure sets and, for v3, the spawn-plateau wrapper and relaxed pyramid structures.
+* **`WorldPackBuilder.java`:** Writes `omniisle-generated.zip` (schema in §6), including scaled structure sets and, for v3, the spawn-plateau wrapper and relaxed pyramid structures. For non-neutral weights it calibrates a copy of the draft and writes `biome_share`; structure sampling uses the weighted preview selection.
+* **`BiomeShareCalibrator.java`:** Fixed 64×64 mask-land calibration shared by the editor and export; see §8.9.
 * **`PreviewViewport.java`, `PreviewTextureSlot.java`, `EditorLayout.java`, `PngToolsScreen.java`, `ShareCodeScreen.java`, `BiomeSelectionScreen.java`, `EditorDraftStore.java`, `ClientScreenNavigator.java`:** viewport math, texture lifecycle guard, responsive layout, PNG/share-code/biome dialogs, draft persistence, screen transitions.
 
 ### 4.2. Side-neutral terrain (`com.hack337.omniisle.continent`)
@@ -102,18 +103,19 @@
 * **`IslandNoise.java`:** Pure hashed value/simplex/fBm helpers, seed-salted; no shared `Random`.
 * **`IslandShapeConfig.java`:** Codec for the density-function config (fields/defaults in §6.1), builds the terrain.
 * **`ShapeLayerSettings.java`:** Converts optional `entries` (legacy shape layers) into sampler settings.
+* **`BiomeShare.java`:** Side-neutral catalog of 38 land variants in 18 climate families, optional `biome_share` settings codec (`weights`, `bias`, `achieved`, `target`, `feasible`), sanitization (path-only ids, unknown-id logging, weight 0–400, bias ±8, non-finite drop), and the deterministic weighted selector with `R_max = 0.62`, `exp(bias)` factors and a per-thread scratch buffer.
 
 ### 4.3. Worldgen (`com.hack337.omniisle.worldgen`)
 * **`IslandDensityFunction.java`:** Registered as `omniisle:island_continents`. `domainAxes() = AXIS_X | AXIS_Z`; `Sampler.sampleVolume` evaluates **once per XZ column** and calls `buffer.setRange(baseIdx, sizeY, value)`; `sampleValue` ignores Y. Holds a volatile `activeInstance` so the biome source and commands can reach the same terrain.
 * **`SpawnPlateauDensity.java`:** Registered as `omniisle:spawn_plateau`. Wraps v3 `final_density_base`; inside `radius` (default 80) a quadratic mask lifts a dome from `top_y` (78) at the marker to `top_y − 16` at the rim, leaving deeper caves untouched.
-* **`OmniBiomeSource.java`:** Registered as `omniisle:island_biomes`. v1 uses `climateAt`; v2 samples neighboring continentalness for slope (5 climate samples per lookup); v3 additionally samples signed distance and `ShoreField`. Resolves surface/shore/ocean/river/cave biomes, honoring enabled lists with non-empty fallbacks.
+* **`OmniBiomeSource.java`:** Registered as `omniisle:island_biomes`. v1 uses `climateAt`; v2 samples neighboring continentalness for slope (5 climate samples per lookup); v3 additionally samples signed distance and `ShoreField`. Resolves surface/shore/ocean/river/cave biomes, honoring enabled lists with non-empty fallbacks. An optional nested `biome_share` enables the weighted selector (§8.9); all-100/absent keeps the legacy path.
 * **`SpawnSavedData.java`:** Persistent flag + first-load spawn initialization/relocation.
 * **`SingleStructurePlacement.java` / `FixedMultiStructurePlacement.java`:** 1-per-world and exact ordered start-chunk placements, both extending `RandomSpreadStructurePlacement` so 26.3 `/locate` sees them.
 * **`RelaxedPyramids.java`:** v3 desert/jungle pyramid structure types that reuse vanilla pieces/tags but skip the hard `lowestY < seaLevel` rejection on low islands.
 * **`RiverLife.java`:** Adds fish spawns to river biomes.
 
 ### 4.4. Commands & lifecycle (`com.hack337.omniisle.command`)
-* **`OmniCommands.java`:** `/omniisle info`, `/omniisle verify`, `/omniisle debug <mode> [radius] [step]` (server-side PNG exporter), `/omniisle import <preset|code>`.
+* **`OmniCommands.java`:** `/omniisle info` (includes non-neutral weights and achieved shares when `biome_share` is active), `/omniisle verify`, `/omniisle debug <mode> [radius] [step]` (server-side PNG exporter; `biome` uses the real weighted resolver), `/omniisle import <preset|code>`.
 * **`OmniIslePreLaunch.java`:** On dedicated-server first boot, exports `config/omniisle.json` to `world/datapacks/omniisle-generated.zip` before packs are scanned.
 * **Mixins:** `WorldTypeEditorMixin` (editor entry), `CreateWorldBridge` (select world type + inject pack into the pack repository).
 
@@ -176,6 +178,20 @@ Codec defaults (`IslandShapeConfig.CODEC`): `generation_version=1`, `islet_densi
 ### 6.2. `omniisle.json` (world preset)
 `generator.type = minecraft:noise`, `settings = omniisle:omni_terrain`, `biome_source.type = omniisle:island_biomes`. Generated keys: `biome_seed`, `climate_scale`, `generation_version`, `gradient_mode`, `gradient_strength`, `biome_theme`, enabled lists for land/shore/ocean/river/cave, and `shore` for v3. Missing enabled lists fall back to the full category list; empty categories fall back to a valid vanilla biome.
 
+When at least one climate-driven land weight differs from 100, `biome_source` also contains:
+
+```json
+"biome_share": {
+  "weights":  { "minecraft:plains": 300, "minecraft:forest": 50 },
+  "bias":     { "plains": 0.4213, "forest": -0.6031, "...": 0.0 },
+  "achieved": { "plains": 13.87, "forest": 2.10 },
+  "target":   { "plains": 14.21, "forest": 2.05 },
+  "feasible": true
+}
+```
+
+`weights` are UI values (omitted = 100, 0 = disabled and also absent from the enabled list). Worldgen reads `bias`; `achieved`/`target`/`feasible` are diagnostics. A missing key, an all-100 map, or a neutral configuration leaves the legacy selector active and must remain bit-identical to 0.7.0. Keys may be written with or without the `minecraft:` prefix; sanitization stores path-only ids.
+
 ### 6.3. v3 extras
 * `overworld/final_density.json`: `omniisle:spawn_plateau` (`input = omniisle:overworld/final_density_base`, `spawn_x`, `spawn_z`, `radius = 80`, `top_y = 78`).
 * `data/minecraft/worldgen/structure/desert_pyramid.json` and `jungle_pyramid.json`: `omniisle:relaxed_desert_pyramid` / `omniisle:relaxed_jungle_temple`.
@@ -185,9 +201,9 @@ Codec defaults (`IslandShapeConfig.CODEC`): `generation_version=1`, `islet_densi
 
 ## 7. Hard Invariants (I1–I7)
 
-1. **I1. Frozen versions:** v1 reproduces 0.5.0 bit-for-bit (`GoldenV1Test`). v2 reproduces 0.6.0 bit-for-bit (`GoldenV2Test`, snapshot generated from commit `7a5174d`). Any behavior change requires a new `generation_version` or a new optional field whose absence reproduces the old output. Golden comparisons are exact (`doubleToLongBits`), not tolerance-based.
+1. **I1. Frozen versions:** v1 reproduces 0.5.0 bit-for-bit (`GoldenV1Test`). v2 reproduces 0.6.0 bit-for-bit (`GoldenV2Test`, snapshot generated from commit `7a5174d`). Any behavior change requires a new `generation_version` or a new optional field whose absence reproduces the old output. The optional `biome_share` field follows this rule: absent, all-100 and neutral configurations are bit-identical to 0.7.0. Golden comparisons are exact (`doubleToLongBits`), not tolerance-based.
 2. **I2. Platform & UI conventions:** non-empty biome fallbacks; texture released once via `getTextureManager().release(...)`; `InputConstants` mouse constants; UTF-8 files; mod JAR mirrored to the PrismLauncher instance.
-3. **I3. Server/preview parity:** `IslandDensityFunction`, `OmniBiomeSource`, `BiomePreview` and commands all call the same side-neutral `com.hack337.omniisle.continent` code. Zone parity must be 100 %; family agreement ≥ 97 %.
+3. **I3. Server/preview parity:** `IslandDensityFunction`, `OmniBiomeSource`, `BiomePreview` and commands all call the same side-neutral `com.hack337.omniisle.continent` code. Zone parity must be 100 %; family agreement ≥ 97 % (measured 100.00 % with non-default weights in Phase 10).
 4. **I4. Determinism & thread safety:** samplers are pure functions of `(x, z, seed, config)`. No shared `Random`, no mutable static per-world state, no per-sample allocation in hot paths, no platform-dependent arithmetic.
 5. **I5. Graceful failure:** corrupt/short mask data, unknown future `generation_version`, or missing optional JSON keys log and fall back; never crash world load. Unknown future versions are clamped to the newest known behavior.
 6. **I6. Bilingual UI:** every user-facing string exists in `en_us.json` and `ru_ru.json`.
@@ -232,7 +248,7 @@ Codec defaults (`IslandShapeConfig.CODEC`): `generation_version=1`, `islet_densi
 * **Scale & gradients:** `climate_scale` 384–1536 (default 720). Gradient amplitude is `0.5·themeSpan·clamp01(strength)`; theme spans ALL/STANDARD 0.90, MYSTIC 0.44, NORDIC 0.32, DESERT/TROPICAL 0.28. Modes OFF, NORTH_SOUTH, EAST_WEST, RADIAL.
 * **Blending:** climate families blend with value-noise jitter (`±0.04` temperature, `±0.032` humidity for v2/v3), preventing straight borders.
 * **Slope:** v2/v3 compute `slope = hypot((cE−cW)/8, (cS−cN)/8)·64` from neighboring climate samples; v3 uses it for stony shores.
-* **Biome selection:** family lists are selected by temperature/humidity/mountain class; enabled-user lists are intersected with the category; empty categories fall back safely. Dynamic registry supplies modded/datapack biomes.
+* **Biome selection:** family lists are selected by temperature/humidity/mountain class; enabled-user lists are intersected with the category; empty categories fall back safely. Dynamic registry supplies modded/datapack biomes. With non-neutral `biome_share` weights the climate-driven land pick is replaced by the weighted selector in §8.9; terrain-driven families keep their legacy relief selection.
 
 ### 8.6. Structures & spawn
 * **18 structure options**, all filtered to land/biome/depth conditions by the pack's structure sets. Strongholds: fixed 3-start ring scaled by island size. Ocean monuments: guaranteed deep band. Ancient cities: deep-dark conditions independent of surface peaks; v3 disables the city when `deep_dark` is not in the enabled palette.
@@ -246,11 +262,19 @@ Codec defaults (`IslandShapeConfig.CODEC`): `generation_version=1`, `islet_densi
 
 ### 8.8. Dedicated server & commands
 * First boot without a world: `preLaunch` converts `config/omniisle.json` into `world/datapacks/omniisle-generated.zip` before `WorldLoader` scans packs. `/omniisle import` can replace it later.
-* `/omniisle info` reports version, resolution, island size, bounding box, spawn, border and active layers; `/omniisle verify` probes surface/biomes; `/omniisle debug` writes server-side PNG maps.
+* `/omniisle info` reports version, resolution, island size, bounding box, spawn, border and active layers; when weights are active it also prints non-neutral weights and achieved shares. `/omniisle verify` probes surface/biomes; `/omniisle debug` writes server-side PNG maps (`biome` uses the real weighted resolver).
+
+### 8.9. Biome frequency weights (0.8.0)
+* **Catalog:** 38 land variants in 18 climate families (`BiomeShare.VARIANTS`); 31 are climate-driven, families 14/15/16 (`stony_peaks`, `windswept_hills`, `windswept_gravelly_hills`, `jagged_peaks`, `frozen_peaks`, `snowy_slopes`, `mushroom_fields`) are terrain-driven and never weighted. Shore/ocean/river/cave rows are checkbox-only.
+* **Weights:** integer 0–400, default 100, step 5 (values clamp to the nearest step; 0 removes the candidate and unticked it in the draft). Other biomes absorb the difference because probabilities are normalized.
+* **Distances:** `d_g = sqrt(((T − T_g)/0.60)² + ((H − H_g)/0.60)²)` from the 18 family climate centres; `d_pref` is the legacy preferred family's distance.
+* **Probabilities:** preferred family prior 1, other families `exp(−max(0, d_g − d_pref)/0.22)`; variant probability `prior · exp(bias)`. Candidates with `d_g > R_max = 0.62` are dropped while any candidate is inside the cap; if all are outside, the cap is relaxed. A deterministic uniform hash ticket (SplitMix-style over seed/x/z/family) selects from the cumulative distribution; the legacy fbm ticket is used only by the exact legacy short-circuit. Per-thread `SelectorScratch` means no allocation per lookup.
+* **I1 short-circuit:** if all candidate factors are equal (all biases zero), `legacyEquivalent` reproduces the legacy nearest-family filter and patch picker exactly. Neutral weights skip the weighted arrays entirely.
+* **Targets and calibration:** measured on a fixed 64×64 mask-land grid, excluding the v3 shore band (`signedDistance ≤ 34`), rivers and terrain-driven families. Baseline share `s_f` is measured with zero bias (the legacy distribution). Target `t_f = s_f·w_f/100 / Σ_g(s_g·w_g/100)`. Bias starts at `ln t_f − ln max(s_f, 0.5 %)`; each of ≤24 iterations adds `0.7·(ln t_f − ln max(actual_f, 0.5 %))`, subtracts the mean and clamps to ±8; it stops at max error ≤1 pp. Feasible iff max error ≤3 pp and every weighted biome is reachable; unreachable targets are reported, not forced. The same `BiomeShareCalibrator` runs in the editor and in `WorldPackBuilder.export`.
 
 ---
 
-## 9. Verification & Evidence (0.7.0)
+## 9. Verification & Evidence (0.8.0)
 * **Golden v1:** 30 preset/relief/size configs × 10 000 continentalness points + 200×200 biomes + deep-dark probes — exact.
 * **Golden v2:** 30 configs × 1 500 points × 4 metrics (`continentalness`, `computeSignedDistance(false)`, `signedDistance`, `erosionBias`) — bit-exact against 0.6.0 (`docs/evidence` / `src/test/resources/golden/v2`).
 * **Parity:** `BiomePreview` vs `OmniBiomeSource` zone parity 100 %, family agreement > 99.9 % on sampled grids (see `docs/evidence/`).
@@ -260,3 +284,4 @@ Codec defaults (`IslandShapeConfig.CODEC`): `generation_version=1`, `islet_densi
 * **Structures/spawn:** full 20-structure matrix only 15/45 configs (PARTIAL); stronghold-only real `/locate` 45/45 on land.
 * **Real chunk-gen:** dedicated server, fresh world, 25×25 chunks, 3 reps per version; numbers in `docs/evidence/perf/chunkgen_25x25.csv` and the final Phase 9 report. v2/v3 exceed the +15 % budget on the measured offshore area; see the report for the inland comparison and known issues.
 * **Editor:** 12 presets × 20 seeds pass; PNG export 5/5; layout at 480×270; texture lifecycle 50/50. Screenshots at GUI scales 1–4 remain **NOT DONE** (`UI_CHECKLIST.md`).
+* **Biome weights (0.8.0):** I1 hash `3408052023102023366` for absent and explicit all-100; 45/45 calibration configs feasible, max error 1.88 pp (`docs/evidence/phase10/calibration.csv`); monotonic cherry_grove 0/50/100/200/400 → 0.00/20.13/32.93/48.98/66.10 %; zero weight ≡ disabled; 8-thread determinism; 20,000 extreme samples, 9 beyond R_max all without a closer alternative; preview/real parity 9836/9836 = 100.00 %; codec/share/preset/undo/bad data pass; lookup benchmark within +3 %. Real chunk-generation timing with weights and GUI 2/4 screenshots remain **UNVERIFIED / NOT DONE**.

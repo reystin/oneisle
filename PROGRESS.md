@@ -1,4 +1,4 @@
-# OmniIsle 0.6.0 — Implementation Progress Tracker
+# OmniIsle 0.8.0 — Implementation Progress Tracker
 
 ## Global Invariants
 - [x] **I1.** Old worlds (0.5.0 / v1) keep generating identically (no seams).
@@ -210,3 +210,19 @@ Measured: v2 golden 180 000/180 000 exact; biome cache medians v2 19.432 → 15.
 v3 20.534 → 14.209 s; final inland medians v1 14.891 / v2 14.231 / v3 14.557 s; build
 97 tests, 0 failures. Evidence: `docs/evidence/perf/`, `FINDINGS.md` §15, `DECISIONS.md`
 034–038, `src/test/resources/golden/v2/`.
+
+### Phase 10 — Biome frequency weights, 0–400 % (completed; chunk-gen perf UNVERIFIED; screenshots NOT DONE)
+- [x] **10.1** Optional `biome_share` (`weights`, `bias`, `achieved`, `target`, `feasible`) nested in the biome-source `ThemeShore` codec; absent field, explicit all-100 and neutral exports stay on the untouched legacy path. I1 hash `3408052023102023366` for absent and explicit-100; goldens v1/v2/v3 green; no new `generation_version`
+- [x] **10.2** Side-neutral weighted selector `BiomeShare.select`: preferred family prior 1, neighbouring family prior `exp(−max(0, d − d_pref)/0.22)`, times `exp(bias)`; climate cap `R_max = 0.62`; weight 0 removes the candidate; uniform factors short-circuit to the legacy picker
+- [x] **10.3** `BiomeShareCalibrator`: fixed 64×64 mask-land grid, shore band/rivers/terrain-driven families excluded, baseline `s_f` with zero bias, target `s_f·w_f/100 / Σ(s_g·w_g/100)`, log-ratio damping 0.7, ≤24 iterations, ≤1 pp stop, mean bias 0, bias clamp ±8; identical code in the editor and `WorldPackBuilder.export`; 45/45 configurations feasible with max error 1.88 pp (`docs/evidence/phase10/calibration.csv`)
+- [x] **10.4** Editor UI: new drafts default to theme ALL with every biome enabled at 100; land rows have a 0–400 step-5 percent field with −/+, click-to-type and row reset; read-only actual % (green ≤3 pp, amber ≤6 pp, red beyond, grey terrain); header Reset all / Disable selected / + All / − None; typing 0 unticks, ticking restores 100; terrain-driven rows read-only; 150 ms recalibration debounce off the render thread; infeasible warning
+- [x] **10.5** Undo/redo covers weights; share codes and exported presets round-trip weights/bias/achieved/target; `/omniisle info` prints weights and achieved shares; `/omniisle debug biome` renders through the real weighted source; `en_us` + `ru_ru` keys
+- [x] **10.6** Ten Phase-10 tests green (`Phase10BiomeShareTest`): 107-test suite, 0 failures, 2 assumption-gated skips; preview/real parity 9836/9836 = 100.00 %; 8-thread determinism; 20,000-sample coherence; monotonic sweep; codec/share/preset/undo/bad data; UI logic
+- [ ] **10.7** Real 25×25 chunk-generation timing with non-neutral weights vs all-100 — **UNVERIFIED**; only the biome-lookup benchmark ran (median 7.457 ms weighted vs 8.623 ms neutral, −13.52 %, inside the +3 % gate, but not full chunk generation)
+- [ ] **10.8** Panel screenshots at GUI scales 2 and 4 — **NOT DONE**; the test run is headless and no client session was captured
+
+Measured: monotonic cherry_grove 0 → 0.00 %, 50 → 20.13 %, 100 → 32.93 %,
+200 → 48.98 %, 400 → 66.10 %; coherence 20,000 extreme samples, 9 beyond `R_max`,
+all 9 with no closer alternative (max distance 1.3717); calibration 45/45 feasible,
+max error 1.88 pp, 163–1358 samples, 3–24 iterations. Evidence:
+`docs/evidence/phase10/`, `FINDINGS.md` §16, `DECISIONS.md` 039–042.
