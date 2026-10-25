@@ -4,6 +4,7 @@ import com.mojang.serialization.Codec;
 import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import com.hack337.omniisle.OmniIsleIds;
+import com.hack337.omniisle.continent.BiomeShare;
 import com.hack337.omniisle.continent.IslandClimate;
 import com.hack337.omniisle.continent.IslandTerrain;
 import com.hack337.omniisle.continent.ShoreField;
@@ -29,12 +30,14 @@ public final class OmniBiomeSource extends BiomeSource {
     private static final int SANDY_BEACH_MAX_Y = 70;
     private static final int ROCKY_COAST_MAX_Y = 86;
 
-    private record ThemeShore(String theme, Optional<ShoreSettings> shore) {}
+    private record ThemeShore(String theme, Optional<ShoreSettings> shore,
+                              Optional<BiomeShare.Settings> biomeShare) {}
 
-    // Inlined so the flat "biome_theme"/"shore" fields fit DFU's 16-field record limit.
+    // Inlined so the flat "biome_theme"/"shore"/"biome_share" fields fit DFU's 16-field record limit.
     private static final MapCodec<ThemeShore> THEME_SHORE_CODEC = RecordCodecBuilder.mapCodec(i -> i.group(
         Codec.STRING.optionalFieldOf("biome_theme", "standard").forGetter(ThemeShore::theme),
-        ShoreSettings.CODEC.optionalFieldOf("shore").forGetter(ThemeShore::shore)
+        ShoreSettings.CODEC.optionalFieldOf("shore").forGetter(ThemeShore::shore),
+        BiomeShare.Settings.CODEC.optionalFieldOf("biome_share").forGetter(ThemeShore::biomeShare)
     ).apply(i, ThemeShore::new));
 
     public static final MapCodec<OmniBiomeSource> CODEC = RecordCodecBuilder.mapCodec(instance -> instance.group(
@@ -53,13 +56,15 @@ public final class OmniBiomeSource extends BiomeSource {
         Codec.INT.optionalFieldOf("generation_version", 1).forGetter(s -> s.generationVersion),
         Codec.STRING.optionalFieldOf("gradient_mode", "north_south").forGetter(s -> s.gradientModeStr),
         Codec.DOUBLE.optionalFieldOf("gradient_strength", 0.5).forGetter(s -> s.gradientStrength),
-        THEME_SHORE_CODEC.forGetter(s -> new ThemeShore(s.biomeThemeStr, Optional.ofNullable(s.shore)))
+        THEME_SHORE_CODEC.forGetter(s -> new ThemeShore(s.biomeThemeStr, Optional.ofNullable(s.shore),
+            s.weighted ? Optional.of(s.biomeShare) : Optional.empty()))
     ).apply(instance, (landBiomes, enabledLandBiomes, shoreBiomes, enabledShoreBiomes, oceanBiomes, enabledOceanBiomes,
                       riverBiomes, enabledRiverBiomes, caveBiomes, enabledCaveBiomes, climateScale, biomeSeed,
                       generationVersion, gradientModeStr, gradientStrength, themeShore) ->
         new OmniBiomeSource(landBiomes, enabledLandBiomes, shoreBiomes, enabledShoreBiomes, oceanBiomes, enabledOceanBiomes,
             riverBiomes, enabledRiverBiomes, caveBiomes, enabledCaveBiomes, climateScale, biomeSeed,
-            generationVersion, gradientModeStr, gradientStrength, themeShore.theme(), themeShore.shore())));
+            generationVersion, gradientModeStr, gradientStrength, themeShore.theme(), themeShore.shore(),
+            themeShore.biomeShare())));
 
     private final List<Holder<Biome>> landBiomes;
     private final List<Holder<Biome>> enabledLandBiomes;
@@ -80,6 +85,14 @@ public final class OmniBiomeSource extends BiomeSource {
     private final IslandClimate.GradientMode gradientMode;
     private final ShoreSettings shore;
     private final boolean shoreDisabled;
+    private final BiomeShare.Settings biomeShare;
+    private final boolean weighted;
+    private final int[] shareIds;
+    private final double[] shareFactors;
+    private final Holder<Biome>[] shareHolders;
+    private final int shareCount;
+    private final ThreadLocal<BiomeShare.SelectorScratch> selectorScratch =
+        ThreadLocal.withInitial(BiomeShare.SelectorScratch::new);
     // Slope neighbors, signed distance and shore outcome depend only on the XZ column,
     // but the chunk generator asks for each column at every Y quart. Cache exact values
     // per thread; the terrain identity invalidates the cache when the world changes.
@@ -140,6 +153,29 @@ public final class OmniBiomeSource extends BiomeSource {
                            double gradientStrength,
                            String biomeThemeStr,
                            Optional<ShoreSettings> shore) {
+        this(landBiomes, enabledLandBiomes, shoreBiomes, enabledShoreBiomes, oceanBiomes, enabledOceanBiomes,
+            riverBiomes, enabledRiverBiomes, caveBiomes, enabledCaveBiomes, climateScale, biomeSeed,
+            generationVersion, gradientModeStr, gradientStrength, biomeThemeStr, shore, Optional.empty());
+    }
+
+    public OmniBiomeSource(List<Holder<Biome>> landBiomes,
+                           List<Holder<Biome>> enabledLandBiomes,
+                           List<Holder<Biome>> shoreBiomes,
+                           List<Holder<Biome>> enabledShoreBiomes,
+                           List<Holder<Biome>> oceanBiomes,
+                           List<Holder<Biome>> enabledOceanBiomes,
+                           List<Holder<Biome>> riverBiomes,
+                           List<Holder<Biome>> enabledRiverBiomes,
+                           List<Holder<Biome>> caveBiomes,
+                           List<Holder<Biome>> enabledCaveBiomes,
+                           int climateScale,
+                           long biomeSeed,
+                           int generationVersion,
+                           String gradientModeStr,
+                           double gradientStrength,
+                           String biomeThemeStr,
+                           Optional<ShoreSettings> shore,
+                           Optional<BiomeShare.Settings> biomeShareSettings) {
         if (landBiomes.size() < 18 || shoreBiomes.size() < 3 || oceanBiomes.size() < 6
             || (!riverBiomes.isEmpty() && riverBiomes.size() < 2) || caveBiomes.size() < 3) {
             throw new IllegalArgumentException("OmniIsle biome palette is incomplete");
@@ -163,6 +199,33 @@ public final class OmniBiomeSource extends BiomeSource {
         this.gradientMode = IslandClimate.GradientMode.fromString(this.gradientModeStr);
         this.shore = shore.orElse(this.generationVersion >= 3 ? ShoreSettings.DEFAULT : null);
         this.shoreDisabled = this.generationVersion >= 3 && enabledShoreBiomes.isEmpty();
+        this.biomeShare = biomeShareSettings != null
+            ? biomeShareSettings.map(BiomeShare.Settings::sanitized).orElse(BiomeShare.Settings.EMPTY)
+            : BiomeShare.Settings.EMPTY;
+        this.weighted = this.biomeShare.hasNonNeutralWeight();
+
+        int capacity = this.enabledLandBiomes.size();
+        int[] ids = new int[capacity];
+        double[] factors = new double[capacity];
+        @SuppressWarnings("unchecked")
+        Holder<Biome>[] holders = new Holder[BiomeShare.CATALOG_SIZE];
+        int count = 0;
+        if (this.weighted) {
+            for (Holder<Biome> entry : this.enabledLandBiomes) {
+                String path = path(entry);
+                int index = BiomeShare.indexOf(path);
+                if (index < 0) continue;
+                if (this.biomeShare.weight(path) == 0) continue;
+                ids[count] = index;
+                factors[count] = BiomeShare.biasFactor(this.biomeShare.bias(path));
+                holders[index] = entry;
+                count++;
+            }
+        }
+        this.shareIds = java.util.Arrays.copyOf(ids, count);
+        this.shareFactors = java.util.Arrays.copyOf(factors, count);
+        this.shareHolders = holders;
+        this.shareCount = count;
     }
 
     @Override
@@ -305,7 +368,8 @@ public final class OmniBiomeSource extends BiomeSource {
             return caveBiome(new Climate(res.temperature(), res.humidity(), res.mountains(), 0, 0), x, y, z);
         }
 
-        return enabledLand(res.landFamily(), x, z);
+        Holder<Biome> weightedChoice = weightedLand(res.landFamily(), res.temperature(), res.humidity(), x, z);
+        return weightedChoice != null ? weightedChoice : enabledLand(res.landFamily(), x, z);
     }
 
     private static boolean isRiverValley(double continentalness, double erosion, double weirdness) {
@@ -337,40 +401,59 @@ public final class OmniBiomeSource extends BiomeSource {
     }
 
     private Holder<Biome> landBiome(Climate c, double continentalness, int x, int z) {
+        int preferred = preferredLandFamily(c, continentalness, x, z);
+        Holder<Biome> weightedChoice = weightedLand(preferred, c.temperature, c.humidity, x, z);
+        return weightedChoice != null ? weightedChoice : enabledLand(preferred, x, z);
+    }
+
+    private static int preferredLandFamily(Climate c, double continentalness, int x, int z) {
         double mushroomX = x + 560.0 + c.warpX * 0.35;
         double mushroomZ = z - 320.0 + c.warpZ * 0.35;
-        if (mushroomX * mushroomX + mushroomZ * mushroomZ < 190.0 * 190.0) return enabledLand(16, x, z);
+        if (mushroomX * mushroomX + mushroomZ * mushroomZ < 190.0 * 190.0) return 16;
 
         if (continentalness > 0.18 && c.mountains > 0.68) {
-            if (c.temperature < 0.30) return enabledLand(15, x, z);
-            if (c.temperature > 0.68) return enabledLand(14, x, z);
-            if (c.humidity > 0.45) return enabledLand(6, x, z);
-            return enabledLand(5, x, z);
+            if (c.temperature < 0.30) return 15;
+            if (c.temperature > 0.68) return 14;
+            if (c.humidity > 0.45) return 6;
+            return 5;
         }
 
-        if (c.temperature < 0.26) return c.humidity < 0.58 ? enabledLand(0, x, z) : enabledLand(1, x, z);
+        if (c.temperature < 0.26) return c.humidity < 0.58 ? 0 : 1;
         if (c.temperature < 0.43) {
-            if (c.humidity < 0.48) return enabledLand(5, x, z);
-            if (c.humidity < 0.72) return enabledLand(2, x, z);
-            return enabledLand(1, x, z);
+            if (c.humidity < 0.48) return 5;
+            if (c.humidity < 0.72) return 2;
+            return 1;
         }
         if (c.temperature < 0.68) {
-            if (c.humidity < 0.46) return enabledLand(4, x, z);
-            if (c.humidity < 0.53) return enabledLand(3, x, z);
-            if (c.humidity < 0.58) return enabledLand(17, x, z);
-            if (c.humidity < 0.62) return enabledLand(7, x, z);
-            return enabledLand(8, x, z);
+            if (c.humidity < 0.46) return 4;
+            if (c.humidity < 0.53) return 3;
+            if (c.humidity < 0.58) return 17;
+            if (c.humidity < 0.62) return 7;
+            return 8;
         }
         if (c.temperature < 0.80) {
-            if (c.humidity < 0.25) return enabledLand(13, x, z);
-            if (c.humidity < 0.48) return enabledLand(11, x, z);
-            if (c.humidity < 0.58 || continentalness >= 0.32) return enabledLand(10, x, z);
-            return enabledLand(9, x, z);
+            if (c.humidity < 0.25) return 13;
+            if (c.humidity < 0.48) return 11;
+            if (c.humidity < 0.58 || continentalness >= 0.32) return 10;
+            return 9;
         }
-        if (c.humidity < 0.40) return enabledLand(12, x, z);
-        if (c.humidity < 0.58) return enabledLand(13, x, z);
-        if (c.humidity < 0.72) return enabledLand(11, x, z);
-        return continentalness < 0.32 ? enabledLand(9, x, z) : enabledLand(10, x, z);
+        if (c.humidity < 0.40) return 12;
+        if (c.humidity < 0.58) return 13;
+        if (c.humidity < 0.72) return 11;
+        return continentalness < 0.32 ? 9 : 10;
+    }
+
+    private Holder<Biome> weightedLand(int preferredFamily, double temperature, double humidity, int x, int z) {
+        if (!weighted || shareCount <= 0 || BiomeShare.isTerrainDriven(preferredFamily)) return null;
+        double ticket = BiomeShare.weightedTicketFor(preferredFamily, biomeSeed, x, z);
+        double legacyTicket = BiomeShare.ticketFor(preferredFamily, biomeSeed, x, z);
+        int selected = BiomeShare.select(preferredFamily, temperature, humidity,
+            shareIds, shareFactors, shareCount, ticket, legacyTicket, selectorScratch.get());
+        if (selected >= 0 && shareHolders[selected] != null) return shareHolders[selected];
+        for (int id : shareIds) {
+            if (shareHolders[id] != null) return shareHolders[id];
+        }
+        return null;
     }
 
     private Holder<Biome> enabledLand(int preferredIndex, int x, int z) {
@@ -547,6 +630,9 @@ public final class OmniBiomeSource extends BiomeSource {
             return h & MASK;
         }
     }
+
+    public BiomeShare.Settings biomeShareSettings() { return biomeShare; }
+    public boolean hasWeightedShares() { return weighted; }
 
     public static void registerCodec() {
         Registry.register(BuiltInRegistries.BIOME_SOURCE, OmniIsleIds.id("island_biomes"), CODEC);
