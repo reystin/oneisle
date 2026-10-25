@@ -11,8 +11,10 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.EnumSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.zip.Deflater;
 import java.util.zip.Inflater;
 
@@ -86,7 +88,37 @@ public final class ShareCode {
         }
         root.add("structures", structs);
 
+        if (draft.hasNonNeutralWeights() || !draft.biomeShareBias().isEmpty()) {
+            root.add("biome_share", biomeShareJson(draft));
+        }
+
         return GSON.toJson(root);
+    }
+
+    private static JsonObject biomeShareJson(IslandDraft draft) {
+        JsonObject share = new JsonObject();
+        JsonObject weights = new JsonObject();
+        for (Map.Entry<String, Integer> entry : draft.draftLandWeightMap().entrySet()) {
+            weights.addProperty(entry.getKey(), entry.getValue());
+        }
+        share.add("weights", weights);
+        JsonObject bias = new JsonObject();
+        for (Map.Entry<String, Double> entry : draft.biomeShareBias().entrySet()) {
+            bias.addProperty(entry.getKey(), entry.getValue());
+        }
+        share.add("bias", bias);
+        JsonObject achieved = new JsonObject();
+        for (Map.Entry<String, Double> entry : draft.biomeShareAchieved().entrySet()) {
+            achieved.addProperty(entry.getKey(), entry.getValue());
+        }
+        share.add("achieved", achieved);
+        JsonObject target = new JsonObject();
+        for (Map.Entry<String, Double> entry : draft.biomeShareTarget().entrySet()) {
+            target.addProperty(entry.getKey(), entry.getValue());
+        }
+        share.add("target", target);
+        share.addProperty("feasible", draft.sharesFeasible());
+        return share;
     }
 
     /** Encodes an IslandDraft into a share code string. */
@@ -280,6 +312,36 @@ public final class ShareCode {
             draft.restoreStructuresFromNames(enabledNames);
         }
 
+        if (root.has("biome_share") && root.get("biome_share").isJsonObject()) {
+            JsonObject share = root.getAsJsonObject("biome_share");
+            boolean feasible = !share.has("feasible") || share.get("feasible").getAsBoolean();
+            draft.applySharedSettings(readWeights(share), readNumbers(share, "bias"),
+                readNumbers(share, "achieved"), readNumbers(share, "target"), feasible);
+        }
+
         return draft;
+    }
+
+    private static Map<String, Integer> readWeights(JsonObject share) {
+        Map<String, Integer> weights = new LinkedHashMap<>();
+        if (!share.has("weights") || !share.get("weights").isJsonObject()) return weights;
+        for (Map.Entry<String, JsonElement> entry : share.getAsJsonObject("weights").entrySet()) {
+            try {
+                weights.put(entry.getKey(), entry.getValue().getAsInt());
+            } catch (Exception ignored) {}
+        }
+        return weights;
+    }
+
+    private static Map<String, Double> readNumbers(JsonObject share, String key) {
+        Map<String, Double> values = new LinkedHashMap<>();
+        if (!share.has(key) || !share.get(key).isJsonObject()) return values;
+        for (Map.Entry<String, JsonElement> entry : share.getAsJsonObject(key).entrySet()) {
+            try {
+                double value = entry.getValue().getAsDouble();
+                if (Double.isFinite(value)) values.put(entry.getKey(), value);
+            } catch (Exception ignored) {}
+        }
+        return values;
     }
 }

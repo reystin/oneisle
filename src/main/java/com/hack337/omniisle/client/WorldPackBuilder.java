@@ -5,6 +5,7 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.hack337.omniisle.continent.BiomeShare;
 import com.hack337.omniisle.continent.IslandMask;
 import com.hack337.omniisle.continent.IslandTerrain;
 import com.hack337.omniisle.platform.TargetPlatform;
@@ -19,6 +20,7 @@ import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -72,6 +74,9 @@ public final class WorldPackBuilder {
     public static void export(Path dataPackDirectory, IslandDraft source) throws IOException {
         IslandDraft state = source.copy();
         if (!state.hasLand()) throw new IOException("The island contains no land");
+        if (state.hasNonNeutralWeights()) {
+            state.applyCalibration(BiomeShareCalibrator.calibrate(state));
+        }
         Files.createDirectories(dataPackDirectory);
         Path target = dataPackDirectory.resolve(FILE_NAME);
         Path temporary = dataPackDirectory.resolve(FILE_NAME + ".tmp");
@@ -191,9 +196,42 @@ public final class WorldPackBuilder {
                 addEnabledBiomes(biomeSource, "enabled_ocean_biomes", state, BiomePreview.Category.OCEAN);
                 addEnabledBiomes(biomeSource, "enabled_river_biomes", state, BiomePreview.Category.RIVER);
                 addEnabledBiomes(biomeSource, "enabled_cave_biomes", state, BiomePreview.Category.CAVE);
+                addBiomeShare(biomeSource, state);
                 return GSON.toJson(root) + "\n";
             }
         }
+    }
+
+    private static void addBiomeShare(JsonObject biomeSource, IslandDraft state) {
+        if (!state.hasNonNeutralWeights()) return;
+        BiomeShare.Settings settings = state.biomeShareSettings();
+        JsonObject share = new JsonObject();
+        JsonObject weights = new JsonObject();
+        for (Map.Entry<String, Integer> entry : state.draftLandWeightMap().entrySet()) {
+            weights.addProperty(fullBiomeId(entry.getKey()), entry.getValue());
+        }
+        share.add("weights", weights);
+        JsonObject bias = new JsonObject();
+        for (Map.Entry<String, Double> entry : settings.bias().entrySet()) {
+            bias.addProperty(fullBiomeId(entry.getKey()), entry.getValue());
+        }
+        share.add("bias", bias);
+        JsonObject achieved = new JsonObject();
+        for (Map.Entry<String, Double> entry : state.biomeShareAchieved().entrySet()) {
+            achieved.addProperty(fullBiomeId(entry.getKey()), entry.getValue());
+        }
+        share.add("achieved", achieved);
+        JsonObject target = new JsonObject();
+        for (Map.Entry<String, Double> entry : state.biomeShareTarget().entrySet()) {
+            target.addProperty(fullBiomeId(entry.getKey()), entry.getValue());
+        }
+        share.add("target", target);
+        share.addProperty("feasible", state.sharesFeasible());
+        biomeSource.add("biome_share", share);
+    }
+
+    private static String fullBiomeId(String id) {
+        return id.startsWith("minecraft:") ? id : "minecraft:" + BiomeShare.pathOf(id);
     }
 
     private static JsonObject shoreJson(IslandDraft state) {
@@ -245,11 +283,18 @@ public final class WorldPackBuilder {
                     double cpS = terrain.continentalness(x, z + 8);
                     double cpN = terrain.continentalness(x, z - 8);
                     double slope = Math.hypot((cpE - cpW) / 16.0, (cpS - cpN) / 16.0) * 64.0;
-                    biome = state.selectBiome(
-                        BiomePreview.surfaceV3(continentalness, x, z, state.biomeSeed(),
-                            state.climateScale(), state.gradientMode(), state.gradientStrength(),
-                            state.theme(), slope, state.generationVersionNumber(), halfSpan,
-                            terrain.rivers(), terrain, state.shoreSettings(), shoreAllowed), x, z);
+                    BiomePreview.Selection selection = BiomePreview.selectionV3(
+                        continentalness, x, z, state.biomeSeed(),
+                        state.climateScale(), state.gradientMode(), state.gradientStrength(),
+                        state.theme(), slope, state.generationVersionNumber(), halfSpan,
+                        terrain.rivers(), terrain, state.shoreSettings(), shoreAllowed);
+                    biome = state.selectPreviewBiome(selection, x, z);
+                } else if (state.hasNonNeutralWeights()) {
+                    BiomePreview.Selection selection = BiomePreview.selection(
+                        continentalness, x, z, state.biomeSeed(), state.climateScale(),
+                        state.gradientMode(), state.gradientStrength(), state.theme(), 0.0,
+                        state.generationVersionNumber(), halfSpan, terrain.rivers());
+                    biome = state.selectPreviewBiome(selection, x, z);
                 } else {
                     biome = state.selectBiome(
                         BiomePreview.surface(continentalness, x, z, state.biomeSeed()), x, z);

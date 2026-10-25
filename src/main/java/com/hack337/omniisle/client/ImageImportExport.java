@@ -174,13 +174,13 @@ public final class ImageImportExport {
                     double cN = terrain.continentalness(wx, wz - 8);
                     slope = Math.hypot((cE - cW) / 16.0, (cS - cN) / 16.0) * 64.0;
                 }
-                BiomePreview.Type preferred = BiomePreview.surfaceV3(
+                BiomePreview.Selection biomeSelection = BiomePreview.selectionV3(
                     c, wx, wz, draft.biomeSeed(),
                     draft.climateScale(), draft.gradientMode(), draft.gradientStrength(),
                     draft.theme(), slope, draft.generationVersionNumber(), halfSpan,
                     terrain != null ? terrain.rivers() : null, terrain, shore, shoreAllowed
                 );
-                int color = draft.selectBiome(preferred, wx, wz).color & 0x00FFFFFF;
+                int color = draft.selectPreviewBiome(biomeSelection, wx, wz).color & 0x00FFFFFF;
                 img.setRGB(x, z, color);
             }
         }

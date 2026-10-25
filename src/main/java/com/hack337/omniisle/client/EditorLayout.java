@@ -6,7 +6,7 @@ package com.hack337.omniisle.client;
  */
 public final class EditorLayout {
     public static final int CONTROLS_WIDTH = 230;
-    public static final int BIOME_LIST_WIDTH = 186;
+    public static final int BIOME_LIST_WIDTH = 328;
     public static final int CONTROLS_ROWS = 8;
 
     public record Layout(
@@ -33,11 +33,12 @@ public final class EditorLayout {
     private EditorLayout() {}
 
     public static Layout compute(int width, int height) {
-        boolean compact = width < 640 || height < 320;
+        boolean compact = width < 730 || height < 320;
         int controlsHeight = compact ? 184 : 224;
         int previewSize = compact
             ? Math.max(96, Math.min(140, Math.min(height - 130, width - CONTROLS_WIDTH - 36)))
-            : Math.max(124, Math.min(286, Math.min(height - 134, width - 496)));
+            : Math.max(124, Math.min(286, Math.min(height - 134,
+                width - 496 - (BIOME_LIST_WIDTH - 186))));
         int totalWidth = compact
             ? previewSize + 14 + CONTROLS_WIDTH
             : previewSize + 18 + CONTROLS_WIDTH + 18 + BIOME_LIST_WIDTH;

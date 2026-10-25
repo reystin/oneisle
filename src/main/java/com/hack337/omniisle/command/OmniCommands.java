@@ -72,6 +72,7 @@ public final class OmniCommands {
                     BlockPos spawn = world.getRespawnData().pos();
                     String layers = "Land (Mask)" + (cfg.unpackedHeight != null ? ", Height Layer" : "")
                         + (cfg.riverDensity > 0.001 ? ", Rivers (" + (int)Math.round(cfg.riverDensity * 100) + "%)" : "");
+                    String shares = shareSummary(world);
 
                     context.getSource().sendSuccess(() -> Component.literal(
                         "=== OmniIsle World Info ===\n" +
@@ -81,7 +82,8 @@ public final class OmniCommands {
                         "Bounding Box: " + bbox + "\n" +
                         "World Spawn: " + spawn.getX() + ", " + spawn.getY() + ", " + spawn.getZ() + "\n" +
                         "World Border: " + (cfg.worldBorder ? "Enabled (+ " + cfg.worldBorderMargin + " margin)" : "Disabled") + "\n" +
-                        "Enabled Layers: " + layers
+                        "Enabled Layers: " + layers +
+                        (shares.isEmpty() ? "" : "\n" + shares)
                     ).withStyle(ChatFormatting.AQUA), false);
                     return Command.SINGLE_SUCCESS;
                 }))
@@ -204,6 +206,35 @@ public final class OmniCommands {
         double cS = terrain.continentalness(x, z + 4.0);
         double cN = terrain.continentalness(x, z - 4.0);
         return Math.hypot((cE - cW) / 8.0, (cS - cN) / 8.0) * 64.0;
+    }
+
+    private static String shareSummary(ServerLevel world) {
+        BiomeSource source = world.getChunkSource().getGenerator().getBiomeSource();
+        if (!(source instanceof OmniBiomeSource omni) || !omni.hasWeightedShares()) return "";
+        com.hack337.omniisle.continent.BiomeShare.Settings share = omni.biomeShareSettings();
+        StringJoiner weights = new StringJoiner(", ");
+        for (int i = 0; i < com.hack337.omniisle.continent.BiomeShare.catalogSize(); i++) {
+            com.hack337.omniisle.continent.BiomeShare.Variant variant =
+                com.hack337.omniisle.continent.BiomeShare.variant(i);
+            if (variant == null || variant.terrainDriven()) continue;
+            int weight = share.weight(variant.id());
+            if (weight == com.hack337.omniisle.continent.BiomeShare.DEFAULT_WEIGHT) continue;
+            weights.add(variant.id() + "=" + weight + "%");
+        }
+        StringJoiner achieved = new StringJoiner(", ");
+        for (int i = 0; i < com.hack337.omniisle.continent.BiomeShare.catalogSize(); i++) {
+            com.hack337.omniisle.continent.BiomeShare.Variant variant =
+                com.hack337.omniisle.continent.BiomeShare.variant(i);
+            if (variant == null) continue;
+            Double value = share.achieved().get(variant.id());
+            if (value == null) continue;
+            achieved.add(String.format(java.util.Locale.ROOT, "%s=%.1f%%", variant.id(), value));
+        }
+        StringBuilder out = new StringBuilder("Biome Share: ")
+            .append(share.feasible() ? "calibrated" : "infeasible (targets unreachable)")
+            .append("\nWeights: ").append(weights.length() > 0 ? weights : "all 100%");
+        if (achieved.length() > 0) out.append("\nAchieved: ").append(achieved);
+        return out.toString();
     }
 
     private static int executeSpawnQuery(CommandContext<CommandSourceStack> context) {

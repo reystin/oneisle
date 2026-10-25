@@ -1,5 +1,6 @@
 package com.hack337.omniisle.client;
 
+import com.hack337.omniisle.continent.BiomeShare;
 import com.hack337.omniisle.mixin.client.CreateWorldBridge;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.blaze3d.platform.NativeImage;
@@ -9,6 +10,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicReference;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.AbstractSliderButton;
@@ -93,12 +97,30 @@ public final class OmniIsleEditorScreen extends Screen {
     private int controlsWidth = 230;
     private int controlsHeight = 224;
     private int bottomY;
+    private static final int BIOME_LAND_ROW_H = 30;
+    private static final int BIOME_OTHER_ROW_H = 16;
+    private static final int BIOME_ROW_TOP = 39;
+    private static final long CALIBRATION_DEBOUNCE_NANOS = 150_000_000L;
+    private static final ExecutorService CALIBRATION_EXECUTOR = Executors.newSingleThreadExecutor(runnable -> {
+        Thread thread = new Thread(runnable, "OmniIsle-ShareCalibration");
+        thread.setDaemon(true);
+        return thread;
+    });
+
+    private record CalibrationOutcome(int generation, long fingerprint, BiomeShareCalibrator.Result result) {}
+
     private int biomeListX;
     private int biomeListY;
-    private int biomeListWidth = 186;
+    private int biomeListWidth = EditorLayout.BIOME_LIST_WIDTH;
     private int biomeListHeight;
     private boolean compactLayout;
     private int biomeScroll;
+    private BiomePreview.Type weightEditingType;
+    private String weightEditBuffer = "";
+    private int calibrationGeneration;
+    private long calibrationDueAtNanos;
+    private boolean calibrationRunning;
+    private final AtomicReference<CalibrationOutcome> calibrationOutcome = new AtomicReference<>();
     private boolean showStructures;
     private BiomePreview.Category categoryFilter = null;
     private int lastPaintX = -1;
@@ -155,6 +177,7 @@ public final class OmniIsleEditorScreen extends Screen {
 
     @Override
     protected void init() {
+        commitWeightEdit();
         shapeTabWidgets.clear();
         terrainTabWidgets.clear();
         climateTabWidgets.clear();
@@ -173,6 +196,7 @@ public final class OmniIsleEditorScreen extends Screen {
         controlsY = layout.controlsY();
         biomeListX = layout.biomeListX();
         biomeListY = layout.biomeListY();
+        biomeListWidth = EditorLayout.BIOME_LIST_WIDTH;
         biomeListHeight = layout.biomeListHeight();
 
         int rowStep = layout.rowStep();
@@ -681,7 +705,151 @@ public final class OmniIsleEditorScreen extends Screen {
         if (heightSmoothButton != null) heightSmoothButton.setMessage(Component.translatable("omniisle.editor.smooth.short").withStyle(heightSmooth ? ChatFormatting.GREEN : ChatFormatting.WHITE));
     }
 
-    private void invalidatePreview() { previewDirty = true; }
+    private void invalidatePreview() {
+        previewDirty = true;
+        if (state.hasNonNeutralWeights()) {
+            calibrationDueAtNanos = System.nanoTime() + CALIBRATION_DEBOUNCE_NANOS;
+        }
+    }
+
+    void tickShares() {
+        CalibrationOutcome outcome = calibrationOutcome.getAndSet(null);
+        if (outcome != null) {
+            calibrationRunning = false;
+            if (outcome.result() != null && outcome.generation() == calibrationGeneration
+                && outcome.fingerprint() == shareFingerprint() && state.hasNonNeutralWeights()) {
+                state.applyCalibration(outcome.result());
+                if (!outcome.result().feasible()) {
+                    status = Component.translatable("omniisle.editor.weights.infeasible",
+                        String.format(java.util.Locale.ROOT, "%.1f", outcome.result().maxErrorPp()));
+                }
+                previewDirty = true;
+            }
+        }
+        if (!calibrationRunning && calibrationDueAtNanos != 0
+            && System.nanoTime() >= calibrationDueAtNanos) {
+            calibrationDueAtNanos = 0;
+            final int generation = ++calibrationGeneration;
+            final long fingerprint = shareFingerprint();
+            final IslandDraft snapshot = state.copy();
+            calibrationRunning = true;
+            CALIBRATION_EXECUTOR.submit(() -> {
+                BiomeShareCalibrator.Result result = null;
+                try {
+                    result = BiomeShareCalibrator.calibrate(snapshot);
+                } catch (RuntimeException ignored) {
+                    // Keep the editor responsive; the current bias stays in effect.
+                }
+                calibrationOutcome.set(new CalibrationOutcome(generation, fingerprint, result));
+            });
+        }
+    }
+
+    private long shareFingerprint() {
+        IslandDraft probe = state.copy();
+        probe.clearCalibration();
+        String json = ShareCode.toJson(probe);
+        long hash = 0xcbf29ce484222325L;
+        for (int i = 0; i < json.length(); i++) {
+            hash ^= json.charAt(i);
+            hash *= 0x100000001b3L;
+        }
+        return hash;
+    }
+
+    void setBiomeWeightFromUi(BiomePreview.Type type, int weight) {
+        if (type == null || !type.isLand() || BiomeShare.isTerrainDriven(type.family)) return;
+        int clamped = BiomeShare.clampWeight(weight);
+        boolean enabled = state.isBiomeEnabled(type);
+        if (clamped <= 0) {
+            if (!enabled) return;
+            state.pushUndo();
+            state.setBiomeWeight(type, 0);
+        } else {
+            if (enabled && state.biomeWeight(type) == clamped) return;
+            state.pushUndo();
+            state.setBiomeWeight(type, clamped);
+        }
+        invalidatePreview();
+    }
+
+    void changeWeightFromUi(BiomePreview.Type type, int weight) {
+        setBiomeWeightFromUi(type, weight);
+    }
+
+    void toggleBiomeFromUi(BiomePreview.Type type) {
+        if (type == null) return;
+        state.pushUndo();
+        state.toggleBiome(type);
+        invalidatePreview();
+    }
+
+    void resetBiomeWeightFromUi(BiomePreview.Type type) {
+        if (type == null || !type.isLand() || BiomeShare.isTerrainDriven(type.family)) return;
+        if (state.isBiomeEnabled(type) && state.biomeWeight(type) == BiomeShare.DEFAULT_WEIGHT) return;
+        state.pushUndo();
+        state.setBiomeWeight(type, BiomeShare.DEFAULT_WEIGHT);
+        invalidatePreview();
+    }
+
+    void resetWeightsFromUi(BiomePreview.Category category) {
+        boolean changed = false;
+        for (BiomePreview.Type type : getFilteredBiomes()) {
+            if (!type.isLand()) continue;
+            if (category != null && type.category != category) continue;
+            if (state.isBiomeEnabled(type) && state.biomeWeight(type) != BiomeShare.DEFAULT_WEIGHT) {
+                changed = true;
+                break;
+            }
+        }
+        if (!changed) return;
+        state.pushUndo();
+        state.resetAllBiomeWeights();
+        invalidatePreview();
+    }
+
+    void disableSelectedWeightsFromUi(BiomePreview.Category category) {
+        List<BiomePreview.Type> targets = new ArrayList<>();
+        for (BiomePreview.Type type : getFilteredBiomes()) {
+            if (!type.isLand() || !state.isBiomeEnabled(type)) continue;
+            if (category != null && type.category != category) continue;
+            targets.add(type);
+        }
+        if (targets.isEmpty()) return;
+        state.pushUndo();
+        for (BiomePreview.Type type : targets) {
+            state.setBiomeWeight(type, 0);
+        }
+        invalidatePreview();
+    }
+
+    void beginWeightEdit(BiomePreview.Type type) {
+        if (type == null || !type.isLand() || BiomeShare.isTerrainDriven(type.family)) return;
+        commitWeightEdit();
+        weightEditingType = type;
+        weightEditBuffer = String.valueOf(state.isBiomeEnabled(type) ? state.biomeWeight(type) : 0);
+    }
+
+    void commitWeightEdit() {
+        BiomePreview.Type type = weightEditingType;
+        if (type == null) return;
+        String buffer = weightEditBuffer;
+        weightEditingType = null;
+        weightEditBuffer = "";
+        if (buffer.isEmpty()) return;
+        applyWeightEditFromUi(type, buffer);
+    }
+
+    void applyWeightEditFromUi(BiomePreview.Type type, String buffer) {
+        if (state.applyBiomeWeightText(type, buffer)) invalidatePreview();
+    }
+
+    void cancelWeightEdit() {
+        weightEditingType = null;
+        weightEditBuffer = "";
+    }
+
+    BiomePreview.Type weightEditingType() { return weightEditingType; }
 
     private void refreshPreviewTexture() {
         long now = System.nanoTime();
@@ -752,14 +920,15 @@ public final class OmniIsleEditorScreen extends Screen {
                 double wx = state.worldX(x);
                 double wz = state.worldZ(z);
                 double c = continentalnessGrid[z * resolution + x];
-                BiomePreview.Type preferred = BiomePreview.surfaceV3(
+                BiomePreview.Selection biomeSelection = BiomePreview.selectionV3(
                     c, wx, wz, state.biomeSeed(),
                     state.climateScale(), state.gradientMode(), state.gradientStrength(),
                     state.theme(), biomeSlope, state.generationVersionNumber(), halfSpan,
                     currentTerrain != null ? currentTerrain.rivers() : null,
                     currentTerrain, state.shoreSettings(), shoreAllowed
                 );
-                baseColors[z * resolution + x] = state.selectBiome(preferred, wx, wz).color;
+                baseColors[z * resolution + x] =
+                    state.selectPreviewBiome(biomeSelection, wx, wz).color;
 
                 int color = baseColors[z * resolution + x];
                 if (reliefShading) {
@@ -800,6 +969,7 @@ public final class OmniIsleEditorScreen extends Screen {
     @Override
     public void extractBackground(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
         super.extractBackground(context, mouseX, mouseY, delta);
+        tickShares();
         context.fill(0, 0, width, height, 0x24000000);
 
         int titleWidth = Math.min(250, width - 24);
@@ -972,14 +1142,14 @@ public final class OmniIsleEditorScreen extends Screen {
                 dist, worldX, worldZ, slope, bay, shore, state.biomeSeed());
         }
 
-        BiomePreview.Type preferred = BiomePreview.surfaceV3(
+        BiomePreview.Selection biomeSelection = BiomePreview.selectionV3(
             continentalness, worldX, worldZ, state.biomeSeed(),
             state.climateScale(), state.gradientMode(), state.gradientStrength(),
             state.theme(), slope, state.generationVersionNumber(), state.worldSpan() / 2.0,
             currentTerrain != null ? currentTerrain.rivers() : null,
             currentTerrain, shore, shoreAllowed
         );
-        BiomePreview.Type biome = state.selectBiome(preferred, worldX, worldZ);
+        BiomePreview.Type biome = state.selectPreviewBiome(biomeSelection, worldX, worldZ);
 
         Component biomeName = Component.translatable(biome.translationKey());
         Component coords = Component.translatable("omniisle.editor.inspector.coords", worldX, worldZ, elev);
@@ -1055,89 +1225,287 @@ public final class OmniIsleEditorScreen extends Screen {
     }
 
     private void drawChoiceList(GuiGraphicsExtractor context, int mouseX, int mouseY) {
-        context.fill(biomeListX, biomeListY, biomeListX + biomeListWidth, biomeListY + biomeListHeight, 0xF0101717);
-        context.outline(biomeListX, biomeListY, biomeListWidth, biomeListHeight, 0xFF819086);
+        int bx = biomeListX;
+        int by = biomeListY;
+        int bw = biomeListWidth;
+        int bh = biomeListHeight;
+        context.fill(bx, by, bx + bw, by + bh, 0xF0101717);
+        context.outline(bx, by, bw, bh, 0xFF819086);
 
-        int middle = biomeListX + biomeListWidth / 2;
-        context.fill(showStructures ? middle : biomeListX + 1, biomeListY + 1,
-            showStructures ? biomeListX + biomeListWidth - 1 : middle, biomeListY + 19, 0xFF435A47);
+        int middle = bx + bw / 2;
+        context.fill(showStructures ? middle : bx + 1, by + 1,
+            showStructures ? bx + bw - 1 : middle, by + 19, 0xFF435A47);
         context.centeredText(font, Component.translatable("omniisle.editor.biomes"),
-            biomeListX + biomeListWidth / 4, biomeListY + 6, showStructures ? 0xFFAAAAAA : 0xFFFFFFFF);
+            bx + bw / 4, by + 6, showStructures ? 0xFFAAAAAA : 0xFFFFFFFF);
         context.centeredText(font, Component.translatable("omniisle.editor.structures"),
-            biomeListX + biomeListWidth * 3 / 4, biomeListY + 6, showStructures ? 0xFFFFFFFF : 0xFFAAAAAA);
+            bx + bw * 3 / 4, by + 6, showStructures ? 0xFFFFFFFF : 0xFFAAAAAA);
 
-        int subY = biomeListY + 20;
-        context.fill(biomeListX + 1, subY, biomeListX + biomeListWidth - 1, subY + 17, 0xFF1C2422);
-        context.horizontalLine(biomeListX, biomeListX + biomeListWidth - 1, subY + 17, 0xFF35443E);
+        int subY = by + 20;
+        context.fill(bx + 1, subY, bx + bw - 1, subY + 17, 0xFF1C2422);
+        context.horizontalLine(bx, bx + bw - 1, subY + 17, 0xFF35443E);
 
         if (!showStructures) {
-            boolean catHover = mouseX >= biomeListX + 2 && mouseX < biomeListX + 96 && mouseY >= subY + 1 && mouseY < subY + 16;
-            context.fill(biomeListX + 2, subY + 1, biomeListX + 96, subY + 16, catHover ? 0xFF3D5048 : 0xFF2A3632);
-            context.outline(biomeListX + 2, subY + 1, 94, 15, 0xFF586C62);
+            boolean catHover = hover(mouseX, mouseY, listFilterX(), subY + 1, listFilterW(), 16);
+            context.fill(listFilterX(), subY + 1, listFilterX() + listFilterW(), subY + 17,
+                catHover ? 0xFF3D5048 : 0xFF2A3632);
+            context.outline(listFilterX(), subY + 1, listFilterW(), 16, 0xFF586C62);
             Component catLabel = Component.literal(categoryName(categoryFilter).getString() + " ▼");
-            context.centeredText(font, shortened(catLabel, 90), biomeListX + 49, subY + 5, 0xFFD8E2DC);
+            context.centeredText(font, shortened(catLabel, listFilterW() - 4),
+                listFilterX() + listFilterW() / 2, subY + 5, 0xFFD8E2DC);
         } else {
-            context.centeredText(font, Component.translatable("omniisle.category.all"), biomeListX + 49, subY + 5, 0xFF889890);
+            context.centeredText(font, Component.translatable("omniisle.category.all"),
+                listFilterX() + listFilterW() / 2, subY + 5, 0xFF889890);
         }
 
-        boolean selAllHover = mouseX >= biomeListX + 98 && mouseX < biomeListX + 140 && mouseY >= subY + 1 && mouseY < subY + 16;
-        context.fill(biomeListX + 98, subY + 1, biomeListX + 140, subY + 16, selAllHover ? 0xFF386040 : 0xFF26402C);
-        context.outline(biomeListX + 98, subY + 1, 42, 15, 0xFF4A7D55);
-        context.centeredText(font, Component.translatable("omniisle.editor.select_all"), biomeListX + 119, subY + 5, 0xFFE0FFE0);
+        drawListHeaderButton(context, mouseX, mouseY, subY, listAllX(), listAllW(),
+            Component.translatable("omniisle.editor.select_all"), 0xFF26402C, 0xFF4A7D55, 0xFFE0FFE0);
+        drawListHeaderButton(context, mouseX, mouseY, subY, listNoneX(), listNoneW(),
+            Component.translatable("omniisle.editor.deselect_all"), 0xFF402626, 0xFF7D4A4A, 0xFFFFE0E0);
+        if (!showStructures) {
+            drawListHeaderButton(context, mouseX, mouseY, subY, listResetX(), listResetW(),
+                Component.translatable("omniisle.editor.weights.reset_all_short"), 0xFF2A3C46, 0xFF4A6D7D, 0xFFDDEEFF);
+            drawListHeaderButton(context, mouseX, mouseY, subY, listOffX(), listOffW(),
+                Component.translatable("omniisle.editor.weights.disable_short"), 0xFF463A26, 0xFF7D6A4A, 0xFFFFE8C4);
+            if (hover(mouseX, mouseY, listResetX(), subY + 1, listResetW(), 16)) {
+                context.setTooltipForNextFrame(font,
+                    Component.translatable("omniisle.editor.weights.reset_all.tooltip"), mouseX, mouseY);
+            }
+            if (hover(mouseX, mouseY, listOffX(), subY + 1, listOffW(), 16)) {
+                context.setTooltipForNextFrame(font,
+                    Component.translatable("omniisle.editor.weights.disable.tooltip"), mouseX, mouseY);
+            }
+        }
 
-        boolean deselHover = mouseX >= biomeListX + 142 && mouseX < biomeListX + 184 && mouseY >= subY + 1 && mouseY < subY + 16;
-        context.fill(biomeListX + 142, subY + 1, biomeListX + 184, subY + 16, deselHover ? 0xFF603838 : 0xFF402626);
-        context.outline(biomeListX + 142, subY + 1, 42, 15, 0xFF7D4A4A);
-        context.centeredText(font, Component.translatable("omniisle.editor.deselect_all"), biomeListX + 163, subY + 5, 0xFFFFE0E0);
+        int top = by + BIOME_ROW_TOP;
+        int viewH = choiceViewportHeight();
+        biomeScroll = Math.max(0, Math.min(maxBiomeScroll(), biomeScroll));
+        context.enableScissor(bx + 1, top, bx + bw - 1, top + viewH);
+        int y = top - biomeScroll;
+        int count = showStructures ? IslandDraft.STRUCTURE_OPTIONS.size() : getFilteredBiomes().size();
+        for (int index = 0; index < count; index++) {
+            int rowH = choiceRowHeight(index);
+            if (y + rowH >= top && y <= top + viewH) {
+                if (showStructures) {
+                    drawStructureRow(context, index, y, mouseX, mouseY);
+                } else {
+                    drawBiomeRow(context, getFilteredBiomes().get(index), y, mouseX, mouseY);
+                }
+            }
+            y += rowH;
+        }
+        context.disableScissor();
 
-        int rowHeight = 15;
-        int firstY = biomeListY + 39;
-        int visibleRows = Math.max(1, (biomeListHeight - 42) / rowHeight);
-        int itemCount = showStructures ? IslandDraft.STRUCTURE_OPTIONS.size() : getFilteredBiomes().size();
-        int maxScroll = Math.max(0, itemCount - visibleRows);
-        biomeScroll = Math.min(biomeScroll, maxScroll);
+        if (maxBiomeScroll() > 0) {
+            int trackY = top;
+            int trackH = viewH;
+            int thumbH = Math.max(12, trackH * viewH / Math.max(1, choiceContentHeight()));
+            int thumbY = trackY + (trackH - thumbH) * biomeScroll / maxBiomeScroll();
+            context.fill(bx + bw - 4, trackY, bx + bw - 2, trackY + trackH, 0xFF303840);
+            context.fill(bx + bw - 4, thumbY, bx + bw - 2, thumbY + thumbH, 0xFFB0B8C0);
+        }
+    }
 
-        for (int visible = 0; visible < visibleRows; visible++) {
-            int index = visible + biomeScroll;
-            if (index >= itemCount) break;
-            int y = firstY + visible * rowHeight;
-            boolean hovered = mouseX >= biomeListX + 2 && mouseX < biomeListX + biomeListWidth - 2
-                && mouseY >= y && mouseY < y + rowHeight;
-            if (hovered) context.fill(biomeListX + 2, y, biomeListX + biomeListWidth - 2, y + rowHeight, 0x6652684F);
-            boolean checked;
-            Component label;
-            int markerColor;
-            if (showStructures) {
-                IslandDraft.StructureOption option = IslandDraft.STRUCTURE_OPTIONS.get(index);
-                checked = state.isStructureEnabled(option);
-                label = Component.translatable(option.translationKey);
-                markerColor = 0xFFE1B866;
+    private void drawListHeaderButton(GuiGraphicsExtractor context, int mouseX, int mouseY, int subY,
+                                      int x, int w, Component label, int fill, int border, int textColor) {
+        boolean hovered = hover(mouseX, mouseY, x, subY + 1, w, 16);
+        context.fill(x, subY + 1, x + w, subY + 17, hovered ? brighten(fill) : fill);
+        context.outline(x, subY + 1, w, 16, border);
+        context.centeredText(font, shortened(label, w - 4), x + w / 2, subY + 5, textColor);
+    }
+
+    private void drawStructureRow(GuiGraphicsExtractor context, int index, int y, int mouseX, int mouseY) {
+        IslandDraft.StructureOption option = IslandDraft.STRUCTURE_OPTIONS.get(index);
+        boolean checked = state.isStructureEnabled(option);
+        boolean hovered = hover(mouseX, mouseY, biomeListX + 2, y, biomeListWidth - 4, BIOME_OTHER_ROW_H);
+        if (hovered) context.fill(biomeListX + 2, y, biomeListX + biomeListWidth - 2, y + BIOME_OTHER_ROW_H, 0x6652684F);
+        drawColorCircle(context, biomeListX + 8, y + 8, 0xFFE1B866);
+        int boxX = biomeListX + 17;
+        context.outline(boxX, y + 4, 9, 9, 0xFFD0D0D0);
+        if (checked) context.fill(boxX + 2, y + 6, boxX + 7, y + 11, 0xFF55FF55);
+        context.text(font, shortened(Component.translatable(option.translationKey), biomeListWidth - 40),
+            biomeListX + 30, y + 4, checked ? 0xFFFFFFFF : 0xFF777777, false);
+    }
+
+    private void drawBiomeRow(GuiGraphicsExtractor context, BiomePreview.Type type, int y,
+                              int mouseX, int mouseY) {
+        boolean land = type.isLand();
+        int rowH = land ? BIOME_LAND_ROW_H : BIOME_OTHER_ROW_H;
+        boolean hovered = hover(mouseX, mouseY, biomeListX + 2, y, biomeListWidth - 4, rowH);
+        if (hovered) context.fill(biomeListX + 2, y, biomeListX + biomeListWidth - 2, y + rowH, 0x6652684F);
+        boolean enabled = state.isBiomeEnabled(type);
+        boolean terrain = land && BiomeShare.isTerrainDriven(type.family);
+        drawColorCircle(context, biomeListX + 8, y + 8, type.color);
+        int boxX = biomeListX + 17;
+        context.outline(boxX, y + 4, 9, 9, 0xFFD0D0D0);
+        if (enabled) context.fill(boxX + 2, y + 6, boxX + 7, y + 11, 0xFF55FF55);
+
+        Component label = Component.translatable(type.translationKey());
+        int nameMax = land ? biomeListWidth - 38 : biomeListWidth - 40;
+        context.text(font, shortened(label, nameMax), biomeListX + 30, y + 4,
+            enabled ? 0xFFFFFFFF : 0xFF777777, false);
+
+        if (!land) {
+            if (hover(mouseX, mouseY, biomeListX + 2, y, biomeListWidth - 4, rowH)) {
+                context.setTooltipForNextFrame(font,
+                    Component.translatable("omniisle.editor.weights.climate_only"), mouseX, mouseY);
+            }
+            return;
+        }
+
+        if (terrain) {
+            context.text(font, shortened(Component.translatable("omniisle.editor.weights.terrain"), biomeListWidth - 40),
+                biomeListX + 30, y + 17, 0xFF909A94, false);
+            if (hover(mouseX, mouseY, biomeListX + 2, y, biomeListWidth - 4, rowH)) {
+                context.setTooltipForNextFrame(font,
+                    Component.translatable("omniisle.editor.weights.terrain.tooltip"), mouseX, mouseY);
+            }
+            return;
+        }
+
+        int controlsY = y + 15;
+        boolean editing = weightEditingType == type;
+        int weight = enabled ? state.biomeWeight(type) : 0;
+        int minusX = weightMinusX();
+        int fieldX = weightFieldX();
+        int plusX = weightPlusX();
+        int resetX = weightResetX();
+        int valueW = weightFieldW();
+        boolean hoverMinus = hover(mouseX, mouseY, minusX, controlsY, 14, 13);
+        boolean hoverField = hover(mouseX, mouseY, fieldX, controlsY, valueW, 13);
+        boolean hoverPlus = hover(mouseX, mouseY, plusX, controlsY, 14, 13);
+        boolean hoverReset = hover(mouseX, mouseY, resetX, controlsY, 14, 13);
+
+        context.fill(minusX, controlsY, minusX + 14, controlsY + 13, hoverMinus ? 0xFF4A5650 : 0xFF2C3531);
+        context.outline(minusX, controlsY, 14, 13, 0xFF566158);
+        context.centeredText(font, "-", minusX + 7, controlsY + 3, 0xFFDDDDDD);
+        context.fill(plusX, controlsY, plusX + 14, controlsY + 13, hoverPlus ? 0xFF4A5650 : 0xFF2C3531);
+        context.outline(plusX, controlsY, 14, 13, 0xFF566158);
+        context.centeredText(font, "+", plusX + 7, controlsY + 3, 0xFFDDDDDD);
+
+        context.fill(fieldX, controlsY, fieldX + valueW, controlsY + 13,
+            editing ? 0xFF101A18 : hoverField ? 0xFF37423D : 0xFF202826);
+        context.outline(fieldX, controlsY, valueW, 13, editing ? 0xFF8FD0A8 : 0xFF566158);
+        String value = editing
+            ? weightEditBuffer + (((System.currentTimeMillis() / 500L) & 1L) == 0L ? "_" : "")
+            : weight + "%";
+        context.centeredText(font, value, fieldX + valueW / 2, controlsY + 3,
+            enabled ? 0xFFEAF4EC : 0xFF8A948E);
+
+        context.fill(resetX, controlsY, resetX + 14, controlsY + 13, hoverReset ? 0xFF4A5650 : 0xFF2C3531);
+        context.outline(resetX, controlsY, 14, 13, 0xFF566158);
+        context.centeredText(font, "↺", resetX + 7, controlsY + 3, 0xFFDDDDDD);
+
+        String actual = actualShareText(type, enabled);
+        int actualColor = actualShareColor(type, enabled);
+        int actualX = resetX - 6 - font.width(actual);
+        context.text(font, actual, actualX, controlsY + 3, actualColor, false);
+
+        if (hoverMinus || hoverPlus || hoverField) {
+            context.setTooltipForNextFrame(font,
+                Component.translatable("omniisle.editor.weights.field.tooltip"), mouseX, mouseY);
+        } else if (hoverReset) {
+            context.setTooltipForNextFrame(font,
+                Component.translatable("omniisle.editor.weights.row_reset.tooltip"), mouseX, mouseY);
+        } else if (hover(mouseX, mouseY, biomeListX + 2, y, biomeListWidth - 4, rowH)) {
+            double target = state.targetShare(type);
+            double achieved = state.achievedShare(type);
+            if (target >= 0.0 && achieved >= 0.0) {
+                context.setTooltipForNextFrame(font, Component.translatable(
+                    "omniisle.editor.weights.actual.tooltip",
+                    String.format(java.util.Locale.ROOT, "%.1f%%", achieved),
+                    String.format(java.util.Locale.ROOT, "%.1f%%", target)), mouseX, mouseY);
             } else {
-                BiomePreview.Type biome = getFilteredBiomes().get(index);
-                checked = state.isBiomeEnabled(biome);
-                label = Component.translatable(biome.translationKey());
-                markerColor = biome.color;
+                context.setTooltipForNextFrame(font,
+                    Component.translatable("omniisle.editor.weights.field.tooltip"), mouseX, mouseY);
             }
-            drawColorCircle(context, biomeListX + 8, y + 7, markerColor);
-            int boxX = biomeListX + 17;
-            context.outline(boxX, y + 3, 9, 9, 0xFFD0D0D0);
-            if (checked) {
-                context.fill(boxX + 2, y + 5, boxX + 7, y + 10, 0xFF55FF55);
-            }
-            context.text(font, shortened(label, biomeListWidth - 40), biomeListX + 30, y + 3,
-                checked ? 0xFFFFFFFF : 0xFF777777, false);
         }
+    }
 
-        if (maxScroll > 0) {
-            int trackY = biomeListY + 39;
-            int trackH = biomeListHeight - 42;
-            int thumbH = Math.max(12, trackH * visibleRows / itemCount);
-            int thumbY = trackY + (trackH - thumbH) * biomeScroll / maxScroll;
-            context.fill(biomeListX + biomeListWidth - 4, trackY,
-                biomeListX + biomeListWidth - 2, trackY + trackH, 0xFF303840);
-            context.fill(biomeListX + biomeListWidth - 4, thumbY,
-                biomeListX + biomeListWidth - 2, thumbY + thumbH, 0xFFB0B8C0);
+    private String actualShareText(BiomePreview.Type type, boolean enabled) {
+        if (!enabled || !state.hasNonNeutralWeights()) return "—";
+        double achieved = state.achievedShare(type);
+        if (achieved < 0.0) return "—";
+        return String.format(java.util.Locale.ROOT, "%.1f%%", achieved);
+    }
+
+    private int actualShareColor(BiomePreview.Type type, boolean enabled) {
+        if (!enabled || !state.hasNonNeutralWeights()) return 0xFF808A84;
+        double achieved = state.achievedShare(type);
+        double target = state.targetShare(type);
+        if (achieved < 0.0 || target < 0.0) return 0xFF808A84;
+        double diff = Math.abs(achieved - target);
+        if (diff <= 3.0) return 0xFF6BD97A;
+        if (diff <= 6.0) return 0xFFE0B84A;
+        return 0xFFE26A5E;
+    }
+
+    private int listFilterX() { return biomeListX + 2; }
+    private int listFilterW() { return 92; }
+    private int listAllX() { return listFilterX() + listFilterW() + 4; }
+    private int listAllW() { return 46; }
+    private int listNoneX() { return listAllX() + listAllW() + 2; }
+    private int listNoneW() { return 50; }
+    private int listResetX() { return listNoneX() + listNoneW() + 2; }
+    private int listResetW() { return 62; }
+    private int listOffX() { return listResetX() + listResetW() + 2; }
+    private int listOffW() { return Math.max(24, biomeListX + biomeListWidth - 4 - listOffX()); }
+    private int weightMinusX() { return biomeListX + 30; }
+    private int weightFieldX() { return weightMinusX() + 16; }
+    private int weightFieldW() { return 48; }
+    private int weightPlusX() { return weightFieldX() + weightFieldW() + 2; }
+    private int weightResetX() { return biomeListX + biomeListWidth - 32; }
+
+    private boolean hover(double mouseX, double mouseY, int x, int y, int w, int h) {
+        return mouseX >= x && mouseX < x + w && mouseY >= y && mouseY < y + h;
+    }
+
+    private static int brighten(int color) {
+        int r = Math.min(255, ((color >>> 16) & 0xFF) + 18);
+        int g = Math.min(255, ((color >>> 8) & 0xFF) + 18);
+        int b = Math.min(255, (color & 0xFF) + 18);
+        return 0xFF000000 | (r << 16) | (g << 8) | b;
+    }
+
+    private int choiceRowHeight(int index) {
+        if (showStructures) return BIOME_OTHER_ROW_H;
+        BiomePreview.Type type = getFilteredBiomes().get(index);
+        return type.isLand() ? BIOME_LAND_ROW_H : BIOME_OTHER_ROW_H;
+    }
+
+    private int choiceContentHeight() {
+        if (showStructures) return IslandDraft.STRUCTURE_OPTIONS.size() * BIOME_OTHER_ROW_H;
+        int total = 0;
+        for (BiomePreview.Type type : getFilteredBiomes()) {
+            total += type.isLand() ? BIOME_LAND_ROW_H : BIOME_OTHER_ROW_H;
         }
+        return total;
+    }
+
+    private int choiceViewportHeight() {
+        return Math.max(1, biomeListHeight - BIOME_ROW_TOP - 3);
+    }
+
+    private int maxBiomeScroll() {
+        return Math.max(0, choiceContentHeight() - choiceViewportHeight());
+    }
+
+    private int choiceIndexAt(double mouseY) {
+        int local = (int)Math.floor(mouseY) - (biomeListY + BIOME_ROW_TOP) + biomeScroll;
+        if (local < 0) return -1;
+        int count = showStructures ? IslandDraft.STRUCTURE_OPTIONS.size() : getFilteredBiomes().size();
+        int y = 0;
+        for (int index = 0; index < count; index++) {
+            int rowH = choiceRowHeight(index);
+            if (local < y + rowH) return index;
+            y += rowH;
+        }
+        return -1;
+    }
+
+    private int choiceRowY(int index) {
+        int y = biomeListY + BIOME_ROW_TOP - biomeScroll;
+        for (int i = 0; i < index; i++) y += choiceRowHeight(i);
+        return y;
     }
 
     private static void drawColorCircle(GuiGraphicsExtractor context, int centerX, int centerY, int color) {
@@ -1154,6 +1522,34 @@ public final class OmniIsleEditorScreen extends Screen {
 
     @Override
     public boolean keyPressed(KeyEvent event) {
+        if (weightEditingType != null) {
+            int key = event.key();
+            if (key == InputConstants.KEY_ESCAPE) {
+                cancelWeightEdit();
+                return true;
+            }
+            if (key == InputConstants.KEY_RETURN || key == InputConstants.KEY_NUMPADENTER) {
+                commitWeightEdit();
+                return true;
+            }
+            if (key == InputConstants.KEY_BACKSPACE) {
+                if (!weightEditBuffer.isEmpty()) {
+                    weightEditBuffer = weightEditBuffer.substring(0, weightEditBuffer.length() - 1);
+                }
+                return true;
+            }
+            int digit = -1;
+            if (key >= InputConstants.KEY_0 && key <= InputConstants.KEY_9) {
+                digit = key - InputConstants.KEY_0;
+            } else if (key >= 320 && key <= 329) {
+                digit = key - 320;
+            }
+            if (digit >= 0) {
+                if (weightEditBuffer.length() < 3) weightEditBuffer += digit;
+                return true;
+            }
+            return true;
+        }
         if (event.hasControlDown()) {
             if (event.key() == InputConstants.KEY_Z) {
                 if (event.hasShiftDown()) {
@@ -1184,42 +1580,52 @@ public final class OmniIsleEditorScreen extends Screen {
         int button = event.button();
 
         if (!saving && button == InputConstants.MOUSE_BUTTON_LEFT && isInsideBiomeList(mouseX, mouseY)) {
+            commitWeightEdit();
             if (mouseY < biomeListY + 20) {
                 showStructures = mouseX >= biomeListX + biomeListWidth / 2;
                 biomeScroll = 0;
                 return true;
             }
             if (mouseY < biomeListY + 38) {
-                if (!showStructures && mouseX >= biomeListX + 2 && mouseX < biomeListX + 96) {
+                if (!showStructures && hover(mouseX, mouseY, listFilterX(), biomeListY + 21, listFilterW(), 16)) {
                     categoryFilter = nextCategory(categoryFilter);
                     biomeScroll = 0;
                     return true;
                 }
-                if (mouseX >= biomeListX + 98 && mouseX < biomeListX + 140) {
+                if (hover(mouseX, mouseY, listAllX(), biomeListY + 21, listAllW(), 16)) {
+                    state.pushUndo();
                     if (showStructures) state.selectAllStructures();
                     else state.selectAllBiomes(categoryFilter);
                     invalidatePreview();
                     return true;
                 }
-                if (mouseX >= biomeListX + 142 && mouseX < biomeListX + 184) {
+                if (hover(mouseX, mouseY, listNoneX(), biomeListY + 21, listNoneW(), 16)) {
+                    state.pushUndo();
                     if (showStructures) state.deselectAllStructures();
                     else state.deselectAllBiomes(categoryFilter);
                     invalidatePreview();
                     return true;
                 }
-                return true;
-            }
-            if (mouseX >= biomeListX + biomeListWidth - 8) {
-                int visibleRows = Math.max(1, (biomeListHeight - 42) / 15);
-                int itemCount = showStructures ? IslandDraft.STRUCTURE_OPTIONS.size() : getFilteredBiomes().size();
-                int maxScroll = Math.max(0, itemCount - visibleRows);
-                if (maxScroll > 0) {
-                    double progress = Math.max(0.0, Math.min(1.0, (mouseY - (biomeListY + 39)) / (double)(biomeListHeight - 42)));
-                    biomeScroll = (int)Math.round(progress * maxScroll);
+                if (!showStructures && hover(mouseX, mouseY, listResetX(), biomeListY + 21, listResetW(), 16)) {
+                    resetWeightsFromUi(categoryFilter);
+                    return true;
+                }
+                if (!showStructures && hover(mouseX, mouseY, listOffX(), biomeListY + 21, listOffW(), 16)) {
+                    disableSelectedWeightsFromUi(categoryFilter);
+                    return true;
                 }
                 return true;
             }
-            int index = biomeScroll + ((int)mouseY - (biomeListY + 39)) / 15;
+            if (mouseX >= biomeListX + biomeListWidth - 8) {
+                if (maxBiomeScroll() > 0) {
+                    int viewH = choiceViewportHeight();
+                    double progress = Math.max(0.0, Math.min(1.0,
+                        (mouseY - (biomeListY + BIOME_ROW_TOP)) / (double) viewH));
+                    biomeScroll = (int)Math.round(progress * maxBiomeScroll());
+                }
+                return true;
+            }
+            int index = choiceIndexAt(mouseY);
             if (showStructures) {
                 if (index >= 0 && index < IslandDraft.STRUCTURE_OPTIONS.size()) {
                     state.toggleStructure(IslandDraft.STRUCTURE_OPTIONS.get(index));
@@ -1228,8 +1634,31 @@ public final class OmniIsleEditorScreen extends Screen {
             } else {
                 List<BiomePreview.Type> list = getFilteredBiomes();
                 if (index >= 0 && index < list.size()) {
-                    state.toggleBiome(list.get(index));
-                    invalidatePreview();
+                    BiomePreview.Type type = list.get(index);
+                    if (type.isLand() && !BiomeShare.isTerrainDriven(type.family)) {
+                        if (doubleClick) {
+                            resetBiomeWeightFromUi(type);
+                        } else {
+                            int rowY = choiceRowY(index);
+                            int controlsY = rowY + 15;
+                            boolean enabled = state.isBiomeEnabled(type);
+                            int weight = enabled ? state.biomeWeight(type) : 0;
+                            if (hover(mouseX, mouseY, weightMinusX(), controlsY, 14, 13)) {
+                                changeWeightFromUi(type, weight <= 5 ? 0 : weight - BiomeShare.WEIGHT_STEP);
+                            } else if (hover(mouseX, mouseY, weightPlusX(), controlsY, 14, 13)) {
+                                changeWeightFromUi(type, weight <= 0 ? BiomeShare.DEFAULT_WEIGHT
+                                    : weight + BiomeShare.WEIGHT_STEP);
+                            } else if (hover(mouseX, mouseY, weightFieldX(), controlsY, weightFieldW(), 13)) {
+                                beginWeightEdit(type);
+                            } else if (hover(mouseX, mouseY, weightResetX(), controlsY, 14, 13)) {
+                                resetBiomeWeightFromUi(type);
+                            } else {
+                                toggleBiomeFromUi(type);
+                            }
+                        }
+                    } else {
+                        toggleBiomeFromUi(type);
+                    }
                 }
             }
             status = Component.empty();
@@ -1301,10 +1730,8 @@ public final class OmniIsleEditorScreen extends Screen {
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
         if (isInsideBiomeList(mouseX, mouseY)) {
-            int visibleRows = Math.max(1, (biomeListHeight - 42) / 15);
-            int itemCount = showStructures ? IslandDraft.STRUCTURE_OPTIONS.size() : getFilteredBiomes().size();
-            int maxScroll = Math.max(0, itemCount - visibleRows);
-            biomeScroll = Math.max(0, Math.min(maxScroll, biomeScroll - (int)Math.signum(verticalAmount)));
+            biomeScroll = Math.max(0, Math.min(maxBiomeScroll(),
+                biomeScroll - (int)Math.round(Math.signum(verticalAmount) * 24)));
             return true;
         }
         if (isInsidePreview(mouseX, mouseY)) {
@@ -1468,6 +1895,7 @@ public final class OmniIsleEditorScreen extends Screen {
 
     private void commitDesign() {
         if (saving) return;
+        commitWeightEdit();
         if (!state.hasLand()) {
             status = Component.translatable("omniisle.editor.error.empty");
             return;
@@ -1513,7 +1941,10 @@ public final class OmniIsleEditorScreen extends Screen {
     }
 
     @Override
-    public void onClose() { ClientScreenNavigator.open(minecraft, parent); }
+    public void onClose() {
+        commitWeightEdit();
+        ClientScreenNavigator.open(minecraft, parent);
+    }
 
     @Override
     public void removed() {
