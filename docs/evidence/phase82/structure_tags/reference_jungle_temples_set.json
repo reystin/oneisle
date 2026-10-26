@@ -1,0 +1,12 @@
+{
+  "structures": [{
+    "structure": "minecraft:jungle_pyramid",
+    "weight": 1
+  }],
+  "placement": {
+    "type": "omniisle:fixed",
+    "chunk_x": 0,
+    "chunk_z": 0,
+    "enabled": false
+  }
+}

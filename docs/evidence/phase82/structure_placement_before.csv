@@ -1,0 +1,15 @@
+fixture,set,enabled,chunk_x,chunk_z,continentalness,slope,family,biome,zone,placement_type
+NATURAL_ALL_3500,desert_pyramids,true,5,-60,0.6148,0.0461,6,CHERRY_GROVE,LAND,omniisle:fixed
+NATURAL_ALL_3500,jungle_temples,true,3,74,0.6142,0.0095,10,BAMBOO_JUNGLE,LAND,omniisle:fixed
+NATURAL_ALL_3500,swamp_huts,true,-10,-41,0.6188,0.0044,8,SWAMP,LAND,omniisle:fixed
+NATURAL_ALL_3500,woodland_mansions,true,7,-33,0.6085,0.1188,7,DARK_FOREST,LAND,omniisle:fixed
+NATURAL_ALL_3500,igloos,true,66,-131,0.1659,0.3833,0,SNOWY_PLAINS,LAND,omniisle:fixed
+NATURAL_ALL_3500,pillager_outposts,true,24,-31,0.6181,0.0154,4,PLAINS,LAND,omniisle:fixed
+NATURAL_ALL_3500,trail_ruins,true,-51,-20,0.6040,0.0137,1,SNOWY_TAIGA,LAND,omniisle:fixed
+NATURAL_ALL_3500,ruined_portals,true,36,-37,0.6143,0.0695,4,PLAINS,LAND,omniisle:fixed
+NATURAL_ALL_3500,abandoned_camp,true,62,-44,0.6086,0.0668,3,FLOWER_FOREST,LAND,omniisle:fixed
+NATURAL_ALL_3500,mineshafts,true,49,-51,0.6170,0.0141,4,PLAINS,LAND,omniisle:fixed
+NATURAL_ALL_3500,ocean_monuments,true,-50,-101,-0.7295,0.0588,-1,DEEP_COLD_OCEAN,OCEAN,omniisle:fixed
+NATURAL_ALL_3500,ocean_ruins,true,-24,-108,-0.4000,0.3713,-1,OCEAN,OCEAN,omniisle:fixed
+NATURAL_ALL_3500,shipwrecks,true,12,-111,-0.4015,0.4260,-1,OCEAN,OCEAN,omniisle:fixed
+NATURAL_ALL_3500,buried_treasures,true,-59,-83,-0.0481,0.2616,-1,STONY_SHORE,SHORE,omniisle:fixed

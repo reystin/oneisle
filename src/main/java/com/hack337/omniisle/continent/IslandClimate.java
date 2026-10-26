@@ -13,6 +13,14 @@ public final class IslandClimate {
     public static final double DEEP_OCEAN_THRESHOLD = -0.58;
     public static final double STEEP_SHORE_SLOPE = 0.35;
 
+    /** Continentalness at the real sea-level waterline (empirically checked). */
+    public static final double V3_SEA_LEVEL_CONTINENTALNESS = -0.18;
+    /** Signed distance beyond which a coastal column is certainly submerged. */
+    public static final double V3_OFFSHORE_OCEAN_DISTANCE = -42.0;
+    public static final double V3_GRADIENT_SCALE = 0.55;
+    public static final double V3_TEMPERATURE_NOISE_SCALE = 1.15;
+    public static final double V3_MUSHROOM_THRESHOLD = 0.22;
+
     public enum GradientMode {
         OFF("omniisle.gradient.off"),
         NORTH_SOUTH("omniisle.gradient.north_south"),
@@ -120,11 +128,21 @@ public final class IslandClimate {
         ThemeClimate theme = themeClimate(themeName);
         double gradOffset = u * amplitude(theme, gradientStrength);
         double baseNoise = fbm(wx / (scale * 1.35), wz / (scale * 1.35), saltedSeed(biomeSeed, 307)) * theme.noiseScale();
-        double temperature = clamp01(theme.centerTemp() + gradOffset + baseNoise);
-
         double humidity = clamp01(0.50 + fbm(wx / scale, wz / scale, saltedSeed(biomeSeed, 401)) * 0.46);
         double ridge = 1.0 - Math.abs(fbm(wx / (scale * 0.82), wz / (scale * 0.82), saltedSeed(biomeSeed, 503)));
-        double mountainBands = 0.60 * ridge + 0.40 * clamp01(fbm(wx / (scale * 1.7), wz / (scale * 1.7), saltedSeed(biomeSeed, 601)) * 0.5 + 0.5);
+        double mountainBands;
+        if (version >= 3) {
+            gradOffset *= V3_GRADIENT_SCALE;
+            baseNoise *= V3_TEMPERATURE_NOISE_SCALE;
+            long terrainSeed = biomeSeed != 0L ? biomeSeed : 0x5EED1234ABCDL;
+            double terrainRidge = 1.0 - 2.0 * Math.abs(IslandNoise.fbm2(
+                x / 750.0, z / 750.0, terrainSeed + 801L, 3, 2.0, 0.5));
+            mountainBands = clamp01(0.70 * Math.max(0.0, terrainRidge) + 0.30 * ridge);
+        } else {
+            mountainBands = 0.60 * ridge
+                + 0.40 * clamp01(fbm(wx / (scale * 1.7), wz / (scale * 1.7), saltedSeed(biomeSeed, 601)) * 0.5 + 0.5);
+        }
+        double temperature = clamp01(theme.centerTemp() + gradOffset + baseNoise);
 
         return new ClimateValues(temperature, humidity, mountainBands, warpX, warpZ);
     }
@@ -172,17 +190,21 @@ public final class IslandClimate {
 
     /**
      * v3 sample: the shore outcome is computed from the explicit {@link ShoreField}
-     * by the caller (which owns the signed-distance terrain). Negative distances
-     * below the intertidal limit are always ocean, independent of continentalness.
+     * by the caller (which owns the signed-distance terrain). A column below the
+     * waterline is ocean only when it is either past {@link #V3_OFFSHORE_OCEAN_DISTANCE}
+     * or below {@link #V3_SEA_LEVEL_CONTINENTALNESS}; the dry coastal shelf stays
+     * land (or stony shore on steep/dry terrain) so the edge of the island is never
+     * painted ocean.
      */
     public static SampleResult sampleV3(double continentalness, double x, double z, double slope,
                                         double scale, long biomeSeed, GradientMode gradientMode, double gradientStrength,
                                         String themeName, double islandHalfSpan, int version,
-                                        double signedDistance, int shoreOutcome) {
+                                        double signedDistance, double mainIslandDistance, boolean shoreAllowed,
+                                        int shoreOutcome) {
         double cQuantized = (double)((long)((float)continentalness * 10000.0f)) / 10000.0;
         ClimateValues c = climateAt(x, z, scale, biomeSeed, gradientMode, gradientStrength, themeName, islandHalfSpan, version);
 
-        int landFam = selectLandFamily(c, cQuantized, x, z, version, biomeSeed);
+        int landFam = selectLandFamilyV3(c, cQuantized, x, z, biomeSeed, signedDistance, mainIslandDistance);
         if (shoreOutcome != ShoreField.NONE) {
             boolean suppressed = landFam == 16 || landFam == 8 || landFam == 9
                 || (shoreOutcome == ShoreField.STONY && (landFam == 12 || landFam == 13));
@@ -195,8 +217,18 @@ public final class IslandClimate {
             }
         }
         if (signedDistance <= 0.0) {
-            boolean deep = cQuantized < DEEP_OCEAN_THRESHOLD;
-            return new SampleResult(SurfaceZone.OCEAN, oceanSubType(c, deep), -1,
+            boolean submerged = signedDistance < V3_OFFSHORE_OCEAN_DISTANCE
+                || cQuantized < V3_SEA_LEVEL_CONTINENTALNESS;
+            if (submerged) {
+                boolean deep = cQuantized < DEEP_OCEAN_THRESHOLD;
+                return new SampleResult(SurfaceZone.OCEAN, oceanSubType(c, deep), -1,
+                    c.temperature, c.humidity, c.mountains);
+            }
+            if (shoreAllowed && (slope > STEEP_SHORE_SLOPE || c.mountains > 0.60)) {
+                return new SampleResult(SurfaceZone.SHORE, "stony_shore", -1,
+                    c.temperature, c.humidity, c.mountains);
+            }
+            return new SampleResult(SurfaceZone.LAND, "land", landFam,
                 c.temperature, c.humidity, c.mountains);
         }
         return new SampleResult(SurfaceZone.LAND, "land", landFam, c.temperature, c.humidity, c.mountains);
@@ -257,6 +289,63 @@ public final class IslandClimate {
         if (hum < 0.58) return 13; // badlands
         if (hum < 0.72) return 11; // savanna
         return continentalness < 0.32 ? 9 : 10;
+    }
+
+    /**
+     * v3 family tree. Differs from the legacy tree in three ways: mushrooms are an
+     * offshore-only island feature, high terrain cools the effective temperature and
+     * swamps/mangroves are restricted to low, flat, genuinely humid columns.
+     */
+    public static int selectLandFamilyV3(ClimateValues c, double continentalness, double x, double z,
+                                         long biomeSeed, double signedDistance, double mainDistance) {
+        if (isOffshoreMushroom(continentalness, x, z, biomeSeed, signedDistance, mainDistance)) return 16;
+
+        double effTemp = clamp01(c.temperature - Math.max(0.0, continentalness - 0.28) * 0.62);
+        double hum = c.humidity;
+
+        if (continentalness > 0.45 || (continentalness > 0.30 && c.mountains > 0.56)) {
+            if (effTemp < 0.38 || continentalness > 0.54) return 15;
+            if (effTemp > 0.72) return 14;
+            return hum > 0.48 ? 6 : 5;
+        }
+        if (continentalness > 0.30 && c.mountains > 0.42) {
+            if (effTemp < 0.35) return 1;
+            return hum > 0.52 ? 6 : 5;
+        }
+        if (continentalness < 0.15 && c.mountains < 0.42 && hum > 0.64) {
+            if (effTemp >= 0.60 && hum > 0.72) return 9;
+            if (effTemp < 0.72) return 8;
+        }
+        if (effTemp < 0.25) return hum < 0.58 ? 0 : 1;
+        if (effTemp < 0.36) {
+            if (hum < 0.42) return 5;
+            if (hum < 0.66) return 2;
+            return 1;
+        }
+        if (effTemp < 0.72) {
+            if (hum < 0.38) return 4;
+            if (hum < 0.64) return 3;
+            if (hum < 0.76) return 2;
+            if (hum < 0.88) return 7;
+            return 17;
+        }
+        if (continentalness > 0.36) {
+            return hum < 0.50 ? 13 : 11;
+        }
+        if (hum < 0.35) return 12;
+        if (hum < 0.52) return 13;
+        if (hum < 0.68) return 11;
+        if (continentalness < 0.15 && hum > 0.68 && c.mountains < 0.42) return 9;
+        return 10;
+    }
+
+    private static boolean isOffshoreMushroom(double continentalness, double x, double z, long biomeSeed,
+                                              double signedDistance, double mainDistance) {
+        if (continentalness >= 0.05) return false;
+        boolean offshore = mainDistance < 0.0
+            || (signedDistance <= 0.0 && signedDistance > V3_OFFSHORE_OCEAN_DISTANCE);
+        if (!offshore) return false;
+        return fbm(x / 650.0, z / 650.0, saltedSeed(biomeSeed, 811)) > V3_MUSHROOM_THRESHOLD;
     }
 
     public static int familyFor(double temp, double hum) {

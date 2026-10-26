@@ -98,18 +98,24 @@ public final class ModernTerrainV2 implements IslandTerrain {
     }
 
     @Override
-    public double signedDistance(double worldX, double worldZ) {
-        double worldDistance = computeSignedDistance(worldX, worldZ, true);
+    public Distances distances(double worldX, double worldZ) {
+        double main = computeSignedDistance(worldX, worldZ, true);
+        double signed = main;
 
         // Check if inside any satellite islet
-        if (worldDistance < 0.0 && isletDensity > 0.0) {
+        if (signed < 0.0 && isletDensity > 0.0) {
             double isletDist = sampleSatelliteIsletDistance(worldX, worldZ);
-            if (isletDist > worldDistance) {
-                worldDistance = isletDist;
+            if (isletDist > signed) {
+                signed = isletDist;
             }
         }
 
-        return worldDistance;
+        return new Distances(signed, main);
+    }
+
+    @Override
+    public double signedDistance(double worldX, double worldZ) {
+        return distances(worldX, worldZ).signed();
     }
 
     @Override

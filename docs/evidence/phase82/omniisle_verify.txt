@@ -1,0 +1,66 @@
+OmniIsle 0.8.2 server smoke: omniisle verify
+
+============================================================
+REFERENCE UNIVERSE (/tmp/omniisle-082-ref)
+============================================================
+CMD> omniisle verify
+BiomeSource=com.hack337.omniisle.worldgen.OmniBiomeSource, rework=true;
+samples: 0/0=minecraft:snowy_slopes@124:block.minecraft.snow,
+256/0=minecraft:plains@142:block.minecraft.short_grass,
+-256/0=minecraft:snowy_slopes@66:block.minecraft.snow,
+0/256=minecraft:meadow@129:block.minecraft.grass_block,
+0/-256=minecraft:snowy_slopes@64:block.minecraft.snow,
+768/0=minecraft:jagged_peaks@70:block.minecraft.snow,
+-768/0=minecraft:frozen_peaks@65:block.minecraft.snow,
+0/768=minecraft:river@96:block.minecraft.grass_block,
+0/-768=minecraft:old_growth_pine_taiga@76:block.minecraft.grass_block,
+1536/1536=minecraft:deep_ocean@63:block.minecraft.water;
+surface scan (biome=first x/z): {minecraft:deep_ocean=-2048/-2048,
+minecraft:deep_cold_ocean=-1216/-2048, minecraft:stony_shore=1024/-2048,
+minecraft:old_growth_birch_forest=1088/-2048, minecraft:ocean=1152/-2048,
+minecraft:beach=-256/-1664, minecraft:flower_forest=-192/-1664,
+minecraft:windswept_forest=-512/-1600, minecraft:birch_forest=-64/-1600,
+minecraft:forest=128/-1600, minecraft:frozen_peaks=-128/-1536,
+minecraft:snowy_slopes=-64/-1536, minecraft:cherry_grove=192/-1536,
+minecraft:mushroom_fields=576/-1536, minecraft:river=-512/-1472,
+minecraft:snowy_taiga=-256/-1472, minecraft:old_growth_pine_taiga=-384/-1408,
+minecraft:swamp=640/-1408, minecraft:jagged_peaks=-640/-1280,
+minecraft:dappled_forest=768/-1216, minecraft:meadow=-448/-960,
+minecraft:grove=704/-704, minecraft:sunflower_plains=704/-448,
+minecraft:plains=768/-320, minecraft:dark_forest=960/1152,
+minecraft:lukewarm_ocean=1024/1280, minecraft:mangrove_swamp=704/1344,
+minecraft:deep_lukewarm_ocean=768/1536}
+=> 26 distinct surface biomes resolved; includes the 0.8.2 additions
+   dappled_forest, pale-garden-eligible tree, offshore mushroom_fields,
+   coastal swamp and mangrove_swamp, snowy spine (frozen_peaks,
+   jagged_peaks, snowy_slopes), and stony_shore at the dry shelf.
+
+============================================================
+WEIGHTED UNIVERSE (/tmp/omniisle-082-weighted)
+============================================================
+CMD> omniisle verify
+BiomeSource=com.hack337.omniisle.worldgen.OmniBiomeSource, rework=true;
+samples: 0/0=minecraft:snowy_slopes@124:block.minecraft.snow,
+256/0=minecraft:meadow@141:block.minecraft.grass_block,
+-256/0=minecraft:snowy_slopes@66:block.minecraft.snow,
+0/256=minecraft:birch_forest@135:block.minecraft.birch_leaves,
+0/-256=minecraft:snowy_slopes@64:block.minecraft.snow,
+768/0=minecraft:jagged_peaks@70:block.minecraft.snow,
+-768/0=minecraft:frozen_peaks@65:block.minecraft.snow,
+0/768=minecraft:river@96:block.minecraft.grass_block,
+0/-768=minecraft:old_growth_pine_taiga@76:block.minecraft.grass_block,
+1536/1536=minecraft:deep_ocean@63:block.minecraft.water;
+surface scan (biome=first x/z): {minecraft:deep_ocean=-2048/-2048,
+minecraft:deep_cold_ocean=-1216/-2048, minecraft:stony_shore=1024/-2048,
+minecraft:birch_forest=1088/-2048, minecraft:ocean=1152/-2048,
+minecraft:beach=-256/-1664, minecraft:grove=-192/-1664,
+minecraft:cherry_grove=-128/-1664, minecraft:dark_forest=-64/-1664,
+minecraft:swamp=0/-1664, minecraft:snowy_taiga=-512/-1600,
+minecraft:flower_forest=-320/-1600, minecraft:windswept_forest=-256/-1600,
+minecraft:meadow=-192/-1600, minecraft:sunflower_plains=-192/-1536,
+minecraft:frozen_peaks=-128/-1536, minecraft:snowy_slopes=-64/-1536,
+minecraft:mushroom_fields=576/-1536, minecraft:river=-512/-1472,
+minecraft:old_growth_pine_taiga=128/-1344, minecraft:jagged_peaks=-640/-1280,
+minecraft:dappled_forest=1024/-1216, minecraft:plains=-1024/-1152,
+minecraft:old_growth_birch_forest=1152/-1024, minecraft:forest=-896/-832,
+minecraft:lukewarm_ocean=1024/1280, minecraft:deep_lukewarm_ocean=768/1536}

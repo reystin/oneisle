@@ -8,7 +8,8 @@ package com.hack337.omniisle.continent;
 public interface IslandTerrain {
     /**
      * Continentalness value in range [-1.0, 1.0].
-     * Negative values correspond to ocean (-0.08 is the shoreline), positive to land.
+     * Negative values correspond to ocean; the mask shoreline sits at -0.08 and the
+     * actual sea-level waterline is deeper (v3 targets about -0.18).
      */
     double continentalness(double x, double z);
 
@@ -22,6 +23,18 @@ public interface IslandTerrain {
      * Positive values are inland, negative values are offshore.
      */
     double signedDistance(double x, double z);
+
+    /**
+     * Signed distance to the nearest land (including satellite islets) and to the main
+     * island mask separately. The main distance is negative on an islet even when the
+     * merged signed distance is positive.
+     */
+    record Distances(double signed, double main) {}
+
+    default Distances distances(double x, double z) {
+        double distance = signedDistance(x, z);
+        return new Distances(distance, distance);
+    }
 
     /**
      * Carved river system, or null if rivers are disabled / v1.

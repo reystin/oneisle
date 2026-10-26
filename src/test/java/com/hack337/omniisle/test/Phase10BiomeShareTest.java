@@ -544,8 +544,11 @@ public class Phase10BiomeShareTest {
             .getOrDefault(BiomePreview.Type.CHERRY_GROVE.id, 0.0);
         double cherryAchieved = calibration.achieved()
             .getOrDefault(BiomePreview.Type.CHERRY_GROVE.id, 0.0);
-        assertTrue(cherryTarget > 16.0 && cherryTarget < 18.5,
-            "Cherry 45 should reproduce the reported 17.4% target: " + cherryTarget);
+        // 0.8.2's family tree confines cherry to foothills and high mountains, so this
+        // fixture's natural share is ~9.6% instead of 0.8.1's 17.4%; the weight still
+        // has to reproduce whatever the natural target is.
+        assertTrue(cherryTarget > 8.0 && cherryTarget < 12.0,
+            "Cherry 45 natural target recalibrated for 0.8.2: " + cherryTarget);
         assertTrue(Math.abs(cherryAchieved - cherryTarget) <= 3.0,
             "Cherry 45 fit error " + (cherryAchieved - cherryTarget) + " pp");
 
@@ -557,7 +560,9 @@ public class Phase10BiomeShareTest {
             Climate.Sampler sampler = TestWorldgen.sampler(terrain);
             OmniBiomeSource source = sourceFor(draft, draft.biomeShareSettings());
             int resolution = draft.resolution();
-            int grid = 79;
+            // 0.8.2's reference tree routes more columns to terrain-driven families,
+            // so the held-out grid is denser to keep the sample above 1000.
+            int grid = 101;
             Map<String, Integer> counts = new LinkedHashMap<>();
             int land = 0;
             for (int gz = 0; gz < grid; gz++) {
@@ -734,7 +739,8 @@ public class Phase10BiomeShareTest {
         long shapeSeed = 0x306d956984a4bf25L;
         IslandDraft draft = draft(IslandDraft.Preset.NATURAL, IslandDraft.BiomeTheme.ALL);
         draft.setShapeSeed(shapeSeed);
-        // The report hides the biome seed; +5 reproduces the screenshot's 17.4% Cherry target.
+        // The report hides the biome seed; +5 reproduces the screenshot's original
+        // Cherry-45 fixture. 0.8.2 reshapes the natural target (see 10.13).
         draft.setBiomeSeed(shapeSeed + 5);
         draft.setIslandSize(4000);
         draft.setBiomeWeight(BiomePreview.Type.CHERRY_GROVE, 45);

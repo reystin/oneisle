@@ -38,11 +38,13 @@ Every Overworld biome (all 56 vanilla biomes, including Pale Garden, Dappled For
 * **Latitudinal Temperature Gradients:** North-South, East-West, or Radial gradients with theme-aware amplitude compression.
 * **Noise-Jittered Blending:** Organic transitions between climate families with no straight-line borders.
 * **Dynamic Biome Discovery:** Automatically detects and integrates datapack and modded biomes from `WorldCreationContext`.
+* **Reference Continent Climate (0.8.2, v3):** a temperature/humidity field backed by elevation cooling and the physical mountain ridge produces a central snowy spine, ~68 % core temperate land, a cohesive low/mid warm-arid region, coastal swamps/mangroves, and offshore-only mushroom islands. The dry coastal shelf is land (or stony shore), never ocean.
 * **Per-Biome Frequency:** Every climate-driven land biome has a 0–400 % relative-frequency field (default 100); 0 disables it and other biomes absorb the difference. A deterministic calibration writes per-biome biases into the optional `biome_share` config; all-100 remains bit-identical to 0.7.0. The weighted picker uses a coherent 420-block fBm ticket (0.8.1), so weighted islands form continuous patches instead of 1-block noise.
 
 ### Structures & Safe Spawn
 * **Small-Island Scaling:** Stronghold rings scale with island size; v3 places exactly three starts inside the island.
 * **Deep Dark Ancient Cities:** Subterranean placement decoupled from surface peaks.
+* **Strict Fixed Structures (0.8.2, v3):** pyramids, jungle temples, swamp huts, mansions, igloos, outposts, trail ruins, portals, camps, mineshafts, monuments, ruins, shipwrecks and buried treasure are placed only in their valid family, continentalness, slope and elevation sites. If no valid site exists the set is exported disabled — there is no high-continentalness or any-category fallback. `RelaxedPyramids` re-validates the site at runtime.
 * **Inland Spawn Selector:** Chooses the inland pixel with the highest positive distance to coast; v3 adds a dry plateau under the marker and reconciles the world spawn after server start.
 * **World Border:** Optional island-bounded world border with configurable margin (500 to 4000 blocks).
 
@@ -66,6 +68,13 @@ cherry weight 45 -> target 17.32 % of land, held-out 17.82 % (0.50 pp error)
 1-block window: agreement 0.218 -> 0.994, isolated pixels 43.9 % -> 0.0 %
 ```
 
+Reference continent climate after the 0.8.2 v3 fix (NATURAL/ALL, 3500, seed 2025;
+4-block overview on the left, 1-block coast close-up on the right):
+
+| Reference overview | Coast close-up |
+| :---: | :---: |
+| ![Reference map](docs/evidence/phase82/reference_map_after.png) | ![Coast close-up](docs/evidence/phase82/preview_closeup_1block.png) |
+
 More previews and measured datasets live in [`docs/evidence/`](docs/evidence/): coast overlays,
 climate family maps, relief maps, river-mouth probes, ocean depth maps, structure/spawn tables.
 UI screenshots at GUI scales 1–4 are still outstanding; see [`UI_CHECKLIST.md`](UI_CHECKLIST.md).
@@ -76,10 +85,12 @@ UI screenshots at GUI scales 1–4 are still outstanding; see [`UI_CHECKLIST.md`
 
 > [!IMPORTANT]
 > **Old Worlds Keep Generating Identically (Invariant I1):**
-> Worlds created with OmniIsle 0.5.0 (`generation_version = 1`) and 0.6.0 (`generation_version = 2`) load in 0.8.1 and generate later chunks **bit-for-bit identically** — no seams, no biome drift. `GoldenV1Test` and `GoldenV2Test` compare sampled doubles/bit patterns exactly. New worlds default to **v3**; existing worlds keep their stored version. Weighted worlds (`biome_share` present with non-neutral weights) are the exception: 0.8.0 used a per-block noise ticket, so 0.8.1 fixes their generation; chunks already generated keep the 0.8.0 output.
+> Worlds created with OmniIsle 0.5.0 (`generation_version = 1`) and 0.6.0 (`generation_version = 2`) load in 0.8.2 and generate later chunks **bit-for-bit identically** — no seams, no biome drift. `GoldenV1Test` and `GoldenV2Test` compare sampled doubles/bit patterns exactly. New worlds default to **v3**; existing worlds keep their stored version.
+>
+> v3 worlds are intentionally different after 0.8.2: the climate family tree, shoreline waterline, mountain sync, sulfur-cave routing and structure placement changed. Existing v3 chunks keep their generated biomes; new chunks use the 0.8.2 rules. No `generation_version` was added. Re-export the world pack to get strict structures. Weighted worlds created with 0.8.0 also remain different: their old per-block noise ticket was replaced in 0.8.1.
 
 > [!NOTE]
-> **0.8.1 world-preset safety:** the editor validates the generated datapack preset through the live worldgen registry before enabling it. If validation fails, the editor shows a localized error instead of letting world creation crash.
+> **0.8.1+ world-preset safety:** the editor validates the generated datapack preset through the live worldgen registry before enabling it. If validation fails, the editor shows a localized error instead of letting world creation crash.
 
 ---
 
@@ -120,7 +131,7 @@ cd OmniIsle
 ./gradlew build
 ```
 
-The resulting mod JAR will be located in `build/libs/OmniIsle-26.3-Fabric-0.8.1+mc26.3.jar`.
+The resulting mod JAR will be located in `build/libs/OmniIsle-26.3-Fabric-0.8.2+mc26.3.jar`.
 
 ---
 

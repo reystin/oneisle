@@ -91,7 +91,8 @@ public class Phase9ClimateTest {
                     sum += south - north;
                 }
                 double delta = sum / samples;
-                double amplitude = IslandClimate.gradientAmplitude(theme.name(), strength);
+                double amplitude = IslandClimate.gradientAmplitude(theme.name(), strength)
+                    * IslandClimate.V3_GRADIENT_SCALE;
                 double error = Math.abs(delta - 2.0 * amplitude);
                 assertEquals(2.0 * amplitude, delta, 1e-9,
                     theme + " strength " + strength + " measured delta");

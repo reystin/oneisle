@@ -209,7 +209,8 @@ public final class BiomePreview {
             Type riverType = riverRes.temperature() < 0.26 ? Type.FROZEN_RIVER : Type.RIVER;
             return new Selection(riverType, -1, riverRes.temperature(), riverRes.humidity());
         }
-        double distance = terrain.signedDistance(x, z);
+        com.hack337.omniisle.continent.IslandTerrain.Distances distances = terrain.distances(x, z);
+        double distance = distances.signed();
         int shoreOutcome = com.hack337.omniisle.continent.ShoreField.NONE;
         if (shoreAllowed && shore != null && shore.enabled()
             && distance >= com.hack337.omniisle.continent.ShoreField.intertidalLimit(x, z, seed)
@@ -221,7 +222,7 @@ public final class BiomePreview {
             com.hack337.omniisle.continent.IslandClimate.sampleV3(
                 continentalness, x, z, slope, climateScale, seed,
                 gradientMode, gradientStrength, theme != null ? theme.name() : "standard",
-                islandHalfSpan, version, distance, shoreOutcome);
+                islandHalfSpan, version, distance, distances.main(), shoreAllowed, shoreOutcome);
         Type type = switch (res.zone()) {
             case OCEAN -> oceanTypeFromId(res.subType());
             case SHORE -> shoreTypeFromId(res.subType());

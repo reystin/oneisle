@@ -285,12 +285,14 @@ public final class OmniBiomeSource extends BiomeSource {
         double slope;
         double halfSpan;
         double distance;
+        double mainDistance;
         int shoreOutcome;
         double weightedTicket;
         if (hit) {
             slope = cache.slope[slot];
             halfSpan = cache.halfSpan[slot];
             distance = cache.distance[slot];
+            mainDistance = cache.mainDistance[slot];
             shoreOutcome = cache.shoreOutcome[slot];
             weightedTicket = cache.weightedTicket[slot];
         } else {
@@ -306,13 +308,17 @@ public final class OmniBiomeSource extends BiomeSource {
             }
 
             distance = 0.0;
+            mainDistance = 0.0;
             shoreOutcome = ShoreField.NONE;
             if (generationVersion >= 3) {
                 if (terrain != null) {
-                    distance = terrain.signedDistance(x, z);
+                    IslandTerrain.Distances distances = terrain.distances(x, z);
+                    distance = distances.signed();
+                    mainDistance = distances.main();
                 } else {
                     distance = continentalness < IslandClimate.OCEAN_START ? -10.0
                         : Math.max(1.0, continentalness * 100.0);
+                    mainDistance = distance;
                 }
                 if (!shoreDisabled && shore != null && shore.enabled()
                     && distance >= ShoreField.intertidalLimit(x, z, biomeSeed) && distance <= ShoreField.MAX_INLAND) {
@@ -329,18 +335,24 @@ public final class OmniBiomeSource extends BiomeSource {
             cache.slope[slot] = slope;
             cache.halfSpan[slot] = halfSpan;
             cache.distance[slot] = distance;
+            cache.mainDistance[slot] = mainDistance;
             cache.shoreOutcome[slot] = shoreOutcome;
             cache.weightedTicket[slot] = weightedTicket;
+            cache.v3Result[slot] = null;
             cache.valid[slot] = true;
         }
 
         IslandClimate.SampleResult res;
         if (generationVersion >= 3) {
-            res = IslandClimate.sampleV3(
-                continentalness, x, z, slope, climateScale, biomeSeed,
-                gradientMode, gradientStrength, biomeThemeStr, halfSpan, generationVersion,
-                distance, shoreOutcome
-            );
+            res = cache.v3Result[slot];
+            if (res == null) {
+                res = IslandClimate.sampleV3(
+                    continentalness, x, z, slope, climateScale, biomeSeed,
+                    gradientMode, gradientStrength, biomeThemeStr, halfSpan, generationVersion,
+                    distance, mainDistance, !shoreDisabled, shoreOutcome
+                );
+                cache.v3Result[slot] = res;
+            }
         } else {
             res = IslandClimate.sample(
                 continentalness, x, z, y, slope, climateScale, biomeSeed,
@@ -498,6 +510,9 @@ public final class OmniBiomeSource extends BiomeSource {
     }
 
     private Holder<Biome> caveBiome(Climate climate, int x, int y, int z) {
+        if (generationVersion >= 3 && y < 0 && y >= -32 && climate.temperature > 0.68) {
+            return selectEnabled(enabledCaveBiomes, caveBiomes, "sulfur_caves");
+        }
         if (y < 0 && fbm(x / 520.0, z / 520.0, saltedSeed(biomeSeed, 977)) > 0.02) {
             return selectEnabled(enabledCaveBiomes, caveBiomes, "deep_dark");
         }
@@ -633,8 +648,10 @@ public final class OmniBiomeSource extends BiomeSource {
         final double[] slope = new double[SIZE];
         final double[] halfSpan = new double[SIZE];
         final double[] distance = new double[SIZE];
+        final double[] mainDistance = new double[SIZE];
         final int[] shoreOutcome = new int[SIZE];
         final double[] weightedTicket = new double[SIZE];
+        final IslandClimate.SampleResult[] v3Result = new IslandClimate.SampleResult[SIZE];
         final boolean[] valid = new boolean[SIZE];
 
         int slot(int x, int z) {

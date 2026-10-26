@@ -17,7 +17,7 @@ import java.util.Random;
 /** Small editable bitmap used by the in-game editor. Expensive world data is built only on Save. */
 public final class IslandDraft {
     public static final int RESOLUTION = 192;
-    public static final int DEFAULT_ISLAND_SIZE = 4000;
+    public static final int DEFAULT_ISLAND_SIZE = 3500;
     public static final List<BiomePreview.Type> OVERWORLD_BIOMES = Arrays.stream(BiomePreview.Type.values())
         .filter(type -> TargetPlatform.HAS_PALE_GARDEN || type != BiomePreview.Type.PALE_GARDEN)
         .toList();

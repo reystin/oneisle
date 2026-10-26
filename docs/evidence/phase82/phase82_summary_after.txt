@@ -1,0 +1,17 @@
+land=33978
+core_temperate_fraction=0.6805
+green_total_fraction=0.7905
+dry_shelf_ocean_columns=0
+dry_shelf_land_columns=1844
+swamp_violations=0
+inland_mushroom=0
+mushroom_fraction=0.0000
+offshore_land=812 offshore_mushroom=202
+peak_columns=5015 peak_non_14_15=135
+foothill_columns=4289 foothill_green=3575
+warm_columns=607 warm_max_c=0.2871
+warm_largest_component=591 fraction=0.9736
+warm_within_400_of_coast=607 fraction=1.0000
+ridge_mountain_correlation=0.9808
+temperature_min=0.2852 max=0.8017 at 452.0,1556.0
+humidity_min=0.1580 max=0.8083

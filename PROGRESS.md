@@ -1,4 +1,4 @@
-# OmniIsle 0.8.1 — Implementation Progress Tracker
+# OmniIsle 0.8.2 — Implementation Progress Tracker
 
 ## Global Invariants
 - [x] **I1.** Old worlds (0.5.0 / v1) keep generating identically (no seams).
@@ -239,3 +239,23 @@ Measured: calibration 45/45 feasible, max 0.986 pp; held-out Cherry 17.817 % vs 
 17.319 % (0.498 pp); coherent window agreement 0.9938 vs 0.2175 and isolated 0.0000 vs
 0.4385; lookup benchmark −3.58 % (weighted faster; CPU-time median). Evidence:
 `docs/evidence/phase10/`, `FINDINGS.md` §16.1, `DECISIONS.md` 043–046.
+
+### Phase 10.6 — reference continent climate, shoreline fix, strict structures, 0.8.2 (completed; chunk-gen perf UNVERIFIED; screenshots NOT DONE)
+- [x] **10.6.1** Measured the real v3 waterline on a dedicated server: steep coast last dry `x=1408 c=-0.1478 d=-32.8` stony_shore → first ocean `x=1416 c=-0.1843 d=-40.4`; flat coast dry shelf `c=-0.1397 d=-29.5` → shallow flooded `c=-0.1698 d=-37.4` → ocean `c=-0.2074 d=-45.7`. Plan defaults `-0.18` / `-42.0` kept unchanged
+- [x] **10.6.2** `IslandClimate` v3 constants `V3_SEA_LEVEL_CONTINENTALNESS=-0.18`, `V3_OFFSHORE_OCEAN_DISTANCE=-42`, `V3_GRADIENT_SCALE=0.55`, `V3_TEMPERATURE_NOISE_SCALE=1.15`, `V3_MUSHROOM_THRESHOLD=0.22`; dry shelf `d <= 0` is LAND or stony shore, never OCEAN; v1/v2 untouched
+- [x] **10.6.3** Physical-ridge sync: `mountainBands = 0.70·max(0, 1−2|fbm2(x/750,z/750,seed+801,3,2,0.5)|) + 0.30·climateRidge`; ridge/mountain correlation **0.9808**; swamps guarded to `c < 0.15` and `mountains < 0.42` (0 violations)
+- [x] **10.6.4** v3 family tree with elevation cooling: reference composition core temperate **68.05 %** (target 65–70 %), green total 79.05 %, peak columns 5,015 (135 non-14/15), foothills 4,289 with 3,575 green, warm/arid 607 at max `c=0.2871`, largest component 97.36 %, all within 400 blocks of coast; 0 inland mushrooms / 202 offshore; dappled forest 3.3 % of forest columns; pale garden 27/136,337 (0.02 %)
+- [x] **10.6.5** `IslandTerrain.distances()` / `ModernTerrainV2` main-island distance; `OmniBiomeSource.ColumnCache` caches the v3 `SampleResult` per column; preview/source zone-family parity 99.02 %; default `DEFAULT_ISLAND_SIZE = 3500`
+- [x] **10.6.6** Strict v3 structure policies (families/c/slope/zone, no fallback): reference pack disables desert/jungle/igloo sets, places swamp hut at chunk 65,-82 (`c=-0.0923`, `biome=swamp`, y82–88, verified live); narrow tags only; 0.8.1 before evidence had desert pyramid at `c=0.6148` in CHERRY_GROVE and broad fallback tags. `RelaxedPyramids.allowsSurface` rejects high/wrong-biome sites
+- [x] **10.6.7** Sulfur caves: v3 warm shallow `y∈[-32,0)` with `temperature>0.68` routes before deep dark; fixture 259 warm shallow columns, 104 sulfur / 155 deep_dark before → 259 sulfur / 0 deep_dark after
+- [x] **10.6.8** Full `./gradlew build` green: **123 tests, 0 failures, 0 errors, 2 assumption-gated skips**; Golden v1/v2 unchanged; jar `build/libs/OmniIsle-26.3-Fabric-0.8.2+mc26.3.jar`
+- [x] **10.6.9** Dedicated-server smoke, both drafts: reference `Done (1.559s)`, spawn `12,96,-930` land, 5 packs, `info` v3/4760, `verify` 26 biomes, swamp hut queried; weighted `Done (1.417s)`, `info` calibrated cherry 45 %, achieved 9.5 %; no crash reports, clean stops
+- [x] **10.6.10** Docs/version: `gradle.properties` 0.8.2, CHANGELOG/README/PROGRESS/FINDINGS/spec/DECISIONS 047–052, migration note; evidence under `docs/evidence/phase82/` incl. before/after composition, maps, waterline, structures, tags, sulfur
+- [ ] **10.6.11** Full 25×25 weighted chunk-generation timing and GUI 2/4 screenshots — **UNVERIFIED / NOT DONE**; Phase 9 structure matrix remains PARTIAL 15/45
+
+Measured: waterline constants confirmed; dry-shelf ocean 0, dry-shelf land 1,844;
+core temperate 68.05 %, green 79.05 %; ridge correlation 0.9808; swamp violations 0;
+warm/arid 607, max c 0.2871, component 97.36 %; offshore mushroom 202/812, inland 0;
+sulfur 259/259 warm shallow columns; 0.8.1 pyramid `c=0.6148` CHERRY_GROVE → 0.8.2
+disabled; server smoke 1.559 s / 1.417 s, no crashes. Evidence:
+`docs/evidence/phase82/`, `FINDINGS.md` §17, `DECISIONS.md` 047–052.

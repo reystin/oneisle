@@ -58,7 +58,7 @@ public class BiomeSourceV2V3RegressionTest {
                     }
                 }
             }
-            long expected = version == 2 ? -4990092939012319655L : 7583129763709705084L;
+            long expected = version == 2 ? -4990092939012319655L : 3958321154656118617L;
             assertEquals(29282, count);
             assertEquals(expected, hash, "v" + version + " biome-source output changed");
         }

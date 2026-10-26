@@ -1,0 +1,37 @@
+OmniIsle 0.8.2 waterline probe (real dedicated server, reference pack)
+Universe /tmp/omniisle-082-ref, generation_version 3, seed 2025, size 3500.
+Command: omniisle query column <x> <z> over 8-block transects.
+
+Constants under test:
+  V3_SEA_LEVEL_CONTINENTALNESS = -0.18
+  V3_OFFSHORE_OCEAN_DISTANCE   = -42.0
+
+------------------------------------------------------------
+Steep coast (z = -930), scan +X:
+  x=1344 d=23.5  c=-0.0052  windswept_forest  grass, dry
+  x=1368 d=1.5   c=-0.0833  windswept_forest  grass, dry
+  x=1376 d=-5.2  c=-0.0887  stony_shore       stone, dry
+  x=1400 d=-25.4 c=-0.1197  stony_shore       stone, dry
+  x=1408 d=-32.8 c=-0.1478  stony_shore       stone, dry
+  x=1416 d=-40.4 c=-0.1843  ocean             water, surface_y=63
+  x=1424 d=-47.9 c=-0.2185  ocean             water, surface_y=63
+  x=1496 d=-116.4 c=-0.5980 deep_ocean        water, floor_y=33
+Last dry column:  x=1408, c=-0.1478, d=-32.8
+First water:      x=1416, c=-0.1843, d=-40.4
+=> dry shelf down to d ~ -33..-40 is solid ground; ocean starts at
+   c between -0.1478 and -0.1843, consistent with -0.18.
+
+------------------------------------------------------------
+Flat coast (z = 300), scan +X:
+  x=1792 d=-29.5 c=-0.1397 flower_forest  grass, dry
+  x=1800 d=-37.4 c=-0.1698 flower_forest  water=true (flooded SDF pocket)
+  x=1808 d=-45.7 c=-0.2074 ocean          water, surface_y=63
+  x=1880 d=-116.9 c=-0.6014 deep_ocean    water
+=> the shallow flooded pocket keeps the land-family biome (flower_forest)
+   because d > V3_OFFSHORE_OCEAN_DISTANCE and c > V3_SEA_LEVEL_CONTINENTALNESS;
+   true ocean begins at c=-0.2074, again bracketing -0.18.
+
+Conclusion: the measured waterline agrees with the plan defaults; the constants
+-0.18 / -42.0 were kept unchanged. No deviation to report.
+Raw transects: /tmp/omniisle-082-transect.json, /tmp/omniisle-082-transect-flat.json;
+synthetic SDF probe: shoreline_probe.csv.

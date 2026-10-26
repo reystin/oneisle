@@ -1,0 +1,12 @@
+{
+  "structures": [{
+    "structure": "minecraft:swamp_hut",
+    "weight": 1
+  }],
+  "placement": {
+    "type": "omniisle:fixed",
+    "chunk_x": 65,
+    "chunk_z": -82,
+    "enabled": true
+  }
+}

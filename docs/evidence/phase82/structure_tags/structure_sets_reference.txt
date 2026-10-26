@@ -1,0 +1,20 @@
+Reference pack structure sets (seed 2025, size 3500, v3)
+set | enabled | chunk_x | chunk_z
+abandoned_camp | true | -28 | -94
+ancient_cities | true | 16 | -98
+buried_treasures | true | 1 | -107
+desert_pyramids | false | 0 | 0
+igloos | false | 0 | 0
+jungle_temples | false | 0 | 0
+mineshafts | true | 91 | 54
+ocean_monuments | true | -49 | -103
+ocean_ruins | true | 30 | -104
+pillager_outposts | true | 64 | -11
+ruined_portals | true | -51 | 88
+shipwrecks | true | 43 | -96
+strongholds | true |  | 
+swamp_huts | true | 65 | -82
+trail_ruins | true | 7 | -82
+trial_chambers | random_spread | - | -
+villages | random_spread | - | -
+woodland_mansions | true | 44 | 81

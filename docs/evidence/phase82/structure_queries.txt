@@ -1,0 +1,48 @@
+OmniIsle 0.8.2 strict structure placement: live server queries
+Reference universe /tmp/omniisle-082-ref, seed 2025, size 3500, generation_version 3.
+
+------------------------------------------------------------
+/locate structure results (100-chunk radius default):
+CMD> locate structure minecraft:desert_pyramid
+Could not find a structure of type "minecraft:desert_pyramid" nearby
+CMD> locate structure minecraft:jungle_pyramid
+Could not find a structure of type "minecraft:jungle_pyramid" nearby
+CMD> locate structure minecraft:swamp_hut
+The nearest minecraft:swamp_hut is at [1040, ~, -1312] (1096 blocks away)
+CMD> locate structure minecraft:woodland_mansion
+There is no structure with type "minecraft:woodland_mansion"
+  (vanilla id on 26.3 is minecraft:mansion; the exported set is
+   woodland_mansions enabled at chunk 44,81)
+CMD> locate structure minecraft:igloo
+Could not find a structure of type "minecraft:igloo" nearby
+CMD> locate structure minecraft:pillager_outpost
+Could not find a structure of type "minecraft:pillager_outpost" nearby
+
+The reference map's climate does not produce desert or jungle families
+(composition CSV: family 12 = 0, family 13 = 0), so their structure sets
+are exported with "enabled": false and no tag point; /locate correctly
+returns nothing. This is the required no-fallback behavior.
+
+------------------------------------------------------------
+Structure point verification:
+CMD> omniisle query structure "minecraft:swamp_hut" 1040 -1312
+OMNI_STRUCTURE structure=minecraft:swamp_hut found=true chunk=65,-82
+query_chunk=65,-82 x=1044 z=-1309 y=82 y_min=82 y_max=88
+piece_y_min=82 piece_y_max=88 piece_boxes=82/88, surface_y=87
+biome=minecraft:swamp pieces=1
+
+CMD> omniisle query column 1040 -1312
+OMNI_COLUMN x=1040 z=-1312 surface_y=87 floor_y=87 biome=minecraft:swamp
+block=block.minecraft.stone water=false c=-0.0923 d=-14.2 estimated_y=62.8
+
+The generated swamp hut sits on a swamp column with c = -0.0923 (policy:
+families {8,9}, c <= 0.16, slope < 0.10) at chunk 65,-82, exactly the
+chunk recorded in data/minecraft/worldgen/structure_set/swamp_huts.json.
+
+------------------------------------------------------------
+Weighted universe (/tmp/omniisle-082-weighted):
+The weighted draft enables all 56 biomes (weights 100 except cherry 45).
+After calibration, swamp_huts, desert_pyramids, jungle_temples, igloos and
+woodland_mansions have no candidate satisfying their strict family/climate/
+slope policies, so they are exported disabled at chunk 0,0 with no tag point.
+See structure_tags/weighted_swamp_huts_set.json.

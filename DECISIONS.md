@@ -403,3 +403,58 @@ This log records every design choice, trade-off, and architectural resolution ma
 * **Choice:** Option 2. A fresh dedicated server with the exact Cherry-45 draft reached `Done (1.504s)`, applied the pack, reported calibrated weights/achieved shares, and generated 512 forced chunks (27 region files, 33 MB) with zero errors/exceptions and a clean stop. The client instance ships `mcopt-metal 0.3.0-alpha.2`; no Prism mods were modified. The client crash remains **UNVERIFIED** and mcopt-metal is the leading environmental suspect. 0.8.0 weighted worlds are documented as intentionally generating differently in 0.8.1.
 * **Reason:** Claiming an unobserved crash fix would violate the evidence standard; the server run does prove the generated preset, worldgen path and startup are healthy. The preset preflight (Decision 045) reduces the blast radius of any future codec failure with a visible error instead of a crash.
 * **Evidence:** `docs/evidence/phase10/server_smoke.txt` (startup, `omniisle info`/`verify`, forced-chunk result), `CHANGELOG.md` 0.8.1, `README.md` migration note.
+
+### Decision 047: treat the dry v3 shelf as land by measuring the physical waterline, not `signedDistance = 0`
+* **Question:** 0.8.1 returned OCEAN for every `signedDistance ≤ 0` when no shore outcome fired, but the terrain stays dry for 30–40 more blocks because `d = 0` maps to `continentalness ≈ -0.08`. What threshold matches the real waterline?
+* **Options:**
+  1. Keep the `d ≤ 0` ocean cut and accept a dry shelf painted as ocean.
+  2. Use a synthetic estimate of `-0.08`.
+  3. Measure the waterline on a real dedicated server and gate OCEAN on both a continentalness constant and an offshore-distance constant.
+* **Choice:** Option 3. `V3_SEA_LEVEL_CONTINENTALNESS = -0.18` and `V3_OFFSHORE_OCEAN_DISTANCE = -42.0`. For `d ≤ 0`, OCEAN requires `d < -42` or `c < -0.18`; otherwise LAND, or stony shore on steep/high columns when shore biomes are enabled. The `c < -0.18` test is never applied at `d > 0`.
+* **Reason:** The measured transects bracket the waterline at `c = -0.1478…-0.1843` and `d = -32.8…-40.4` (steep coast) and `c = -0.1698…-0.2074` (flat coast). The constants were kept as planned; no deviation. Gating the stony-shore fallback on `shoreAllowed` avoids a hidden stony shore when the user disabled shore biomes. Reference result: 1,844 dry-shelf land columns, 0 dry-shelf ocean columns.
+* **Evidence:** `docs/evidence/phase82/waterline_probe.txt`, `shoreline_probe.csv`, `shoreline_transect.png`, `Phase82ReferenceClimateTest.dryShelfIsLandNotOcean`, `previewSourceZoneFamilyParityV3`.
+
+### Decision 048: sync climate mountain bands to the exact physical ridge and cool temperature with elevation
+* **Question:** Swamps appeared on stone mountains because climate `mountainBands` sampled unrelated noise and `selectLandFamily` ignored continentalness/ridge height.
+* **Options:**
+  1. Keep two independent noise fields and add a family-level guard only.
+  2. Drive `mountainBands` 70 % from the exact physical ridge used by `ModernTerrainV2` plus 30 % climate noise, keep the same seeded fallback, and apply elevation cooling in the v3 family tree.
+* **Choice:** Option 2. `terrainRidge = 1 - 2·|fbm2(x/750, z/750, biomeSeed != 0 ? biomeSeed : 0x5EED1234ABCDL + 801, 3, 2.0, 0.5)|`; `climateRidge = 1 - |fbm(wx/(scale·0.82), wz/(scale·0.82), saltedSeed(biomeSeed, 503))|`; `mountainBands = clamp01(0.70·max(0, terrainRidge) + 0.30·climateRidge)`. `terrainRidge` uses unwarped `x,z`, matching the terrain exactly; climate noise keeps the warped `wx,wz`. `effTemp = clamp01(temp - max(0, c - 0.28)·0.62)`.
+* **Reason:** The physical and climate fields now agree (correlation 0.9808), so high terrain is cold and is never classified as swamp; swamps/mangroves additionally require `c < 0.15 && mountains < 0.42`. Reference map: 0 swamp columns above either threshold.
+* **Evidence:** `Phase82ReferenceClimateTest.mountainBandsMatchPhysicalRidge`, `referenceCompositionMatchesDesign`, `docs/evidence/phase82/mountain_sync.csv`.
+
+### Decision 049: replace the v3 family tree with an ordered reference-continent tree
+* **Question:** The old v3 tree produced ~84 % broad temperate green (dominated by forest), no cohesive warm/arid region, and no guarantee that peaks stay snowy.
+* **Options:**
+  1. Tune the old tree's thresholds.
+  2. Add a v3-only ordered tree: offshore mushroom, elevation cooling, high mountains, foothills, swamp/mangrove lowlands, cold, cool, mid-temperate, warm/arid; keep `selectLandFamily` untouched for v1/v2.
+* **Choice:** Option 2 with the branch order and thresholds in §3 of the approved plan: high mountains `c > 0.45` (or `c > 0.30 && mountains > 0.56`) → 15/14/6/5; foothills `c > 0.30 && mountains > 0.42` → 1/6/5; swamps/mangroves at `c < 0.15 && mountains < 0.42 && hum > 0.64`; cold `<0.25`; cool `<0.36`; mid `<0.72`; warm/arid else with desert only at `c ≤ 0.36`. `V3_GRADIENT_SCALE = 0.55`, `V3_TEMPERATURE_NOISE_SCALE = 1.15`.
+* **Reason:** The reference map now meets every acceptance gate: core temperate 68.05 % (65–70 %), green total 79.05 %, peak columns 5,015 with 135 non-14/15, foothills 4,289/3,575 green, warm/arid 607 at max `c = 0.2871` with a 97.36 % largest component and 100 % within 400 blocks of the coast, swamp violations 0, inland mushrooms 0. dappled forest is family 3 (31/932 family-3 columns); pale garden is family 17 (27/136,337 = 0.02 %). The old method is untouched for v1/v2, so goldens pass unmodified.
+* **Evidence:** `Phase82ReferenceClimateTest.referenceCompositionMatchesDesign`, `dappledAndPaleAppearNaturally`, `reference_composition_after.csv`, `temp_achieved_vs_target.csv`, `reference_map_after.png`.
+
+### Decision 050: make mushrooms offshore-only and expose main-island distance without changing v1/v2
+* **Question:** The old fixed inland mushroom district put mushroom fields on the main island, and structure/climate code had no way to distinguish a satellite islet from the main landmass.
+* **Options:**
+  1. Keep the fixed inland circle and approximate the main island with `signedDistance`.
+  2. Add `IslandTerrain.Distances(signed, main)` with an islet-merged `signed` and a main-island `main` distance, override it in `ModernTerrainV2` by computing the main SDF once, and gate mushrooms on `main < 0` or an outer-bay dry pocket with a coherent mask.
+* **Choice:** Option 2. Family 16 is allowed only when `main < 0` or (`signed ≤ 0 && signed > V3_OFFSHORE_OCEAN_DISTANCE`) and `c < 0.05`, with `fbm(x/650, z/650, saltedSeed(biomeSeed, 811)) > 0.22`; never inside the main island. `signedDistance` delegates to `distances().signed()`, and `WorldPackBuilder.mainIslandDistance` uses `.main()` (no behavior change). `OmniBiomeSource.ColumnCache` stores the y-independent v3 surface result so the extra ridge fBm is not run per Y quart.
+* **Reason:** Reference map: 0 inland mushroom columns, 202 offshore mushroom columns out of 812 offshore land columns (24.9 % of offshore land, <3 % of total land). Preview/real-source zone-family parity is 99.02 %, including the dry shelf and disabled-shore case. v1/v2 default `Distances` is the identity, so their output is unchanged.
+* **Evidence:** `Phase82ReferenceClimateTest.referenceCompositionMatchesDesign`, `previewSourceZoneFamilyParityV3`, `docs/evidence/phase82/mushroom_offshore.csv`, `GoldenV1Test`, `GoldenV2Test`.
+
+### Decision 051: strict per-structure policies with no category fallback and a runtime surface guard
+* **Question:** 0.8.1 fixed structures used the highest-continentalness candidate in a category, and `RelaxedPyramids` skipped biome/elevation/slope checks. That put desert pyramids on mountain columns.
+* **Options:**
+  1. Keep the fallback and tune scores.
+  2. Apply v3-only family/continentalness/slope/zone policies, require the actual point family, disable a set with no valid candidate, emit narrow tags, and restore runtime validation in `RelaxedPyramids`.
+* **Choice:** Option 2. The policy table is in §6.1 of the plan (`CHANGELOG`/spec summarize it); scoring uses closeness to `preferC` + low slope + a small spawn-distance penalty, never highest continentalness. No candidate → `enabled=false`, no tag point, export still succeeds. `allowsSurface` checks biome path, `validBiome`, center/±8 base heights, `maxY`, 8-block relief, slope, and active OmniIsle continentalness/slope; rejection returns `Optional.empty()`.
+* **Reason:** The same reference draft that 0.8.1 placed at `c=0.6148` in CHERRY_GROVE (desert pyramid) and `c=0.6142` in BAMBOO_JUNGLE (jungle temple) now has desert/jungle/igloo sets disabled (desert and jungle families are absent from the map; no igloo candidate met the cold `c <= 0.30` / slope `< 0.25` policy), while the swamp hut is placed at 65,-82 (`c=-0.0923`, swamp, y82–88) and verified live. Broad tags remain only where the tag itself is the gate (random-spread villages/trials, strongholds, ocean/deep-dark).
+* **Evidence:** `Phase82StructureTest.strictPoliciesPlaceOnlyValidSites`, `absentFamilyDisablesSetWithoutFallback`, `relaxedPyramidsValidateSurface`; `docs/evidence/phase82/structure_placement_before/after.csv`, `structure_queries.txt`, `structure_tags/`.
+
+### Decision 052: default island size 3500 and document the intentional v3 regeneration
+* **Question:** The approved 0.8.2 spec changes the default size from 4000 to 3500, and the v3 climate/shoreline changes alter existing v3 worlds' new chunks. How should the change be scoped and communicated?
+* **Options:**
+  1. Bump `generation_version` and gate all changes behind it.
+  2. Keep v3 (no new version), change only the new-draft default, keep v1/v2 untouched, and add a migration note.
+* **Choice:** Option 2. `DEFAULT_ISLAND_SIZE = 3500`; saved presets/share codes keep their stored size. All fixes are `version >= 3`; v1/v2 paths and goldens are unmodified. Existing v3 chunks keep their generated biomes; new chunks use the 0.8.2 rules; re-exporting the pack is required for strict structures.
+* **Reason:** The reported defects are v3-only and the user explicitly asked to continue the 0.8.2 plan without a `generation_version` bump. A new version would strand the fixes behind a manual version switch and multiply the golden/regression matrix. The migration note makes the intentional v3 change explicit instead of presenting it as bit-identical.
+* **Evidence:** `gradle.properties` 0.8.2, `IslandDraft.DEFAULT_ISLAND_SIZE`, `GoldenV1Test`, `GoldenV2Test`, `BiomeSourceV2V3RegressionTest`, `README.md` migration note, `CHANGELOG.md` 0.8.2.

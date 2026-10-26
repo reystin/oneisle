@@ -1,0 +1,47 @@
+OmniIsle 0.8.2 server smoke: omniisle info
+
+============================================================
+REFERENCE UNIVERSE (/tmp/omniisle-082-ref)
+============================================================
+CMD> datapack list enabled
+There are 5 data pack(s) enabled: [vanilla (built-in)],
+[fabric-convention-tags-v2 (Fabric mod)], [fabric-gametest-api-v1 (Fabric mod)],
+[omniisle (Fabric mod)], [file/omniisle-generated.zip (world)]
+
+CMD> omniisle info
+=== OmniIsle World Info ===
+Generation Version: 3 (modern)
+Resolution: 192x192
+Island Size: 4760 blocks
+Bounding Box: [-2380, -2380] to [2380, 2380]
+World Spawn: 12, 96, -930
+World Border: Disabled
+Enabled Layers: Land (Mask), Rivers (35%)
+
+============================================================
+WEIGHTED UNIVERSE (/tmp/omniisle-082-weighted)
+============================================================
+CMD> omniisle info
+=== OmniIsle World Info ===
+Generation Version: 3 (modern)
+Resolution: 192x192
+Island Size: 4760 blocks
+Bounding Box: [-2380, -2380] to [2380, 2380]
+World Spawn: 12, 96, -930
+World Border: Disabled
+Enabled Layers: Land (Mask), Rivers (35%)
+Biome Share: calibrated
+Weights: cherry_grove=45%
+Achieved: snowy_taiga=0.3%, old_growth_pine_taiga=1.0%, birch_forest=7.7%,
+old_growth_birch_forest=4.3%, forest=1.0%, flower_forest=20.0%,
+windswept_forest=21.3%, dappled_forest=1.6%, plains=6.5%,
+sunflower_plains=3.3%, meadow=10.7%, grove=11.5%, cherry_grove=9.5%,
+dark_forest=1.2%, swamp=0.1%
+
+Note: this draft enables all 56 biomes; every climate-driven weight is 100
+except cherry_grove = 45. Weights are relative frequencies, so the calibrated
+target for cherry_grove is 9.18% of land (not an absolute 45%), achieved 9.47%.
+The `/omniisle info` achieved line prints only entries above its display
+threshold; the full 31-entry achieved/target/bias maps are in
+`weighted_config.json`. This smoke verifies the weighted path starts and
+reports correctly.

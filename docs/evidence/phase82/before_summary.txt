@@ -1,0 +1,6 @@
+land=34035
+dry_shelf_ocean_columns=0
+swamp_ridge_columns=0
+inland_mushroom_columns=0
+mushroom_land_columns=0
+ridge_mountain_correlation=0.9801

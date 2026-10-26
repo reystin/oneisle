@@ -1,0 +1,24 @@
+structure_placement_before.csv provenance
+
+Generated from commit 6559169 (0.8.1) in a temporary git worktree
+(/tmp/omniisle-081, removed after capture) with the same reference draft used
+for the 0.8.2 evidence:
+  NATURAL preset, theme ALL, size 3500, shape/biome seed 2025, V3,
+  islet density 0.25, all biomes enabled, default shore.
+The temporary harness called WorldPackBuilder.export, read the generated
+structure sets, and sampled continentalness/slope/family/point biome with the
+0.8.1 BiomePreview.selectionV3 code (slope identical to the 0.8.1 exporter's
+chunk-center formula).
+
+Observed 0.8.1 fallback behavior (the defect fixed in 0.8.2):
+- desert_pyramids placed at chunk 5,-60, c=0.6148, point biome CHERRY_GROVE
+  (mountain spine) instead of a desert site;
+- jungle_temples placed at chunk 3,74, c=0.6142 in BAMBOO_JUNGLE on the spine;
+- swamp_huts at chunk -10,-41, c=0.6188, on high-c swamp columns;
+- woodland_mansions at chunk 7,-33, c=0.6085;
+- tag files listed every enabled land biome (e.g. desert_pyramid tag includes
+  snowy_plains, cherry_grove, ...), the broad fallback tag.
+0.8.2 exports all of these disabled on the reference map because no desert,
+jungle, cold-lowland or low-c swamp family sites exist, and emits narrow tags
+only when a set is placed. See structure_placement_after.csv and
+structure_tags/.

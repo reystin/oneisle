@@ -52,7 +52,35 @@ public final class WorldPackBuilder {
     private record StructureDefinition(IslandDraft.StructureOption option, String setName, String structure, String biomeTag,
                                        Set<BiomePreview.Type> biomes, boolean deepDark) {}
     private record Point(int chunkX, int chunkZ) {}
-    private record Sample(double continentalness, BiomePreview.Type biome, boolean deepDark) {}
+    private record Sample(double continentalness, BiomePreview.Type biome, boolean deepDark, int family, double slope) {}
+
+    private enum PolicyZone { LAND, OCEAN, SHORE, OCEAN_OR_SHORE }
+
+    /**
+     * v3 fixed structures are placed only on a chunk whose actual atmosphere matches the
+     * structure's intended biome family, continentalness band and slope. Empty families mean
+     * "any enabled biome in the zone".
+     */
+    private record StructurePolicy(Set<Integer> families, double minC, double maxC,
+                                   double maxSlope, PolicyZone zone, double preferC) {
+        boolean accepts(Sample sample) {
+            boolean zoneOk = switch (zone) {
+                case LAND -> sample.biome.isLand();
+                case OCEAN -> sample.biome.category == BiomePreview.Category.OCEAN;
+                case SHORE -> sample.biome.category == BiomePreview.Category.SHORE;
+                case OCEAN_OR_SHORE -> sample.biome.category == BiomePreview.Category.OCEAN
+                    || sample.biome.category == BiomePreview.Category.SHORE;
+            };
+            if (!zoneOk) return false;
+            if (sample.continentalness < minC || sample.continentalness > maxC) return false;
+            if (maxSlope > 0.0 && sample.slope >= maxSlope) return false;
+            if (!families.isEmpty()
+                && (!families.contains(sample.family) || !families.contains(sample.biome.family))) {
+                return false;
+            }
+            return true;
+        }
+    }
 
     private static final List<StructureDefinition> STRUCTURES = List.of(
         structure(IslandDraft.StructureOption.VILLAGE, "villages", "minecraft:village_plains", "village_plains", BiomePreview.Type.PLAINS),
@@ -77,6 +105,26 @@ public final class WorldPackBuilder {
     );
 
     private WorldPackBuilder() {}
+
+    private static StructurePolicy structurePolicy(IslandDraft.StructureOption option) {
+        return switch (option) {
+            case DESERT_PYRAMID -> new StructurePolicy(Set.of(12), 0.00, 0.32, 0.22, PolicyZone.LAND, 0.16);
+            case JUNGLE_TEMPLE -> new StructurePolicy(Set.of(10), -2.0, 0.36, 0.28, PolicyZone.LAND, 0.20);
+            case SWAMP_HUT -> new StructurePolicy(Set.of(8, 9), -2.0, 0.16, 0.10, PolicyZone.LAND, 0.05);
+            case MANSION -> new StructurePolicy(Set.of(7), -2.0, 0.36, 0.30, PolicyZone.LAND, 0.20);
+            case IGLOO -> new StructurePolicy(Set.of(0, 1), -2.0, 0.30, 0.25, PolicyZone.LAND, 0.12);
+            case OUTPOST -> new StructurePolicy(Set.of(), -2.0, 0.40, 0.30, PolicyZone.LAND, 0.15);
+            case TRAIL_RUINS -> new StructurePolicy(Set.of(1), -2.0, 0.40, 0.30, PolicyZone.LAND, 0.15);
+            case RUINED_PORTAL -> new StructurePolicy(Set.of(), -2.0, 0.40, 0.30, PolicyZone.LAND, 0.15);
+            case ABANDONED_CAMP -> new StructurePolicy(Set.of(3), -2.0, 0.36, 0.28, PolicyZone.LAND, 0.20);
+            case MINESHAFT -> new StructurePolicy(Set.of(), -2.0, 2.0, 0.0, PolicyZone.LAND, 0.15);
+            case OCEAN_MONUMENT -> new StructurePolicy(Set.of(), -2.0, DEEP_MONUMENT_MAX_CONTINENTALNESS, 0.0, PolicyZone.OCEAN, -0.72);
+            case OCEAN_RUINS -> new StructurePolicy(Set.of(), -2.0, -0.30, 0.0, PolicyZone.OCEAN, -0.40);
+            case SHIPWRECK -> new StructurePolicy(Set.of(), -2.0, -0.20, 0.0, PolicyZone.OCEAN_OR_SHORE, -0.40);
+            case BURIED_TREASURE -> new StructurePolicy(Set.of(), -0.30, 0.02, 0.20, PolicyZone.SHORE, -0.14);
+            default -> null;
+        };
+    }
 
     public static void export(Path dataPackDirectory, IslandDraft source) throws IOException {
         IslandDraft state = source.copy();
@@ -325,17 +373,20 @@ public final class WorldPackBuilder {
                 int z = cz * 16 + 8;
                 double continentalness = terrain.continentalness(x, z);
                 BiomePreview.Type biome;
+                int family;
+                double slope = 0.0;
                 if (state.generationVersionNumber() >= 3) {
                     double cpE = terrain.continentalness(x + 8, z);
                     double cpW = terrain.continentalness(x - 8, z);
                     double cpS = terrain.continentalness(x, z + 8);
                     double cpN = terrain.continentalness(x, z - 8);
-                    double slope = Math.hypot((cpE - cpW) / 16.0, (cpS - cpN) / 16.0) * 64.0;
+                    slope = Math.hypot((cpE - cpW) / 16.0, (cpS - cpN) / 16.0) * 64.0;
                     BiomePreview.Selection selection = BiomePreview.selectionV3(
                         continentalness, x, z, state.biomeSeed(),
                         state.climateScale(), state.gradientMode(), state.gradientStrength(),
                         state.theme(), slope, state.generationVersionNumber(), halfSpan,
                         terrain.rivers(), terrain, state.shoreSettings(), shoreAllowed);
+                    family = selection.landFamily();
                     biome = state.selectPreviewBiome(selection, x, z);
                 } else if (state.hasNonNeutralWeights()) {
                     BiomePreview.Selection selection = BiomePreview.selection(
@@ -343,12 +394,15 @@ public final class WorldPackBuilder {
                         state.gradientMode(), state.gradientStrength(), state.theme(), 0.0,
                         state.generationVersionNumber(), halfSpan, terrain.rivers());
                     biome = state.selectPreviewBiome(selection, x, z);
+                    family = biome.family;
                 } else {
                     biome = state.selectBiome(
                         BiomePreview.surface(continentalness, x, z, state.biomeSeed()), x, z);
+                    family = biome.family;
                 }
                 samples[(cz - minChunk) * width + cx - minChunk] =
-                    new Sample(continentalness, biome, BiomePreview.isDeepDark(x, z, state.biomeSeed()));
+                    new Sample(continentalness, biome, BiomePreview.isDeepDark(x, z, state.biomeSeed()),
+                        family, slope);
             }
         }
 
@@ -412,30 +466,72 @@ public final class WorldPackBuilder {
                 continue;
             }
 
-            Point point = enabled ? locateStructure(definition, state, samples, minChunk, maxChunk, width, used) : new Point(0, 0);
+            if (isV3) {
+                Point point = enabled
+                    ? locateStructure(definition, state, samples, minChunk, maxChunk, width, used, true)
+                    : null;
+                if (point == null) {
+                    // No valid strict site: keep the set disabled rather than falling back
+                    // to a category or high-continentalness chunk.
+                    putEntry(zip, "data/minecraft/worldgen/structure_set/" + definition.setName + ".json",
+                        fixedSetJson(definition, new Point(0, 0), false));
+                    continue;
+                }
+                used.add(point);
+                putEntry(zip, "data/minecraft/worldgen/structure_set/" + definition.setName + ".json",
+                    fixedSetJson(definition, point, true));
+                Sample pointSample = samples[(point.chunkZ - minChunk) * width + point.chunkX - minChunk];
+                Set<String> biomeIds = strictBiomeIds(state, definition.option, pointSample);
+                if (definition.option == IslandDraft.StructureOption.ANCIENT_CITY) {
+                    biomeIds.add("minecraft:deep_dark");
+                }
+                putEntry(zip, "data/minecraft/tags/worldgen/biome/has_structure/" + definition.biomeTag + ".json",
+                    biomeTagJson(biomeIds));
+                continue;
+            }
+
+            Point point = enabled ? locateStructure(definition, state, samples, minChunk, maxChunk, width, used, false) : new Point(0, 0);
             if (enabled) used.add(point);
             putEntry(zip, "data/minecraft/worldgen/structure_set/" + definition.setName + ".json",
                 fixedSetJson(definition, point, enabled));
             if (enabled) {
                 Sample pointSample = samples[(point.chunkZ - minChunk) * width + point.chunkX - minChunk];
                 String tagPath = "data/minecraft/tags/worldgen/biome/has_structure/" + definition.biomeTag + ".json";
-                if (isV3) {
-                    Set<String> biomeIds = allEnabledBiomeIds(state);
-                    biomeIds.add(pointSample.biome.biomeId());
-                    if (definition.option == IslandDraft.StructureOption.ANCIENT_CITY) {
-                        biomeIds.add("minecraft:deep_dark");
-                    }
-                    putEntry(zip, tagPath, biomeTagJson(biomeIds));
+                String biomeId = pointSample.biome.biomeId();
+                if (definition.option == IslandDraft.StructureOption.ANCIENT_CITY) {
+                    putEntry(zip, tagPath, "{\n  \"replace\": false,\n  \"values\": [\n    \"minecraft:deep_dark\",\n    \"" + biomeId + "\"\n  ]\n}\n");
                 } else {
-                    String biomeId = pointSample.biome.biomeId();
-                    if (definition.option == IslandDraft.StructureOption.ANCIENT_CITY) {
-                        putEntry(zip, tagPath, "{\n  \"replace\": false,\n  \"values\": [\n    \"minecraft:deep_dark\",\n    \"" + biomeId + "\"\n  ]\n}\n");
-                    } else {
-                        putEntry(zip, tagPath, "{\n  \"replace\": false,\n  \"values\": [\n    \"" + biomeId + "\"\n  ]\n}\n");
-                    }
+                    putEntry(zip, tagPath, "{\n  \"replace\": false,\n  \"values\": [\n    \"" + biomeId + "\"\n  ]\n}\n");
                 }
             }
         }
+    }
+
+    /**
+     * Narrow v3 tag: only enabled biomes from the policy's families/zone plus the actual
+     * point biome. Broad tags remain for random-spread villages/trials, strongholds and
+     * the deep-dark/ocean cases where the tag itself is the placement gate.
+     */
+    private static Set<String> strictBiomeIds(IslandDraft state, IslandDraft.StructureOption option,
+                                              Sample pointSample) {
+        StructurePolicy policy = structurePolicy(option);
+        if (policy == null) return allEnabledBiomeIds(state);
+        Set<String> ids = new LinkedHashSet<>();
+        List<BiomePreview.Category> categories = switch (policy.zone()) {
+            case LAND -> List.of(BiomePreview.Category.LAND);
+            case OCEAN -> List.of(BiomePreview.Category.OCEAN);
+            case SHORE -> List.of(BiomePreview.Category.SHORE);
+            case OCEAN_OR_SHORE -> List.of(BiomePreview.Category.OCEAN, BiomePreview.Category.SHORE);
+        };
+        for (BiomePreview.Category category : categories) {
+            for (BiomePreview.Type type : state.enabledBiomes(category)) {
+                if (policy.families().isEmpty() || policy.families().contains(type.family)) {
+                    ids.add(type.biomeId());
+                }
+            }
+        }
+        ids.add(pointSample.biome.biomeId());
+        return ids;
     }
 
     private static String fixedSetJson(StructureDefinition definition, Point point, boolean enabled) {
@@ -608,10 +704,7 @@ public final class WorldPackBuilder {
     }
 
     private static double mainIslandDistance(com.hack337.omniisle.continent.IslandTerrain terrain, double x, double z) {
-        if (terrain instanceof com.hack337.omniisle.continent.ModernTerrainV2 modern) {
-            return modern.computeSignedDistance(x, z, true);
-        }
-        return terrain.signedDistance(x, z);
+        return terrain.distances(x, z).main();
     }
 
     private static double angleDifference(double a, double b) {
@@ -643,9 +736,11 @@ public final class WorldPackBuilder {
     }
 
     private static Point locateStructure(StructureDefinition definition, IslandDraft state, Sample[] samples,
-                                     int minChunk, int maxChunk, int width, List<Point> used) throws IOException {
+                                     int minChunk, int maxChunk, int width, List<Point> used,
+                                     boolean strict) throws IOException {
         Set<BiomePreview.Type> accepted = EnumSet.noneOf(BiomePreview.Type.class);
         definition.biomes.forEach(type -> accepted.addAll(state.compatibleChoices(type)));
+        StructurePolicy policy = strict ? structurePolicy(definition.option) : null;
         Point best = null;
         double bestScore = Double.NEGATIVE_INFINITY;
         double spawnX = state.worldSpawnX();
@@ -654,6 +749,7 @@ public final class WorldPackBuilder {
             for (int cx = minChunk; cx <= maxChunk; cx++) {
                 Sample sample = samples[(cz - minChunk) * width + cx - minChunk];
                 if (!accepted.contains(sample.biome)) continue;
+                if (policy != null && !policy.accepts(sample)) continue;
                 if (definition.deepDark && !sample.deepDark) continue;
                 if ((definition.setName.equals("trial_chambers") || definition.setName.equals("mineshafts")) && sample.deepDark) continue;
                 boolean tooClose = false;
@@ -665,14 +761,19 @@ public final class WorldPackBuilder {
                 if (tooClose) continue;
                 boolean deepMonument = definition.option == IslandDraft.StructureOption.OCEAN_MONUMENT;
                 if (deepMonument && !deepSurveyClean(samples, minChunk, maxChunk, width, cx, cz)) continue;
-                boolean oceanOrShore = sample.biome.name().contains("OCEAN") || sample.biome == BiomePreview.Type.BEACH;
                 double score;
-                if (deepMonument) {
-                    // Keep the monument safely inside the v3 deep band [0.4*Wo, 1.0*Wo],
-                    // whose shallow edge is about -0.62, instead of the old +-0.40 target.
-                    score = -Math.abs(sample.continentalness + 0.72);
+                if (strict) {
+                    double preferred = policy != null ? policy.preferC() : 0.15;
+                    score = -Math.abs(sample.continentalness - preferred) - sample.slope * 0.5;
                 } else {
-                    score = oceanOrShore ? -Math.abs(sample.continentalness + 0.40) : sample.continentalness;
+                    boolean oceanOrShore = sample.biome.name().contains("OCEAN") || sample.biome == BiomePreview.Type.BEACH;
+                    if (deepMonument) {
+                        // Keep the monument safely inside the v3 deep band [0.4*Wo, 1.0*Wo],
+                        // whose shallow edge is about -0.62, instead of the old +-0.40 target.
+                        score = -Math.abs(sample.continentalness + 0.72);
+                    } else {
+                        score = oceanOrShore ? -Math.abs(sample.continentalness + 0.40) : sample.continentalness;
+                    }
                 }
                 double distFromSpawn = Math.hypot((cx * 16 + 8) - spawnX, (cz * 16 + 8) - spawnZ);
                 score -= distFromSpawn * 0.00005;
@@ -680,10 +781,11 @@ public final class WorldPackBuilder {
             }
         }
         if (best == null) {
+            if (strict) return null;
             Set<BiomePreview.Type> fallback = fallbackBiomes(definition.biomes, state);
             if (!fallback.equals(accepted) || definition.deepDark) {
                 return locateStructure(new StructureDefinition(definition.option, definition.setName, definition.structure,
-                    definition.biomeTag, fallback, false), state, samples, minChunk, maxChunk, width, used);
+                    definition.biomeTag, fallback, false), state, samples, minChunk, maxChunk, width, used, false);
             }
             throw new IOException("No suitable biome for " + definition.setName);
         }

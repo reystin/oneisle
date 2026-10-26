@@ -4,6 +4,76 @@ All notable changes to OmniIsle are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.2+mc26.3-fabric] - 2026-10-26
+
+### Fixed
+- **Dry coastal shelf is land again.** v3 `signedDistance = 0` maps to
+  `continentalness ≈ -0.08`, but the real waterline is near `-0.18`. 0.8.1 returned
+  OCEAN for every `d <= 0` when no shore outcome fired, painting a ~30–40 block dry
+  shelf as ocean. `sampleV3` now treats `d <= 0` as submerged only below
+  `V3_OFFSHORE_OCEAN_DISTANCE = -42` or `c < V3_SEA_LEVEL_CONTINENTALNESS = -0.18`;
+  the dry shelf becomes LAND, or stony shore on steep/high columns when shore biomes
+  are enabled. A live server transect puts the last dry column at `c = -0.1478,
+  d = -32.8` (stony shore) and the first ocean at `c = -0.1843, d = -40.4`, confirming
+  the constants (`docs/evidence/phase82/waterline_probe.txt`). Reference map:
+  1,844 dry-shelf land columns, 0 dry-shelf ocean columns.
+- **Swamps no longer cover stone mountains.** The climate `mountainBands` field is now
+  driven 70 % by the exact physical ridge used by `ModernTerrainV2`
+  (`1 - 2·|fbm2(x/750, z/750, seed+801, 3, 2.0, 0.5)|`) plus 30 % climate noise, using
+  the same fallback seed. Family selection also guards swamps/mangroves to
+  `c < 0.15` and `mountains < 0.42`; the reference map has 0 violating columns.
+  Measured ridge/mountain correlation: 0.9808.
+- **Reference continent composition.** The new v3 family tree yields 68.05 % core
+  temperate land (65–70 % target), 79.05 % green land, a central snowy spine
+  (5,015 peak columns, 135 non-peak exceptions), foothills with cherry/meadow/dappled/
+  taiga, and a cohesive low/mid warm-arid region (607 columns, max `c = 0.2871`,
+  largest connected component 97.36 %, all within 400 blocks of the coast). Cold,
+  cool and mid-temperate bands use elevation cooling, so high terrain stays snowy.
+- **Mushrooms are offshore-only.** The old fixed inland mushroom district is replaced
+  by a coherent offshore islet/bay-pocket mask at `fbm(x/650, z/650, seed+811)`; the
+  reference map has 0 inland mushroom columns and 202 offshore mushroom columns out of
+  812 offshore land columns.
+- **Fixed structures are strictly gated.** v3 exported structures now use per-structure
+  family/continentalness/slope/zone policies with no category or high-continentalness
+  fallback. If a family is absent, the set is exported with `enabled=false` and no
+  placed point. Tags list only the accepted families' enabled biomes plus the actual
+  point biome; broad tags remain for random-spread villages/trial chambers and the
+  ocean/deep-dark gates. `RelaxedPyramids` regained runtime validation (biome, surface
+  height, 8-block relief, slope, elevation) and returns empty instead of placing a
+  pyramid on a mountain. 0.8.1 evidence: desert pyramid at `c = 0.6148` in
+  CHERRY_GROVE; 0.8.2 exports it disabled on the same map
+  (`docs/evidence/phase82/structure_placement_before.csv` / `_after.csv`).
+- **Warm shallow caves use sulfur caves in v3.** The v3 cave branch routes
+  `y ∈ [-32, 0)` and `temperature > 0.68` to sulfur caves before the deep-dark noise
+  test. Fixture: 259 warm shallow columns, 104 sulfur / 155 deep_dark before,
+  259 sulfur / 0 deep_dark after (`docs/evidence/phase82/cave_sulfur.csv`).
+
+### Changed
+- **Default island size is 3500 blocks** (was 4000). Share codes and saved presets keep
+  their stored size; only new drafts are affected.
+- **dappled_forest and pale_garden are natural v3 members.** Dappled forest joins the
+  forest family (3) in mid-temperate transitions; pale garden is a rare inland
+  mid-temperate pocket (family 17), measured at 27 of 136,337 land columns (0.02 %).
+- **v3 temperature/gradient scale:** `V3_GRADIENT_SCALE = 0.55` and
+  `V3_TEMPERATURE_NOISE_SCALE = 1.15` produce a 0.285–0.802 temperature span on the
+  reference map, replacing the old uniform-hot distribution.
+- **v3 surface climate is cached per column.** `OmniBiomeSource.ColumnCache` now stores
+  the y-independent v3 `SampleResult`, so the added ridge fBm does not run per Y quart.
+- **Main-island distance API:** `IslandTerrain.Distances(signed, main)` and
+  `ModernTerrainV2.distances(x, z)` expose the main-island SDF separately from the
+  islet-merged SDF; `WorldPackBuilder` uses the main distance for structure gating.
+
+### Migration
+- Existing v3 chunks keep their generated biomes. New chunks in 0.8.1 v3 worlds use
+  the 0.8.2 climate/shoreline; no `generation_version` was added.
+- Re-export the world pack with 0.8.2 to get strict structure placement.
+- v1/v2 output is unchanged; `GoldenV1Test` and `GoldenV2Test` pass unmodified.
+
+### Known limitations
+- Full 25×25 weighted chunk-generation timing is still **UNVERIFIED**; only the biome
+  lookup benchmark runs. GUI 2/4 screenshots remain **NOT DONE**.
+- The Phase 9 structure matrix remains **PARTIAL 15/45**.
+
 ## [0.8.1+mc26.3-fabric] - 2026-10-26
 
 ### Fixed

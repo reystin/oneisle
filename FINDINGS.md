@@ -581,3 +581,129 @@ no Prism mods were modified. Evidence: `docs/evidence/phase10/server_smoke.txt`.
 `build/libs/OmniIsle-26.3-Fabric-0.8.1+mc26.3.jar`. Full 25×25 weighted chunk-gen
 timing remains **UNVERIFIED**; GUI 2/4 screenshots remain **NOT DONE**; the Phase 9
 structure matrix remains PARTIAL 15/45.
+
+## 17. [VERIFY] Phase 10.6 — reference continent climate, shoreline fix, strict structures (0.8.2)
+
+### 17.1 Measured waterline and dry shelf
+
+v3 `ModernTerrainV2` maps `signedDistance = 0` to `continentalness ≈ -0.08`, but the
+physical waterline is deeper. Two live dedicated-server transects on the reference pack
+(seed 2025, size 3500) bracket it:
+
+| Coast | Last dry column | First ocean |
+| --- | --- | --- |
+| steep, `z=-930` | `x=1408, c=-0.1478, d=-32.8`, stony_shore, stone | `x=1416, c=-0.1843, d=-40.4`, water at y=63 |
+| flat, `z=300` | `x=1792, c=-0.1397, d=-29.5`, flower_forest, dry | `x=1808, c=-0.2074, d=-45.7` (x=1800 is a flooded pocket) |
+
+The plan defaults `V3_SEA_LEVEL_CONTINENTALNESS = -0.18` and
+`V3_OFFSHORE_OCEAN_DISTANCE = -42.0` were kept unchanged; no deviation to report.
+`sampleV3` now returns OCEAN for `d <= 0` only when `d < -42` or `c < -0.18`. Otherwise
+it returns LAND, or stony shore on `slope > STEEP_SHORE_SLOPE` / `c.mountains > 0.60`
+when shore biomes are enabled. The test never applies the `c < -0.18` ocean test at
+`d > 0`, so underground biome lookups stay land. Reference map: 1,844 dry-shelf land
+columns, 0 dry-shelf ocean columns. Evidence: `docs/evidence/phase82/
+waterline_probe.txt`, `shoreline_probe.csv`, `shoreline_transect.png`,
+`Phase82ReferenceClimateTest.dryShelfIsLandNotOcean`.
+
+### 17.2 Mountain sync and reference composition
+
+`ModernTerrainV2` builds physical spines with
+`1 - 2·|fbm2(x/750, z/750, seed+801, 3, 2.0, 0.5)|` (fallback seed
+`0x5EED1234ABCDL`). The climate `mountainBands` field now combines exactly that ridge
+(70 %) with the previous climate noise (30 %), using the same seed. Measured
+ridge/mountain correlation is **0.9808**; `mountainBandsMatchPhysicalRidge` also asserts
+no swamp column on ridges. Swamps are guarded to `c < 0.15 && mountains < 0.42`; the
+reference map has **0** violating columns.
+
+The v3 family tree (`selectLandFamilyV3`, v1/v2 `selectLandFamily` untouched) applies
+elevation cooling `effTemp = temp - max(0, c - 0.28)·0.62`, then branches through high
+mountains, foothills, swamp/mangrove lowlands, cold, cool, mid-temperate and warm/arid
+climates. Reference composition (NATURAL/ALL/3500, seed 2025, land 33,978 columns):
+
+| Metric | Target | Measured |
+| --- | --- | --- |
+| core temperate {2,3,4,7,17} | 65–70 % | **68.05 %** |
+| green total {1,2,3,4,5,6,7,17} | recorded | **79.05 %** |
+| central peak band `c > 0.45` | {14,15} dominant, no swamps | 5,015 columns, 135 non-14/15, 0 swamps |
+| foothills `0.30 < c <= 0.45` | cherry/meadow/dappled/taiga | 4,289 columns, 3,575 green |
+| warm/arid {11,12,13} | all `c <= 0.36`, component ≥75 %, near coast | 607 columns, max `c=0.2871`, **97.36 %**, 100 % within 400 blocks |
+| swamps/mangroves | zero above `c>0.15` or `mountains>0.42` | 0 violations |
+| mushrooms | offshore only, <3 % of land | 202 offshore, 0 inland |
+| pale garden | rare | 27/136,337 = 0.02 % |
+| dappled forest | present in forest transitions | 31/932 family-3 columns = 3.3 % |
+
+Temperature spans 0.285–0.802 and humidity 0.158–0.808 on the reference grid (old v3 was
+uniformly hot). `V3_GRADIENT_SCALE = 0.55` and `V3_TEMPERATURE_NOISE_SCALE = 1.15` are
+the tuned values. Evidence: `reference_composition_before/after.csv`,
+`temp_achieved_vs_target.csv`, `mountain_sync.csv`, `mushroom_offshore.csv`,
+`reference_map_before/after.png`, `preview_closeup_1block.png`.
+
+### 17.3 Preview/source parity, caching and biome families
+
+`IslandTerrain.Distances(signed, main)` exposes the main-island distance separately from
+the islet-merged SDF; `ModernTerrainV2.distances()` computes the main distance once and
+merges the islet distance once, and `signedDistance` delegates to it. `WorldPackBuilder`
+uses the main distance for structure gates. `OmniBiomeSource.ColumnCache` caches the
+y-independent v3 `SampleResult`, so the added ridge fBm is not recomputed per Y quart.
+Zone-family parity between `BiomePreview.selectionV3` and the real source is **99.02 %**
+(the residual is shore/ocean subtype fallback where the requested type is disabled, as
+before). `Phase82ReferenceClimateTest.previewSourceZoneFamilyParityV3` includes the dry
+shelf and disabled-shore cases.
+
+Weighted shares were recalibrated for the v3 tree. `Phase10BiomeShareTest` still passes
+all-100 absent-vs-explicit equality, zero-weight, monotonicity, 8-thread determinism,
+coherent tickets and ≤3 pp held-out errors; the held-out grid increased from 79 to 101
+because the reference tree sends more columns to terrain-driven families. Cherry-45's
+calibrated target is now **9.18 %** (achieved 9.47 %; 0.8.1: 17.4 %) because the new
+tree confines cherry to foothills/high mountains; the calibration still reproduces
+the natural relative target.
+
+### 17.4 Strict structures and the runtime guard
+
+`WorldPackBuilder` now samples `(continentalness, biome, deepDark, family, slope)` and
+applies per-structure policies only for `version >= 3`: desert `{12}` 0.00–0.32 slope
+<0.22; jungle `{10}` ≤0.36 slope <0.28; swamp `{8,9}` ≤0.16 slope <0.10; mansion `{7}`
+≤0.36; igloo `{0,1}` ≤0.30; outpost/portal any land ≤0.40; trail `{1}`; camp `{3}`;
+mineshaft any land; monument/ruins/shipwreck/wreck ocean bands; buried treasure shore.
+Candidates must satisfy both the requested family and the actual point family, and score
+by closeness to `preferC` + slope + small spawn-distance penalty — never by highest
+continentalness. No candidate → `enabled=false`, no tag point, export succeeds.
+
+0.8.1 on the same reference draft placed:
+`desert_pyramids` at chunk 5,-60 (`c=0.6148`, CHERRY_GROVE), `jungle_temples` at 3,74
+(`c=0.6142`, BAMBOO_JUNGLE), `swamp_huts` at -10,-41 (`c=0.6188`), and emitted broad
+all-land tags. 0.8.2 disables desert/jungle/igloo (desert and jungle families are
+absent from the map; no igloo candidate met the `c <= 0.30` / slope `< 0.25` policy), places
+`swamp_huts` at 65,-82 (live query: `c=-0.0923`, `biome=swamp`, y82–88, surface 87) and
+`woodland_mansions` at 44,81, and emits narrow tags only. A live `/locate structure
+minecraft:swamp_hut` returned 1040,-1312; desert/jungle/igloo returned nothing. Evidence:
+`structure_placement_before/after.csv`, `structure_queries.txt`, `structure_tags/`.
+
+`RelaxedPyramids` regained a testable `allowsSurface(biomePath, topY, relief, c, slope,
+Policy)` predicate: it samples the chunk-center biome through the real biome source,
+requires the allowed path and `validBiome`, checks base height at center and ±8 blocks,
+rejects above `maxY` or above an 8-block relief, and re-checks the active OmniIsle
+terrain's continentalness/slope bounds when present. A rejected site returns
+`Optional.empty()`; nothing is placed. `Phase82StructureTest` covers high mountain, wrong
+biome, valid lowland desert/jungle, absent family → disabled set, and narrow tags.
+
+### 17.5 New biomes, caves, server smoke and status
+
+`dappled_forest` is family 3; `pale_garden` is a rare family-17 pocket; both appear
+naturally in the reference map. v3 warm shallow caves (`y ∈ [-32, 0)`,
+`temperature > 0.68`) route to sulfur caves before the deep-dark noise test: a fixture
+with 259 warm shallow columns changed from 104 sulfur / 155 deep_dark to 259 sulfur /
+0 deep_dark, while cold columns are unchanged (`cave_sulfur.csv`).
+
+Two fresh dedicated servers reached `Done` with no crash reports: reference 1.559 s,
+spawn 12,96,-930 on land, 5 packs, `omniisle verify` 26 surface biomes; weighted 1.417 s,
+`info` shows calibrated cherry 45 % and achieved 9.5 %, verify resolves the weighted
+palette. Both stopped cleanly (`server_startup.log`, `omniisle_info.txt`,
+`omniisle_verify.txt`). One cold-start "Can't keep up" warning appeared during the first
+RCON locate after spawn-area generation and did not recur; no performance claim is made.
+
+**Final build:** 123 tests, 0 failures, 0 errors, 2 assumption-gated skips; jar
+`build/libs/OmniIsle-26.3-Fabric-0.8.2+mc26.3.jar`. Full 25×25 weighted chunk-gen
+timing remains **UNVERIFIED**; GUI 2/4 screenshots remain **NOT DONE**; the Phase 9
+structure matrix remains PARTIAL 15/45. v3 worlds intentionally generate differently
+after 0.8.2; no `generation_version` was added, and v1/v2 goldens pass unmodified.
