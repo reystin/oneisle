@@ -1279,3 +1279,27 @@ Phase 9 remains **PARTIAL 15/45** until the 45-config structure matrix is rerun.
 Evidence: `docs/evidence/perf/chunkgen_25x25_1.0.0.csv`, `perf_packs_1.0.0.csv`,
 `palette_exception_1.0.0.txt`, `README.md`; harness `tools/perf/chunkgen_25x25.py`,
 `src/test/java/com/reystin/oneisle/test/PerfHarnessPacksTest.java`.
+
+## 24. [VERIFY] OneIsle 1.0.0 — Modrinth publication and banner
+
+Published 2026-10-29. Project `oneisle` (`SIvHqEPO`, team `q55xrs7h`, moderation thread
+`3PVBnxeb`), license GPL-3.0-only, categories worldgen/adventure, source/issues on GitHub.
+Version `Oon3xljR`, `1.0.0+mc26.3-fabric`, release, Minecraft 26.3, Fabric, required
+Fabric API `P7dR8mSH`; jar 2,819,326 bytes, Modrinth sha512/sha1 match the local release jar.
+The project was created as a draft and submitted with `PATCH requested_status=approved`
+(204). The banner `docs/branding/oneisle-banner.jpg` (2000×1000) is the only gallery image,
+uploaded as featured (204); the existing icon was resized to 512×512 JPEG (52,852 bytes)
+for the 256 KiB limit.
+
+The stored PAT is valid for writes but has no read scopes. `GET /v2/user` returns 401 and
+draft project/version reads return 404; this initially looked like an invalid token but is a
+scope error (`USER_READ`/`PROJECT_READ`/`VERSION_READ` absent). `PATCH` of the deprecated
+`client_side`/`server_side` fields returns 401 “editing project”; the version reports
+`environment: client_and_server`, which is authoritative. The public page still renders
+“Project not found … may still be under review”, so the listing is **not yet verified live**
+and must not be described as published until it resolves. No moderation bypass was attempted.
+If the project is rejected, GitHub remains the distribution channel.
+
+Evidence: `docs/evidence/phase16-release/modrinth_project.json`,
+`modrinth_version.json`, `modrinth_publish.txt`, `README.md`; banner
+`docs/branding/oneisle-banner.jpg` (SHA-256 `848a7d18…a6a851`).

@@ -30,15 +30,28 @@ The hashes match the local build (`sha256.txt` in `phase15-rename/`).
 original repository's `pushedAt` is still `2026-08-19T14:51:40Z`; it was neither pushed to nor
 modified, and no old tags were pushed to the new repository.
 
-## Modrinth (not published)
+## Modrinth (submitted for review, not public yet)
 
-- Slug `oneisle` is free (`GET /v2/project/oneisle` → 404 at the time of check).
-- The stored token at `~/.config/modrinth/token` is rejected (`GET /v2/user` → 401), so no
-  project or version was created. The token is never printed or stored in this repository.
-- Required scopes for the next attempt: `PROJECT_CREATE`, `VERSION_CREATE`, `VERSION_READ`,
-  `PROJECT_WRITE`.
-- Ready-to-use drafts: `modrinth_project_body.md` (project body) and
-  `modrinth_version_plan.md` (version payload fields, dependencies and upload rules).
+- Project: slug `oneisle`, ID `SIvHqEPO`, team `q55xrs7h`, moderation thread `3PVBnxeb`;
+  title OneIsle, license GPL-3.0-only, categories worldgen/adventure, source and issues on
+  GitHub.
+- Created as a draft (`status: draft`, `requested_status: approved`) and submitted with
+  `PATCH /v2/project/SIvHqEPO {"requested_status":"approved"}` → 204. On 2026-10-29
+  <https://modrinth.com/mod/oneisle> still renders “Project not found … may still be under
+  review”, so the listing must not be described as live until that page resolves.
+- Banner: `docs/branding/oneisle-banner.jpg` (2000×1000, SHA-256
+  `848a7d18f3e320fdbca15548a80dc36943ad76e7e0b60af8e171f272eaa6a851`) uploaded with
+  `POST /v2/project/SIvHqEPO/gallery?ext=jpg&featured=true` → 204. It is the only gallery
+  image (“banner only”). The project icon is the existing `assets/oneisle/icon.png`, resized
+  to a 512×512 JPEG (52,852 bytes) to fit the 256 KiB icon limit.
+- Version: `Oon3xljR`, `1.0.0+mc26.3-fabric`, release, game `26.3`, loader `fabric`,
+  environment `client_and_server`, required dependency Fabric API `P7dR8mSH`; jar 2,819,326
+  bytes. Modrinth sha512/sha1 match the local release jar (see `hashes.txt`).
+- Auth: the PAT has write scopes but no read scopes. `GET /v2/user` → 401,
+  `GET /v2/project/...` and `GET /v2/version/...` → 404 for the draft. `PATCH` of the
+  deprecated `client_side`/`server_side` fields returns 401 “editing project”; the version’s
+  `environment: client_and_server` is the value that matters. Full log:
+  `modrinth_publish.txt`; no token value is recorded.
 - The old Modrinth project `omniisle` (`EaBXipIm`, owner `hack337`) was not touched.
 
 Modrinth's rules prohibit direct reuploads without permission. OneIsle is a substantially changed
@@ -48,7 +61,8 @@ rejected, GitHub remains the distribution channel.
 
 ## Not verified
 
-- Modrinth page/version metadata and file hash, because the project was not created.
+- Modrinth public page, version metadata and CDN file hash cannot be checked until the project
+  leaves review; API reads are unavailable without read scopes.
 - Interactive gameplay beyond the rename smoke (see `phase15-rename/README.md`).
 
 ## Files
@@ -58,5 +72,8 @@ rejected, GitHub remains the distribution channel.
 | `github_release.json` | public release metadata (name, tag, URL, assets) |
 | `remote_refs.txt` | `git ls-remote --heads --tags origin` at verification time |
 | `hashes.txt` | local and downloaded asset hashes |
-| `modrinth_project_body.md` | draft body for the Modrinth project page |
+| `modrinth_project_body.md` | project body that was published |
 | `modrinth_version_plan.md` | version metadata plan for `POST /v2/version` |
+| `modrinth_project.json` | project ID/status/categories/icon/gallery at creation |
+| `modrinth_version.json` | version metadata, dependency and file hashes |
+| `modrinth_publish.txt` | publication log, banner upload, auth and moderation notes |

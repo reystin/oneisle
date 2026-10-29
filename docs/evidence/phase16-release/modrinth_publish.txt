@@ -1,0 +1,47 @@
+OneIsle Modrinth publication log, 2026-10-29
+No token value is recorded here.
+
+Project
+  POST /v2/project (multipart, data=project.json, icon=icon.jpg) -> 200
+  id SIvHqEPO, slug oneisle, team q55xrs7h, thread 3PVBnxeb
+  status draft, requested_status approved
+  categories worldgen, adventure; license GPL-3.0-only
+  source https://github.com/reystin/oneisle; issues .../issues
+  icon uploaded from assets/oneisle/icon.png, resized to 512x512 JPEG, 52,852 bytes
+  public page https://modrinth.com/mod/oneisle -> "Project not found
+  ... It may still be under review or no longer publicly available on Modrinth."
+
+Banner (only gallery image)
+  docs/branding/oneisle-banner.jpg
+  2000x1000 JPEG, 322,938 bytes, SHA-256 848a7d18f3e320fdbca15548a80dc36943ad76e7e0b60af8e171f272eaa6a851
+  POST /v2/project/SIvHqEPO/gallery?ext=jpg&featured=true&title=OneIsle%20banner -> 204
+  No screenshots or other images were uploaded ("banner only").
+  The square Downloads PNG was not used; the attached 2:1 OneIsle banner was.
+
+Version
+  POST /v2/version (multipart, data=version.json, file=jar) -> 200
+  id Oon3xljR, project SIvHqEPO, 1.0.0+mc26.3-fabric, release
+  game 26.3, loader fabric, environment client_and_server
+  dependency P7dR8mSH (Fabric API), required
+  file OneIsle-26.3-Fabric-1.0.0+mc26.3.jar, 2,819,326 bytes
+  sha512 20c4dd3523e63f90aef0b55f98bb418ce09539cadfb5fb2320b9f8f62feca740a867169a77724ac1eafd0d06f78a3ac0f32f1b755cd0eaa00c48f0f7ab7f4f15
+  sha1   2484965c390f1054fa7a59a6bf3e21dc676a48d4
+  Both match the local release jar.
+
+Submission
+  PATCH /v2/project/SIvHqEPO {"requested_status":"approved"} -> 204
+  A second PATCH of the deprecated client_side/server_side fields returned
+  401 "editing project"; project-level sides remain unverified. The version
+  reports environment client_and_server, which is the value that matters.
+  Public page is still a "not found / may be under review" page on 2026-10-29.
+
+Authentication notes
+  GET /v2/user -> 401 even though the token is valid for writes. The token
+  has PROJECT_CREATE, PROJECT_WRITE and VERSION_CREATE but not the read scopes:
+  GET /v2/project/... and GET /v2/version/... return 404 for the draft. The
+  401 on /v2/user is therefore a scope error, not an invalid token.
+  No PAT value was written to the repository, logs or this file.
+
+Moderation
+  No moderation bypass was attempted. If the project is rejected, GitHub
+  remains the distribution channel and this file records the outcome.

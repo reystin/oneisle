@@ -40,11 +40,20 @@ The mod is required on both client and server.
 3. Create a new world with world type **OneIsle**; the island editor opens from the Create World screen.
 4. On a dedicated server, place an exported preset at `config/oneisle.json` before the first start, or use `/oneisle import`.
 
+## Performance
+
+25×25 chunk generation (625 chunks, ROUND 4000, seed 4242, seven interleaved rounds on
+OneIsle 1.0.0): median **v1 14.284 s**, **v2 13.882 s**, **v3 13.374 s**, **v3 with
+Cherry Grove weight 45 13.606 s**. Every modern variant stays inside the +15 % budget
+versus v1. Raw data:
+[`docs/evidence/perf/chunkgen_25x25_1.0.0.csv`](https://github.com/reystin/oneisle/blob/main/docs/evidence/perf/chunkgen_25x25_1.0.0.csv).
+
 ## Verification and limits
 
-- 197 tests, 0 failures, 2 assumption-gated skips; golden v1/v2 hashes unchanged.
+- 198 tests, 0 failures, 0 errors, 3 assumption-gated skips; golden v1/v2 hashes unchanged.
 - In-game smoke: `oneisle 1.0.0+mc26.3` loads and the editor renders.
-- Phase 9 structure verification remains **PARTIAL 15/45**; 25×25 chunk timing is **UNVERIFIED**.
+- Phase 9 structure verification remains **PARTIAL 15/45**; 25×25 chunk timing is measured
+  for 1.0.0 (see above).
 - Interactive UI feel (tooltips, toasts, dropdown, IME) was not re-exercised after the rename.
 - MEDIUM/MINIMAL editor tiers have no screenshots; MINIMAL is unreachable in a real client.
 

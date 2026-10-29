@@ -12,3 +12,12 @@ ff85609f097a42fe3cfb9f595fab66a2b7b3c4dae1301c8ab8f9b5cc72fe3b4c  OneIsle-26.3-F
 
 Tag object: a9caa79d57c38141697493205375653d9e725eab
 Tag target: 17c17e84349bd4b3e924621181984f12ccf9e8cf
+
+Modrinth version Oon3xljR, file OneIsle-26.3-Fabric-1.0.0+mc26.3.jar:
+
+20c4dd3523e63f90aef0b55f98bb418ce09539cadfb5fb2320b9f8f62feca740a867169a77724ac1eafd0d06f78a3ac0f32f1b755cd0eaa00c48f0f7ab7f4f15  sha512 (returned by API, matches local)
+2484965c390f1054fa7a59a6bf3e21dc676a48d4  sha1 (returned by API, matches local)
+
+Banner:
+
+848a7d18f3e320fdbca15548a80dc36943ad76e7e0b60af8e171f272eaa6a851  docs/branding/oneisle-banner.jpg (2000x1000, 322,938 bytes)

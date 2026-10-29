@@ -1,45 +1,50 @@
-# Modrinth version plan (not executed — token rejected 401)
+# Modrinth version plan (executed 2026-10-29)
 
 ## Project
 
-- `slug`: `oneisle` (checked free: `GET /v2/project/oneisle` → 404)
+- `slug`: `oneisle`; ID `SIvHqEPO`; team `q55xrs7h`; moderation thread `3PVBnxeb`
 - `title`: OneIsle
-- `summary`: All biomes and structures on one configurable island for Fabric 26.3. Independent GPL-3.0 continuation of OmniIsle 0.5.0 by Hack337.
-- `project_type`: `mod`
+- `summary`: All biomes and structures on one configurable island for Fabric 26.3. Independent
+  GPL-3.0 continuation of OmniIsle 0.5.0 by Hack337.
+- `project_type` request: `mod`; the draft response reported `project` before the version upload.
 - `license_id`: `GPL-3.0-only`
 - `source_url`: <https://github.com/reystin/oneisle>
 - `issues_url`: <https://github.com/reystin/oneisle/issues>
 - Categories: `worldgen`, `adventure`
-- Environment: client `required`, server `required`
-- Icon: `src/main/resources/assets/oneisle/icon.png`
-- Gallery: `docs/screens/oneisle-1.0.0-smoke/en_*.png` (4 images; at most 8 allowed)
-- Body: `modrinth_project_body.md`
+- Icon: `src/main/resources/assets/oneisle/icon.png`, resized to a 512×512 JPEG (52,852
+  bytes) for the 256 KiB icon limit; uploaded at creation.
+- Gallery: only `docs/branding/oneisle-banner.jpg` (featured), per the “banner only” request.
+- Body: `modrinth_project_body.md` (198 tests, 0 failures, 3 skips; timing measured).
 
 ## Version
 
+- ID: `Oon3xljR`
 - `name`: `OneIsle 1.0.0 for Minecraft 26.3`
 - `version_number`: `1.0.0+mc26.3-fabric`
 - `game_versions`: `["26.3"]`
 - `loaders`: `["fabric"]`
-- `release_channel`: `release`
+- `version_type`: `release`
 - `featured`: false
 - `status`: `listed`
-- `project_id`: returned by `POST /v2/project`
-- `file`: `OneIsle-26.3-Fabric-1.0.0+mc26.3.jar`
+- `environment`: `client_and_server`
+- `file`: `OneIsle-26.3-Fabric-1.0.0+mc26.3.jar`, 2,819,326 bytes
 - `dependencies`: `P7dR8mSH` (Fabric API), `dependency_type: required`
-- Do not upload the sources jar; source is on GitHub.
+- The sources jar was not uploaded; source is on GitHub.
 - Changelog: the 1.0.0 section of `CHANGELOG.md`.
 
-## Required token
+## Submission
 
-The token stored in `~/.config/modrinth/token` returned **401** on `GET /v2/user` on 2026-10-29.
-A new PAT with scopes `PROJECT_CREATE`, `VERSION_CREATE`, `VERSION_READ`, `PROJECT_WRITE` must be
-created at <https://modrinth.com/settings/pats> and written to that file. The token must not be
-committed or printed.
+- Project created as a draft; `PATCH /v2/project/SIvHqEPO {"requested_status":"approved"}` → 204.
+- `https://modrinth.com/mod/oneisle` still renders “Project not found … may still be under
+  review” on 2026-10-29. Wait for moderation; do not bypass it.
+- The PAT has write scopes but no read scopes: `GET /v2/user` → 401, draft project/version
+  reads → 404. This is a scope issue, not an invalid token.
+- `PATCH client_side/server_side` → 401 “editing project”; the version’s
+  `environment: client_and_server` is authoritative.
 
 ## Moderation risk
 
 Modrinth rules disallow direct reuploads without permission. This is a substantially modified
 GPL-3.0 continuation under a new name with clear attribution and no endorsement claim, but
-moderation may still request confirmation from the original author. Do not bypass moderation;
-if the project is rejected, keep GitHub-only distribution and report the outcome.
+moderation may still request confirmation from the original author. If the project is rejected,
+keep GitHub-only distribution and report the outcome.

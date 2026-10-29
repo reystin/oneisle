@@ -1,0 +1,36 @@
+{
+  "id": "Oon3xljR",
+  "project_id": "SIvHqEPO",
+  "name": "OneIsle 1.0.0 for Minecraft 26.3",
+  "version_number": "1.0.0+mc26.3-fabric",
+  "version_type": "release",
+  "status": "listed",
+  "game_versions": [
+    "26.3"
+  ],
+  "loaders": [
+    "fabric"
+  ],
+  "environment": "client_and_server",
+  "dependencies": [
+    {
+      "version_id": null,
+      "project_id": "P7dR8mSH",
+      "file_name": null,
+      "dependency_type": "required"
+    }
+  ],
+  "date_published": "2026-10-29T18:47:55.071122916Z",
+  "files": [
+    {
+      "filename": "OneIsle-26.3-Fabric-1.0.0+mc26.3.jar",
+      "size": 2819326,
+      "primary": true,
+      "hashes": {
+        "sha512": "20c4dd3523e63f90aef0b55f98bb418ce09539cadfb5fb2320b9f8f62feca740a867169a77724ac1eafd0d06f78a3ac0f32f1b755cd0eaa00c48f0f7ab7f4f15",
+        "sha1": "2484965c390f1054fa7a59a6bf3e21dc676a48d4"
+      },
+      "url": "https://cdn.modrinth.com/data/SIvHqEPO/versions/Oon3xljR/OneIsle-26.3-Fabric-1.0.0%2Bmc26.3.jar"
+    }
+  ]
+}

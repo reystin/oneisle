@@ -19,8 +19,8 @@ project. Licensed GPL-3.0-only; not affiliated with or endorsed by the original 
   config `config/oneisle.json`; server datapack `oneisle-generated.zip`; import/export and
   debug paths under `oneisle/`; share-code prefix `ONE2-`; debug markers `ONE_*`; system
   properties and harness environment variables under `oneisle`/`ONEISLE`.
-- New GitHub repository (<https://github.com/reystin/oneisle>); a Modrinth listing is planned
-  under the slug `oneisle`. The original OmniIsle repository and Modrinth page are left untouched.
+- New GitHub repository (<https://github.com/reystin/oneisle>). The original OmniIsle
+  repository and Modrinth page are left untouched.
 
 ### Breaking
 - **Worlds created with OmniIsle 0.5.0–1.0.1 cannot be loaded by OneIsle.** Registry
