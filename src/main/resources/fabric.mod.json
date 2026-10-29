@@ -1,33 +1,37 @@
 {
   "schemaVersion": 1,
-  "id": "omniisle",
+  "id": "oneisle",
   "version": "${version}",
-  "name": "OmniIsle — All Biomes & Structures on One Island",
-  "description": "Build a configurable island with every Overworld biome, selectable structures, living rivers and a deep surrounding ocean.",
+  "name": "OneIsle — All Biomes & Structures on One Island",
+  "description": "Build a configurable island with every Overworld biome, selectable structures, living rivers and a deep surrounding ocean. Independent continuation of OmniIsle 0.5.0 by Hack337.",
   "authors": [
+    "reystin"
+  ],
+  "contributors": [
     "Hack337"
   ],
   "contact": {
-    "homepage": "https://hack337.com",
-    "sources": "https://github.com/y9hack337/OmniIsle"
+    "homepage": "https://github.com/reystin/oneisle",
+    "sources": "https://github.com/reystin/oneisle",
+    "issues": "https://github.com/reystin/oneisle/issues"
   },
   "license": "GPL-3.0-only",
-  "icon": "assets/omniisle/icon.png",
+  "icon": "assets/oneisle/icon.png",
   "environment": "*",
   "entrypoints": {
     "preLaunch": [
-      "com.hack337.omniisle.OmniIslePreLaunch"
+      "com.reystin.oneisle.OneIslePreLaunch"
     ],
     "main": [
-      "com.hack337.omniisle.OmniIsleMod"
+      "com.reystin.oneisle.OneIsleMod"
     ],
     "client": [
-      "com.hack337.omniisle.client.OmniIsleClient"
+      "com.reystin.oneisle.client.OneIsleClient"
     ]
   },
   "mixins": [
     {
-      "config": "omniisle.client.mixins.json",
+      "config": "oneisle.client.mixins.json",
       "environment": "client"
     }
   ],

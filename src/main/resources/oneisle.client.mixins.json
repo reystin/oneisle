@@ -1,0 +1,12 @@
+{
+  "required": true,
+  "package": "com.reystin.oneisle.mixin.client",
+  "compatibilityLevel": "JAVA_21",
+  "client": [
+    "CreateWorldBridge",
+    "WorldTypeEditorMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

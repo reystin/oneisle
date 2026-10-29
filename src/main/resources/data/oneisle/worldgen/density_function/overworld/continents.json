@@ -1,0 +1,9 @@
+{
+  "type": "minecraft:cache",
+  "input": {
+    "type": "oneisle:island_continents",
+    "config": {
+      "entries": []
+    }
+  }
+}

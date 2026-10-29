@@ -3,10 +3,10 @@ plugins {
 }
 
 version = "${mod_version}+mc${minecraft_version}"
-group = "com.hack337"
+group = "com.reystin"
 
 base {
-    archivesName = "OmniIsle-${minecraft_version}-Fabric"
+    archivesName = "OneIsle-${minecraft_version}-Fabric"
 }
 
 repositories { mavenCentral() }
@@ -21,24 +21,24 @@ dependencies {
 
 test {
     useJUnitPlatform()
-    def evidence = System.getProperty("omniisle.evidence")
-    if (evidence != null) systemProperty "omniisle.evidence", evidence
-    def evidenceLabel = System.getProperty("omniisle.evidence.label")
-    if (evidenceLabel != null) systemProperty "omniisle.evidence.label", evidenceLabel
-    def regen = System.getProperty("omniisle.regenerateGolden")
-    if (regen != null) systemProperty "omniisle.regenerateGolden", regen
+    def evidence = System.getProperty("oneisle.evidence")
+    if (evidence != null) systemProperty "oneisle.evidence", evidence
+    def evidenceLabel = System.getProperty("oneisle.evidence.label")
+    if (evidenceLabel != null) systemProperty "oneisle.evidence.label", evidenceLabel
+    def regen = System.getProperty("oneisle.regenerateGolden")
+    if (regen != null) systemProperty "oneisle.regenerateGolden", regen
     testLogging { events "failed", "skipped" }
 }
 
-def generatedTargetSources = layout.buildDirectory.dir("generated/sources/omniisleTarget")
+def generatedTargetSources = layout.buildDirectory.dir("generated/sources/oneisleTarget")
 
 tasks.register("generateTargetPlatform") {
     outputs.dir(generatedTargetSources)
     doLast {
         def output = generatedTargetSources.get().file(
-            "com/hack337/omniisle/platform/TargetPlatform.java").asFile
+            "com/reystin/oneisle/platform/TargetPlatform.java").asFile
         output.parentFile.mkdirs()
-        output.text = """package com.hack337.omniisle.platform;
+        output.text = """package com.reystin.oneisle.platform;
 public final class TargetPlatform {
     public static final String MINECRAFT_VERSION = \"${minecraft_version}\";
     public static final int PACK_FORMAT = ${(project.findProperty('pack_format') ?: '121') as int};
@@ -70,10 +70,10 @@ tasks.matching { it.name == "sourcesJar" }.configureEach {
 }
 
 tasks.matching { it.name == "runClient" }.configureEach {
-    ["omniisle.uiScreenshot", "omniisle.uiScreenshot.lang", "omniisle.uiScreenshot.smoke"].each { key ->
+    ["oneisle.uiScreenshot", "oneisle.uiScreenshot.lang", "oneisle.uiScreenshot.smoke"].each { key ->
         def value = System.getProperty(key)
         if (value != null) {
-            if (key == "omniisle.uiScreenshot") value = new File(value).absolutePath
+            if (key == "oneisle.uiScreenshot") value = new File(value).absolutePath
             systemProperty key, value
         }
     }
@@ -100,7 +100,7 @@ processResources {
             java_version: 25
         )
     }
-    filesMatching("omniisle.client.mixins.json") {
+    filesMatching("oneisle.client.mixins.json") {
         filter { line -> line.replace("JAVA_21", "JAVA_25") }
     }
 }
@@ -113,6 +113,6 @@ java {
 
 jar {
     from("LICENSE") {
-        rename { "LICENSE_OmniIsle_OmniIsle" }
+        rename { "LICENSE_OneIsle_OneIsle" }
     }
 }
