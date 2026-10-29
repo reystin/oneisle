@@ -1,5 +1,7 @@
 # OneIsle — All Biomes & Structures on One Island
 
+![OneIsle banner — a floating voxel island with desert, forest, snowy mountains and ocean at sunset](docs/branding/oneisle-banner.jpg)
+
 **OneIsle** is an independent continuation of [OmniIsle](https://github.com/y9hack337/OmniIsle) 0.5.0 by **Hack337**, finished and released as its own project for Fabric (Minecraft 26.3, Java 25). It turns standard infinite Overworld generation into a standalone, fully customizable, isolated island surrounded by an endless ocean.
 
 Every Overworld biome (all 56 vanilla biomes, including Pale Garden, Dappled Forest, and Sulfur Caves) and 18 structure options can generate on a single island, balanced and ready for exploration, survival, and server events.
