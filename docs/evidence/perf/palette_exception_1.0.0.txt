@@ -1,0 +1,21 @@
+OneIsle 1.0.0 timing run, 2026-10-29
+v3-neutral round 5, first attempt, level perf2_v3neutral_r5
+Discarded; the run was repeated successfully.
+
+[21:19:39] [Worker-Main-2/ERROR] (Minecraft) Caught exception in thread Thread[#44,Worker-Main-2,5,main]
+
+net.minecraft.world.level.chunk.MissingPaletteEntryException: Missing Palette entry for index 3.
+	at knot//net.minecraft.world.level.chunk.LinearPalette.valueFor(LinearPalette.java:70)
+	at knot//net.minecraft.world.level.chunk.PalettedContainer.get(PalettedContainer.java:147)
+	at knot//net.minecraft.world.level.chunk.PalettedContainer.get(PalettedContainer.java:141)
+	at knot//net.minecraft.world.level.chunk.LevelChunkSection.getBlockState(LevelChunkSection.java:45)
+	at knot//net.minecraft.world.level.chunk.ProtoChunk.getBlockState(ProtoChunk.java:118)
+	at knot//net.minecraft.world.level.lighting.LightEngine.getState(LightEngine.java:98)
+	at knot//net.minecraft.world.level.lighting.BlockLightEngine.checkNode(BlockLightEngine.java:31)
+	at knot//net.minecraft.world.level.lighting.LightEngine.runLightUpdates(LightEngine.java:160)
+	at knot//net.minecraft.world.level.lighting.LevelLightEngine.runLightUpdates(LevelLightEngine.java:58)
+	at knot//net.minecraft.server.level.ThreadedLevelLightEngine.runUpdate(ThreadedLevelLightEngine.java:184)
+	at knot//net.minecraft.server.level.ThreadedLevelLightEngine.lambda$tryScheduleUpdate$0(ThreadedLevelLightEngine.java:163)
+	at knot//net.minecraft.util.Util.runNamed(Util.java:351)
+	at knot//net.minecraft.util.thread.AbstractConsecutiveExecutor.pollTask(AbstractConsecutiveExecutor.java:50)
+	at knot//net.minecraft.util.thread.AbstractConsecutiveExecutor.run(AbstractConsecutiveExecutor.java:60)

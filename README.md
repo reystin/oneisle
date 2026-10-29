@@ -144,14 +144,14 @@ climate family maps, relief maps, river-mouth probes, ocean depth maps, structur
 
 ## Performance
 
-Real dedicated-server chunk generation (fresh world per run, 25×25 inland chunks, 3 interleaved
-reps, seed 4242, ROUND 4000) is recorded in
-[`docs/evidence/perf/chunkgen_25x25.csv`](docs/evidence/perf/chunkgen_25x25.csv).
-Median 625-chunk generation: **v1 14.891 s, v2 14.231 s (−4.4 %), v3 14.557 s (−2.2 %)**;
-the worst modern run is +6.7 % over the fastest v1 run, inside the +15 % budget. Method,
-pre/post-cache probes and offshore diagnostics are in
-[`docs/evidence/perf/README.md`](docs/evidence/perf/README.md). These measurements were taken
-on the same generation code before the rename.
+Real dedicated-server chunk generation on OneIsle 1.0.0 (fresh world per run, 25×25 inland
+chunks, 7 interleaved rounds, seed 4242, ROUND 4000) is recorded in
+[`docs/evidence/perf/chunkgen_25x25_1.0.0.csv`](docs/evidence/perf/chunkgen_25x25_1.0.0.csv).
+Median 625-chunk generation: **v1 14.284 s, v2 13.882 s (−2.8 %), v3 13.374 s (−6.4 %)**;
+a weighted v3 world (Cherry-45) takes 13.606 s (−4.8 %). The worst modern run is +7.8 % over
+the fastest v1 run, inside the +15 % budget; the weighted-vs-all-100 median is +1.7 %, at the
+host-noise floor. Method, discarded-run note and limitations are in
+[`docs/evidence/perf/README.md`](docs/evidence/perf/README.md).
 
 ---
 

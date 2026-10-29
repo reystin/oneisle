@@ -1,4 +1,70 @@
-# Chunk-generation performance, 25×25 chunks (Phase 9.8)
+# Chunk-generation performance, 25×25 chunks
+
+## OneIsle 1.0.0 re-measurement (2026-10-29)
+
+Current-code measurement for the released 1.0.0 (`v1.0.0+mc26.3-fabric`), replacing the
+0.7.0-era numbers cited by the README before this run.
+
+### Verdict
+
+The **+15 % modern-vs-v1 budget passes** for every modern variant, including weighted v3.
+The separate **weighted-vs-all-100 target (+3 %)** passes on the pre-registered median
+(+1.73 %), but the host noise is larger than that threshold, so this pass is weak.
+
+| variant | runs (s) | median (s) | mean (s) | range (s) | median vs v1 |
+|---|---|---|---|---|---|
+| v1 | 14.291 / 14.284 / 14.764 / 14.163 / 14.135 / 16.708 / 13.495 | 14.284 | 14.549 | 13.495–16.708 | — |
+| v2 | 13.768 / 13.951 / 13.930 / 13.659 / 12.458 / 14.002 / 13.882 | 13.882 | 13.664 | 12.458–14.002 | −2.81 % |
+| v3 all-100 | 12.510 / 12.794 / 14.551 / 13.858 / 12.022 / 13.687 / 13.374 | 13.374 | 13.257 | 12.022–14.551 | −6.37 % |
+| v3 Cherry-45 | 13.242 / 13.408 / 13.606 / 13.712 / 13.388 / 14.133 / 14.143 | 13.606 | 13.662 | 13.242–14.143 | −4.75 % |
+
+Worst run of each modern variant against the fastest v1 run (13.495 s): v2 +3.76 %,
+v3 all-100 +7.83 %, v3 Cherry-45 +4.80 % — all inside +15 %. Weighted v3 against
+all-100 v3 is +1.73 % on medians; paired per-round differences span −6.49 % … +11.36 %,
+so the +3 % target is at the noise floor of this host and is not resolved more tightly.
+
+Raw rows: `chunkgen_25x25_1.0.0.csv`. Pack identities and SHA-256:
+`perf_packs_1.0.0.csv`. Every run reported 625/625 force-loaded chunks and 25/25 inland
+probes, so the timed area is the same ROUND 4000 inland block on +X for all variants.
+
+### Method
+
+* OneIsle 1.0.0, Minecraft 26.3 dedicated server, Fabric Loader 0.19.3, Fabric API
+  0.165.0+26.3, Java 25 (PrismLauncher `java-runtime-epsilon`), macOS arm64.
+* World settings identical to Phase 9.8: preset ROUND, island size 4000, seeds 4242,
+  river density 0.35, islet density 0.25, shore 0.30/0.60 rocky, structures 1.0,
+  server `level-seed=424242`. Four packs share the same draft; only `generation_version`
+  and the Cherry-45 weight differ.
+* Packs exported by `PerfHarnessPacksTest` (`ONEISLE_PERF_DIR`); fresh world directory per
+  run. RCON: five `/forceload add` strips covering chunks x 28–52, z −12–12 (625 chunks),
+  then 25 row probes, each chaining 25 `execute if loaded` checks; wall clock from the
+  first forceload until all 625 probes pass. Each RCON command stays below 1400 bytes.
+* Seven interleaved rounds, order v1 → v2 → v3 all-100 → v3 Cherry-45; v1 runs first in
+  each round, which biases the comparison against v1. Runner:
+  `tools/perf/chunkgen_25x25.py`; server logs stay outside the repository.
+* The weighted pack disables swamp huts and woodland mansions (no strict site for the
+  weighted layout), so it does not gain an advantage from extra structure work.
+
+### Harness
+
+`PerfHarnessPacksTest` exports the four packs and is skipped unless `ONEISLE_PERF_DIR`
+is set, so a normal `./gradlew test` stays fast. Full suite at commit time: 198 tests,
+0 failures, 0 errors, 3 skipped (two environment-gated tests plus this one). The runner
+refuses `level-name` values that do not start with `perf2_` before deleting anything.
+
+### Discarded run
+
+The first v3-neutral round-5 attempt threw `MissingPaletteEntryException: Missing Palette
+entry for index 3` in a vanilla lighting worker while the forceload area was generating,
+and the server stopped responding to commands; it was killed and the run repeated. The
+stack has no OneIsle frames (`palette_exception_1.0.0.txt`). The rerun and the other 28
+valid runs completed normally. The cause is not attributed; it is recorded because it is
+a real client/server risk under this harness, not a measured result.
+
+## Historical OmniIsle 0.7.0 measurement (Phase 9.8)
+
+> Captured before the rename and before the 0.8.2–1.0.1 v3 changes. Kept for method and
+> diagnostics; current numbers are in the section above.
 
 Budget: modern (v2/v3) chunk generation must stay **within +15 % of v1** on the same
 seed and preset, 3 repetitions.

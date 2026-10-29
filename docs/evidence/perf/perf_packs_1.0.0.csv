@@ -1,0 +1,5 @@
+variant,generation_version,cherry_weight,island_size,shape_seed,biome_seed,preset,river_density,islet_density,shore_density,shore_variety,shore_rocky,structure_density,sha256
+v1,1,0,4000,4242,4242,ROUND,0.35,0.25,0.30,0.60,true,1.0,1137b65488430b16908445e60b9624b9dc5ca474bd1382ec3df99378bc2249d5
+v2,2,0,4000,4242,4242,ROUND,0.35,0.25,0.30,0.60,true,1.0,6b203a9d6eeb481724b2919933151abc3523c201b8245b518ac6937618b4a164
+v3-neutral,3,100,4000,4242,4242,ROUND,0.35,0.25,0.30,0.60,true,1.0,6e9238642f2bcfc080fa3be502413b7479d3c7d609f94c33ea62fc5cd1a5cbf0
+v3-weighted,3,45,4000,4242,4242,ROUND,0.35,0.25,0.30,0.60,true,1.0,1316051f6da8f8d9f7d9278394ffb543247dc4e5f6c1715420ce3c6ebde94986

@@ -212,20 +212,21 @@ uses the generated pack (log order: preLaunch export 21:58:12 → world creation
 - [x] **9.8.6** Offshore diagnostic (+22.0 %/+38.7 %) separated from the verdict; `ModernTerrainV2` cache experiment reverted (15.128/15.081 s vs 15.17 s, no gain); sequential-run drift documented
 - [x] **9.8.7** Final `./gradlew build` green: 97 tests, 0 failures, 2 assumption-gated skips; jar `OmniIsle-26.3-Fabric-0.7.0+mc26.3.jar`; mirrored to PrismLauncher mods and `~/Downloads`
 - [x] **9.8.8** Final report follows Section 11, preserving structure matrix PARTIAL 15/45 and 9.6 screenshots NOT DONE
+- [x] **9.8.9** OneIsle 1.0.0 re-measurement (2026-10-29): 7 interleaved rounds, 4 variants (v1/v2/v3 all-100/v3 Cherry-45), 625 chunks, same RCON method. Medians v1 14.284 s / v2 13.882 s (−2.81 %) / v3 13.374 s (−6.37 %) / v3 weighted 13.606 s (−4.75 %); worst modern run +7.83 % vs fastest v1, inside +15 %; weighted vs all-100 +1.73 % median (noise-limited). One neutral run discarded after a vanilla lighting `MissingPaletteEntryException`; rerun clean. Evidence: `docs/evidence/perf/chunkgen_25x25_1.0.0.csv`, `perf_packs_1.0.0.csv`, `palette_exception_1.0.0.txt`; harness `tools/perf/chunkgen_25x25.py` + `PerfHarnessPacksTest`
 
 Measured: v2 golden 180 000/180 000 exact; biome cache medians v2 19.432 → 15.251 s and
 v3 20.534 → 14.209 s; final inland medians v1 14.891 / v2 14.231 / v3 14.557 s; build
 97 tests, 0 failures. Evidence: `docs/evidence/perf/`, `FINDINGS.md` §15, `DECISIONS.md`
 034–038, `src/test/resources/golden/v2/`.
 
-### Phase 10 — Biome frequency weights, 0–400 % (completed; chunk-gen perf UNVERIFIED; screenshots NOT DONE)
+### Phase 10 — Biome frequency weights, 0–400 % (completed; chunk-gen perf verified 2026-10-29; screenshots NOT DONE)
 - [x] **10.1** Optional `biome_share` (`weights`, `bias`, `achieved`, `target`, `feasible`) nested in the biome-source `ThemeShore` codec; absent field, explicit all-100 and neutral exports stay on the untouched legacy path. I1 hash `2951624326361821806` for absent and explicit-100 (test now pins the active density function around the hash); goldens v1/v2/v3 green; no new `generation_version`
 - [x] **10.2** Side-neutral weighted selector `BiomeShare.select`: preferred family prior 1, neighbouring family prior `exp(−max(0, d − d_pref)/0.22)`, times `exp(bias)`; climate cap `R_max = 0.62`; weight 0 removes the candidate; uniform factors short-circuit to the legacy picker
 - [x] **10.3** `BiomeShareCalibrator`: fixed 64×64 mask-land grid, shore band/rivers/terrain-driven families excluded, baseline `s_f` with zero bias, target `s_f·w_f/100 / Σ(s_g·w_g/100)`, log-ratio damping 0.7, ≤24 iterations, ≤1 pp stop, mean bias 0, bias clamp ±8; identical code in the editor and `WorldPackBuilder.export`; 45/45 configurations feasible with max error 1.88 pp (`docs/evidence/phase10/calibration.csv`)
 - [x] **10.4** Editor UI: new drafts default to theme ALL with every biome enabled at 100; land rows have a 0–400 step-5 percent field with −/+, click-to-type and row reset; read-only actual % (green ≤3 pp, amber ≤6 pp, red beyond, grey terrain); header Reset all / Disable selected / + All / − None; typing 0 unticks, ticking restores 100; terrain-driven rows read-only; 150 ms recalibration debounce off the render thread; infeasible warning
 - [x] **10.5** Undo/redo covers weights; share codes and exported presets round-trip weights/bias/achieved/target; `/omniisle info` prints weights and achieved shares; `/omniisle debug biome` renders through the real weighted source; `en_us` + `ru_ru` keys
 - [x] **10.6** Ten Phase-10 tests green (`Phase10BiomeShareTest`): 107-test suite, 0 failures, 2 assumption-gated skips; preview/real parity 9836/9836 = 100.00 %; 8-thread determinism; 20,000-sample coherence; monotonic sweep; codec/share/preset/undo/bad data; UI logic
-- [ ] **10.7** Real 25×25 chunk-generation timing with non-neutral weights vs all-100 — **UNVERIFIED**; only the biome-lookup benchmark ran (median 7.457 ms weighted vs 8.623 ms neutral, −13.52 %, inside the +3 % gate, but not full chunk generation)
+- [x] **10.7** Real 25×25 chunk-generation timing with non-neutral weights vs all-100 (2026-10-29): 7 interleaved rounds on OneIsle 1.0.0; medians v3 all-100 13.374 s vs v3 Cherry-45 13.606 s = **+1.73 %** (inside +3 %, but the run spread 12.0–14.6 s means the pass is noise-limited); primary +15 % budget vs v1 passes with worst-case +7.83 %. Evidence: `docs/evidence/perf/chunkgen_25x25_1.0.0.csv`, `docs/evidence/perf/README.md`
 - [ ] **10.8** Panel screenshots at GUI scales 2 and 4 — **NOT DONE**; the test run is headless and no client session was captured
 
 Measured: monotonic cherry_grove 0 → 0.00 %, 50 → 20.13 %, 100 → 32.93 %,
@@ -258,7 +259,7 @@ Measured: calibration 45/45 feasible, max 0.986 pp; held-out Cherry 17.817 % vs 
 - [x] **10.6.8** Full `./gradlew build` green: **123 tests, 0 failures, 0 errors, 2 assumption-gated skips**; Golden v1/v2 unchanged; jar `build/libs/OmniIsle-26.3-Fabric-0.8.2+mc26.3.jar`
 - [x] **10.6.9** Dedicated-server smoke, both drafts: reference `Done (1.559s)`, spawn `12,96,-930` land, 5 packs, `info` v3/4760, `verify` 26 biomes, swamp hut queried; weighted `Done (1.417s)`, `info` calibrated cherry 45 %, achieved 9.5 %; no crash reports, clean stops
 - [x] **10.6.10** Docs/version: `gradle.properties` 0.8.2, CHANGELOG/README/PROGRESS/FINDINGS/spec/DECISIONS 047–052, migration note; evidence under `docs/evidence/phase82/` incl. before/after composition, maps, waterline, structures, tags, sulfur
-- [ ] **10.6.11** Full 25×25 weighted chunk-generation timing and GUI 2/4 screenshots — **UNVERIFIED / NOT DONE**; Phase 9 structure matrix remains PARTIAL 15/45
+- [ ] **10.6.11** GUI 2/4 screenshots — **NOT DONE**; the weighted 25×25 chunk-generation timing was completed in 10.7, but Phase 9 structure matrix remains PARTIAL 15/45
 
 Measured: waterline constants confirmed; dry-shelf ocean 0, dry-shelf land 1,844;
 core temperate 68.05 %, green 79.05 %; ridge correlation 0.9808; swamp violations 0;

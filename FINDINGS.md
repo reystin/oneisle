@@ -515,8 +515,9 @@ preview/real parity 9836/9836 = 100.00 %; codec/share/preset/undo/bad-data round
 pass; UI logic test passes. The lookup benchmark medians are 8.623 ms neutral vs
 7.457 ms weighted (−13.52 %; run noise, but inside the +3 % gate).
 
-**Limitations:** the benchmark covers biome lookups, not full 25×25 chunk generation;
-real chunk timing with weights was not rerun and is **UNVERIFIED**. Panel screenshots
+**Limitations (historical; weighted chunk timing is measured for 1.0.0 in §23):** the
+benchmark covers biome lookups, not full 25×25 chunk generation; real chunk timing with
+weights was not rerun for 0.8.0 and is **UNVERIFIED** there. Panel screenshots
 at GUI scales 2 and 4 are **NOT DONE** (headless test environment). Percent entry has
 click-to-type and −/+, but no drag slider. The Phase 9 structure matrix remains
 PARTIAL 15/45 full configs; Phase 9 editor screenshots remain NOT DONE.
@@ -841,7 +842,7 @@ unmodified; the v2 regression hash is unchanged (`-4990092939012319655`) and the
 now `-6312501814918578635` (0.8.3: `3958321154656118617`) by design. No `generation_version`
 was added. New v3 chunks generate differently in 0.8.4; existing chunks are untouched. Phase 9
 structure matrix remains **PARTIAL 15/45**, editor screenshots remain **NOT DONE**, and 25×25
-chunk-generation timing for 0.8.4 is **UNVERIFIED**. The worktree remains uncommitted by
+chunk-generation timing for 0.8.4 is **UNVERIFIED** (re-measured on 1.0.0 in §23). The worktree remains uncommitted by
 request.
 
 ## 19. [VERIFY] Phase 12 — 1.0.0 flat editor UI, custom widgets and the screenshot harness
@@ -1215,3 +1216,66 @@ worlds created by OneIsle v1/v2 match what OmniIsle produced for the same drafts
 
 Evidence: `docs/evidence/phase15-rename/` (`namespace_gates.txt`, `test_summary.txt`,
 `jar_metadata.txt`, `sha256.txt`, `build.log`, `README.md`).
+
+## 23. [VERIFY] OneIsle 1.0.0 — 25×25 chunk-generation timing re-measurement
+
+Measured 2026-10-29 on the released 1.0.0 code (`v1.0.0+mc26.3-fabric`) to close the
+0.8.4-era UNVERIFIED note and the Phase 10.7 weighted gate that still cited only a biome
+lookup benchmark. This section supersedes the 0.7.0 performance numbers in the README; it
+does not change the Phase 9 structure matrix.
+
+### Method
+
+* Four packs from one draft: ROUND, size 4000, shape/biome seed 4242, river density 0.35,
+  islet density 0.25, shore 0.30/0.60 rocky, structures 1.0, server `level-seed=424242`.
+  Variants: v1, v2, v3 all-100, v3 Cherry-45. `PerfHarnessPacksTest` exports them; hashes
+  are in `docs/evidence/perf/perf_packs_1.0.0.csv`.
+* Fresh world per run. RCON: five `/forceload add` strips covering chunks x 28–52,
+  z −12–12 (625 chunks), then 25 row probes, each chaining 25 `execute if loaded` checks;
+  wall clock from the first forceload until 625/625. Seven interleaved rounds, order
+  v1 → v2 → v3 all-100 → v3 Cherry-45; v1 runs first, biasing the comparison against v1.
+* Runner `tools/perf/chunkgen_25x25.py`; server logs stay outside the repository. Every
+  valid run reported 625 forced chunks and 25/25 non-ocean probe columns, so the timed
+  block is inland for all variants.
+
+### Results
+
+| variant | runs (s) | median | mean | range | median vs v1 |
+|---|---|---|---|---|---|
+| v1 | 14.291 / 14.284 / 14.764 / 14.163 / 14.135 / 16.708 / 13.495 | 14.284 | 14.549 | 13.495–16.708 | — |
+| v2 | 13.768 / 13.951 / 13.930 / 13.659 / 12.458 / 14.002 / 13.882 | 13.882 | 13.664 | 12.458–14.002 | −2.81 % |
+| v3 all-100 | 12.510 / 12.794 / 14.551 / 13.858 / 12.022 / 13.687 / 13.374 | 13.374 | 13.257 | 12.022–14.551 | −6.37 % |
+| v3 Cherry-45 | 13.242 / 13.408 / 13.606 / 13.712 / 13.388 / 14.133 / 14.143 | 13.606 | 13.662 | 13.242–14.143 | −4.75 % |
+
+Gates:
+
+* **+15 % modern-vs-v1: PASS.** Worst modern run versus fastest v1 (13.495 s): v2 +3.76 %,
+  v3 all-100 +7.83 %, v3 Cherry-45 +4.80 %.
+* **Weighted vs all-100 (+3 %): PASS on medians (+1.73 %), weak.** Paired round differences
+  span −6.49 % … +11.36 % and the full run range is 12.022–16.708 s, so host noise exceeds
+  the 3 % threshold; the pass is not a tight verification. The weighted pack has two fewer
+  enabled structure sets (swamp huts, woodland mansions), so it does not benefit from extra
+  structure work.
+* The weighted path is not optimized further: a cache for the per-column weighted choice
+  was considered, but the measured median gap is inside the gate and a change would require
+  a new release plus golden/regression re-verification.
+
+### Discarded run
+
+The first v3-neutral round-5 attempt threw `MissingPaletteEntryException: Missing Palette
+entry for index 3` in a vanilla lighting worker during forceload and the server stopped
+responding; it was killed and the run repeated. The stack has no OneIsle frames; the rerun
+and the other 28 valid runs were clean. Excerpt:
+`docs/evidence/perf/palette_exception_1.0.0.txt`. The exception is recorded as a runtime
+risk of the harness, not as a performance row.
+
+### Conclusion
+
+No code change and no 1.0.1 release are required by this measurement. The README
+performance section was updated to these numbers because its previous wording ("same
+generation code before the rename") was no longer true after the 0.8.2–1.0.1 v3 work.
+Phase 9 remains **PARTIAL 15/45** until the 45-config structure matrix is rerun.
+
+Evidence: `docs/evidence/perf/chunkgen_25x25_1.0.0.csv`, `perf_packs_1.0.0.csv`,
+`palette_exception_1.0.0.txt`, `README.md`; harness `tools/perf/chunkgen_25x25.py`,
+`src/test/java/com/reystin/oneisle/test/PerfHarnessPacksTest.java`.
