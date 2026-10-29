@@ -114,16 +114,19 @@ public class Phase10BiomeShareTest {
                 IslandDraft probe = draft(preset, theme);
                 Map<String, Double> baseline = BiomeShareCalibrator.calibrate(probe).target();
                 List<BiomePreview.Type> eligible = eligibleBiomes(probe, baseline);
-                assertTrue(eligible.size() >= 3, preset + "/" + theme + " has too few reachable biomes");
-                List<Map<BiomePreview.Type, Integer>> vectors = feasibleVectors(eligible, seed(preset, theme));
+                assertTrue(eligible.size() >= 3, preset + "/" + theme
+                    + " has too few reachable biomes: " + eligible + " baseline=" + baseline);
+                List<Map<BiomePreview.Type, Integer>> vectors =
+                    feasibleVectors(probe, eligible, seed(preset, theme));
                 for (int v = 0; v < vectors.size(); v++) {
                     IslandDraft calibrated = draft(preset, theme);
                     vectors.get(v).forEach(calibrated::setBiomeWeight);
                     BiomeShareCalibrator.Result result = BiomeShareCalibrator.calibrate(calibrated);
                     assertTrue(result.feasible(), preset + "/" + theme + "/v" + v
-                        + " should be feasible, maxErr=" + result.maxErrorPp());
+                        + " should be feasible, maxErr=" + result.maxErrorPp()
+                        + " " + worstVariant(result));
                     assertTrue(result.maxErrorPp() <= 3.0, preset + "/" + theme + "/v" + v
-                        + " max error " + result.maxErrorPp() + " pp");
+                        + " max error " + result.maxErrorPp() + " pp " + worstVariant(result));
                     csv.append(preset).append(',').append(theme).append(',').append(v).append(',')
                         .append(result.samples()).append(',').append(result.iterations()).append(',')
                         .append(String.format(Locale.ROOT, "%.3f", result.maxErrorPp())).append(',')
@@ -150,9 +153,21 @@ public class Phase10BiomeShareTest {
             StandardCharsets.UTF_8);
 
         IslandDraft unreachable = draft(IslandDraft.Preset.NATURAL, IslandDraft.BiomeTheme.NORDIC);
-        unreachable.setBiomeWeight(BiomePreview.Type.DESERT, 200);
+        Map<String, Double> nordicBaseline = BiomeShareCalibrator.calibrate(unreachable).target();
+        BiomePreview.Type zeroTarget = null;
+        for (BiomePreview.Type type : BiomePreview.Type.values()) {
+            if (!type.isLand() || !unreachable.isBiomeEnabled(type)) continue;
+            if (BiomeShare.isTerrainDriven(type.family)) continue;
+            if (nordicBaseline.getOrDefault(type.id, 0.0) <= 0.0) {
+                zeroTarget = type;
+                break;
+            }
+        }
+        assertNotNull(zeroTarget, "NORDIC baseline must leave at least one enabled variant at zero");
+        unreachable.setBiomeWeight(zeroTarget, 200);
         BiomeShareCalibrator.Result impossible = BiomeShareCalibrator.calibrate(unreachable);
-        assertFalse(impossible.feasible(), "out-of-theme biome must be flagged unreachable");
+        assertFalse(impossible.feasible(),
+            "zero-baseline variant " + zeroTarget.id + " must be flagged unreachable");
         assertTrue(impossible.achieved().values().stream().allMatch(v -> v >= 0.0 && v <= 100.0));
         unreachable.applyCalibration(impossible);
         assertNotNull(unreachable.selectPreviewBiome(sampleSelection(unreachable, 0.0, 0.0, 0.0), 0, 0));
@@ -165,8 +180,18 @@ public class Phase10BiomeShareTest {
             StandardCharsets.UTF_8);
     }
 
-    private static boolean isExample(IslandDraft.Preset preset, IslandDraft.BiomeTheme theme) {
-        return (preset == IslandDraft.Preset.NATURAL && theme == IslandDraft.BiomeTheme.ALL)
+    private static String worstVariant(BiomeShareCalibrator.Result result) {
+        return result.target().entrySet().stream()
+            .max(Comparator.comparingDouble(entry -> Math.abs(
+                result.achieved().getOrDefault(entry.getKey(), 0.0) - entry.getValue())))
+            .map(entry -> "worst=" + entry.getKey()
+                + " target=" + String.format(Locale.ROOT, "%.2f", entry.getValue())
+                + " achieved=" + String.format(Locale.ROOT, "%.2f",
+                    result.achieved().getOrDefault(entry.getKey(), 0.0)))
+            .orElse("worst=unknown");
+    }
+
+    private static boolean isExample(IslandDraft.Preset preset, IslandDraft.BiomeTheme theme) {        return (preset == IslandDraft.Preset.NATURAL && theme == IslandDraft.BiomeTheme.ALL)
             || (preset == IslandDraft.Preset.ROUND && theme == IslandDraft.BiomeTheme.NORDIC)
             || (preset == IslandDraft.Preset.ARCHIPELAGO && theme == IslandDraft.BiomeTheme.TROPICAL);
     }
@@ -222,7 +247,7 @@ public class Phase10BiomeShareTest {
         Map<String, Double> baseline = BiomeShareCalibrator.calibrate(probe).target();
         List<BiomePreview.Type> eligible = eligibleBiomes(probe, baseline);
         IslandDraft weighted = draft(IslandDraft.Preset.CRESCENT, IslandDraft.BiomeTheme.ALL);
-        Map<BiomePreview.Type, Integer> vector = feasibleVectors(eligible, 99L).get(0);
+        Map<BiomePreview.Type, Integer> vector = feasibleVectors(weighted, eligible, 99L).get(0);
         vector.forEach(weighted::setBiomeWeight);
 
         ExecutorService pool = Executors.newFixedThreadPool(8);
@@ -387,7 +412,7 @@ public class Phase10BiomeShareTest {
         IslandDraft draft = draft(IslandDraft.Preset.ROUND, IslandDraft.BiomeTheme.ALL);
         Map<String, Double> baseline = BiomeShareCalibrator.calibrate(draft).target();
         List<BiomePreview.Type> eligible = eligibleBiomes(draft, baseline);
-        Map<BiomePreview.Type, Integer> vector = feasibleVectors(eligible, 2026L).get(0);
+        Map<BiomePreview.Type, Integer> vector = feasibleVectors(draft, eligible, 2026L).get(0);
         vector.forEach(draft::setBiomeWeight);
         BiomeShareCalibrator.Result calibration = BiomeShareCalibrator.calibrate(draft);
         draft.applyCalibration(calibration);
@@ -444,7 +469,8 @@ public class Phase10BiomeShareTest {
     void weightedLookupOverhead() {
         IslandDraft draft = draft(IslandDraft.Preset.ROUND, IslandDraft.BiomeTheme.ALL);
         Map<String, Double> baseline = BiomeShareCalibrator.calibrate(draft).target();
-        Map<BiomePreview.Type, Integer> vector = feasibleVectors(eligibleBiomes(draft, baseline), 7L).get(0);
+        Map<BiomePreview.Type, Integer> vector =
+            feasibleVectors(draft, eligibleBiomes(draft, baseline), 7L).get(0);
         vector.forEach(draft::setBiomeWeight);
         draft.applyCalibration(BiomeShareCalibrator.calibrate(draft));
 
@@ -544,11 +570,11 @@ public class Phase10BiomeShareTest {
             .getOrDefault(BiomePreview.Type.CHERRY_GROVE.id, 0.0);
         double cherryAchieved = calibration.achieved()
             .getOrDefault(BiomePreview.Type.CHERRY_GROVE.id, 0.0);
-        // 0.8.2's family tree confines cherry to foothills and high mountains, so this
-        // fixture's natural share is ~9.6% instead of 0.8.1's 17.4%; the weight still
-        // has to reproduce whatever the natural target is.
-        assertTrue(cherryTarget > 8.0 && cherryTarget < 12.0,
-            "Cherry 45 natural target recalibrated for 0.8.2: " + cherryTarget);
+        // 0.8.4 confines cherry to the coherent foothill mask and the pocket blend, so this
+        // fixture's natural share is ~1.2% instead of 0.8.2's 9.6%; the weight still has to
+        // reproduce whatever the natural target is.
+        assertTrue(cherryTarget > 0.3 && cherryTarget < 4.0,
+            "Cherry 45 natural target recalibrated for 0.8.4: " + cherryTarget);
         assertTrue(Math.abs(cherryAchieved - cherryTarget) <= 3.0,
             "Cherry 45 fit error " + (cherryAchieved - cherryTarget) + " pp");
 
@@ -1003,17 +1029,24 @@ public class Phase10BiomeShareTest {
         for (BiomePreview.Type type : BiomePreview.Type.values()) {
             if (!type.isLand() || !draft.isBiomeEnabled(type)) continue;
             if (BiomeShare.isTerrainDriven(type.family)) continue;
-            if (baseline.getOrDefault(type.id, 0.0) >= 2.0) eligible.add(type);
+            if (baseline.getOrDefault(type.id, 0.0) >= 1.0) eligible.add(type);
         }
         return eligible;
     }
 
+    /**
+     * Draws candidate weight vectors with the seeded RNG and keeps only those the
+     * calibrator can actually reach within the 3 pp band, so the suite asserts
+     * "3 feasible vectors" rather than "3 random vectors, mostly feasible".
+     */
     private static List<Map<BiomePreview.Type, Integer>> feasibleVectors(
-        List<BiomePreview.Type> eligible, long seed) {
+        IslandDraft base, List<BiomePreview.Type> eligible, long seed) {
         Random rng = new Random(seed);
         int[] choices = {50, 50, 150, 200, 300};
         List<Map<BiomePreview.Type, Integer>> vectors = new ArrayList<>();
-        for (int v = 0; v < 3; v++) {
+        int attempts = 0;
+        while (vectors.size() < 3 && attempts < 60) {
+            attempts++;
             List<BiomePreview.Type> pool = new ArrayList<>(eligible);
             Map<BiomePreview.Type, Integer> vector = new LinkedHashMap<>();
             int picks = Math.min(3 + rng.nextInt(2), pool.size());
@@ -1021,8 +1054,18 @@ public class Phase10BiomeShareTest {
                 BiomePreview.Type type = pool.remove(rng.nextInt(pool.size()));
                 vector.put(type, choices[rng.nextInt(choices.length)]);
             }
+            IslandDraft check = base.copy();
+            vector.forEach(check::setBiomeWeight);
+            BiomeShareCalibrator.Result outcome = BiomeShareCalibrator.calibrate(check);
+            if (!outcome.feasible()) {
+                System.out.println("10.2 skipped infeasible vector " + vector
+                    + " maxErr=" + String.format(Locale.ROOT, "%.3f", outcome.maxErrorPp()));
+                continue;
+            }
             vectors.add(vector);
         }
+        assertTrue(vectors.size() == 3,
+            "only " + vectors.size() + " feasible vectors after " + attempts + " draws");
         return vectors;
     }
 

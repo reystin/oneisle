@@ -1,6 +1,8 @@
 package com.hack337.omniisle.test;
 
 import com.hack337.omniisle.client.EditorLayout;
+import com.hack337.omniisle.client.EditorLayout.Layout;
+import com.hack337.omniisle.client.EditorLayout.Rect;
 import com.hack337.omniisle.client.ImageImportExport;
 import com.hack337.omniisle.client.IslandDraft;
 import com.hack337.omniisle.client.PreviewViewport;
@@ -389,26 +391,38 @@ public class Phase9EditorTest {
     @Test
     @DisplayName("9.6 Layout: six tabs and eight control rows fit at GUI scales 1-4")
     void layoutFitsGuiScales() {
-        int[][] sizes = {{1920, 1080}, {960, 540}, {640, 360}, {480, 270}};
+        int[][] sizes = {{1920, 1080}, {960, 540}, {640, 360}, {480, 270}, {320, 160}, {285, 160}};
         for (int[] size : sizes) {
-            EditorLayout.Layout layout = EditorLayout.compute(size[0], size[1]);
+            Layout layout = EditorLayout.compute(size[0], size[1]);
             String at = size[0] + "x" + size[1];
-            assertTrue(layout.controlsContentBottom() <= layout.controlsPanelBottom() - 2,
-                at + ": last control row must stay inside the panel");
-            assertTrue(layout.doneButtonBottom() <= size[1] - 4,
-                at + ": Done button must stay on screen");
-            assertTrue(layout.controlsX() + layout.controlsWidth() <= size[0] - 10,
-                at + ": controls column must stay on screen");
-            assertTrue(layout.previewX() >= 10, at + ": preview must keep a left margin");
-            assertTrue(layout.previewY() + layout.previewSize() <= size[1] - 4,
-                at + ": preview must stay on screen");
-            if (!layout.compact()) {
-                assertTrue(layout.biomeListX() + EditorLayout.BIOME_LIST_WIDTH <= size[0] - 10,
+            Rect screen = new Rect(0, 0, size[0], size[1]);
+            assertTrue(EditorLayout.inside(screen, layout.done()), at + ": Done button must stay on screen");
+            assertTrue(EditorLayout.inside(screen, layout.cancel()), at + ": Cancel must stay on screen");
+            if (layout.minimal()) {
+                assertTrue(EditorLayout.inside(screen, layout.notice()), at + ": notice must stay on screen");
+                assertTrue(EditorLayout.inside(layout.notice(), layout.done()), at + ": Done must stay in notice");
+                continue;
+            }
+            assertTrue(EditorLayout.inside(screen, layout.canvas()), at + ": canvas must stay on screen");
+            assertTrue(EditorLayout.inside(screen, layout.controls()), at + ": controls must stay on screen");
+            assertTrue(EditorLayout.inside(screen, layout.toolColumn()), at + ": tools must stay on screen");
+            assertFalse(EditorLayout.overlaps(layout.canvasFrame(), layout.controls()),
+                at + ": canvas and controls must not overlap");
+            assertFalse(EditorLayout.overlaps(layout.toolColumn(), layout.canvasFrame()),
+                at + ": tools and canvas must not overlap");
+            assertTrue(layout.done().bottom() <= size[1] - 2, at + ": Done/Cancel clipped");
+            assertTrue(layout.canvas().width() > 0 && layout.canvas().height() > 0,
+                at + ": canvas must be visible");
+            if (layout.listVisible()) {
+                assertTrue(EditorLayout.inside(screen, layout.listPanel()),
                     at + ": biome list must stay on screen");
+                assertFalse(EditorLayout.overlaps(layout.listPanel(), layout.controls()),
+                    at + ": list and controls must not overlap");
             }
         }
         assertTrue(EditorLayout.compute(480, 270).compact());
         assertFalse(EditorLayout.compute(960, 540).compact());
+        assertTrue(EditorLayout.compute(285, 160).minimal());
     }
 
     private static int countLand(IslandDraft draft) {

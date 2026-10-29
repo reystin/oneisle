@@ -1,9 +1,9 @@
 version,rep,ns_per_100x100_quarters,ms_per_25x25_chunks,ns_per_column
-v1,1,208667,0.334,20.9
-v2,1,3432167,5.491,343.2
-v1,2,281458,0.450,28.1
-v2,2,3572750,5.716,357.3
-v1,3,221167,0.354,22.1
-v2,3,2864167,4.583,286.4
+v1,1,218167,0.349,21.8
+v2,1,2846250,4.554,284.6
+v1,2,233500,0.374,23.4
+v2,2,3000708,4.801,300.1
+v1,3,140500,0.225,14.1
+v2,3,2863791,4.582,286.4
 # This measures the 2D density sampler at the vanilla 4-block noise resolution.
 # It is NOT full chunk generation: no noise router, carvers, features or structures.

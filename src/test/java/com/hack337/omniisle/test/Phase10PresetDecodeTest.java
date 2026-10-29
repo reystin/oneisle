@@ -218,8 +218,10 @@ public class Phase10PresetDecodeTest {
         Path modResources = Path.of("build", "resources", "main");
         try (PathPackResources generated = new PathPackResources(generatedInfo, generatedPackDir);
              PathPackResources mod = new PathPackResources(modInfo, modResources);
+             // MultiPackResourceManager gives the last pack the highest priority, matching the
+             // game where the world datapack overrides mod resources.
              MultiPackResourceManager resources = new MultiPackResourceManager(
-                 PackType.SERVER_DATA, List.of(generated, mod, vanilla))) {
+                 PackType.SERVER_DATA, List.of(vanilla, mod, generated))) {
             RegistryAccess.Frozen builtinAccess =
                 RegistryAccess.fromRegistryOfRegistries(BuiltInRegistries.REGISTRY);
             List<Registry.PendingTags<?>> pendingTags =

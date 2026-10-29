@@ -1,0 +1,8 @@
+# 1.0.1 v3 composition, seed 2025, 256x256, five presets
+target,warm>=8.00,cold>=8.00,green>=60.00,green<=75.00,cherry<3.50,mushroom<3.50,pale<3.50,counters=0
+MINESHIELD_4_MAP,warm=16.11%,cold=15.46%,green=66.59%,cherry=1.12%,mushroom=1.02%,pale=1.39%,counters=0,PASS
+NATURAL,warm=17.52%,cold=14.39%,green=67.37%,cherry=2.67%,mushroom=0.15%,pale=0.93%,counters=0,PASS
+ROUND,warm=17.47%,cold=14.21%,green=67.61%,cherry=2.66%,mushroom=0.12%,pale=0.94%,counters=0,PASS
+ARCHIPELAGO,warm=14.51%,cold=13.96%,green=68.90%,cherry=1.39%,mushroom=0.87%,pale=1.42%,counters=0,PASS
+CRESCENT,warm=17.32%,cold=13.86%,green=68.57%,cherry=2.14%,mushroom=0.25%,pale=1.21%,counters=0,PASS
+all_targets_met=true

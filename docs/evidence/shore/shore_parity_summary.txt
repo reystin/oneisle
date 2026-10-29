@@ -1,4 +1,4 @@
 samples,18403
 matched,18403
 rate,1.0
-shore_samples,5914
+shore_samples,5508

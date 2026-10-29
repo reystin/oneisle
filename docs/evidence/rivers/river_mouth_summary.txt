@@ -1,12 +1,12 @@
 river_mouth_cells,10
 samples,10000
-points_below_sea_level,2799
+points_below_sea_level,2777
 points_with_carve,1618
 max_delta_c_1block,0.024772
 bank_delta_budget,0.035000
 max_slope_1block,1.957770
 slope_budget,2.700000
 waterline_crossings,10
-max_waterline_delta_per_block,0.021143
+max_waterline_delta_per_block,0.021227
 max_waterline_carve,0.022150
 waterline_delta_budget,0.035000

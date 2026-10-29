@@ -129,7 +129,7 @@ public class Phase9StructureTest {
                             set + " must use the real random-spread machinery");
                         int spacing = placement.get("spacing").getAsInt();
                         int separation = placement.get("separation").getAsInt();
-                        int[] expected = expectedSpread(set.equals("trial_chambers"), size, density);
+                        int[] expected = expectedSpread(set, size, density);
                         assertEquals(expected[0], spacing, set + " spacing");
                         assertEquals(expected[1], separation, set + " separation");
                         assertTrue(separation < spacing, set + " must keep separation < spacing");
@@ -254,9 +254,10 @@ public class Phase9StructureTest {
         return JsonParser.parseString(json).getAsJsonObject().getAsJsonArray("values");
     }
 
-    private static int[] expectedSpread(boolean trial, int size, double density) {
-        int baseSpacing = 34;
-        int baseSeparation = trial ? 12 : 8;
+    private static int[] expectedSpread(String set, int size, double density) {
+        boolean trial = set.equals("trial_chambers");
+        int baseSpacing = trial ? 34 : 54;
+        int baseSeparation = trial ? 12 : 12;
         double islandScale = Math.min(1.0, size / 4000.0);
         double densityScale = 1.0 / Math.sqrt(density);
         int spacing = Math.max(2, (int) Math.round(baseSpacing * islandScale * densityScale));

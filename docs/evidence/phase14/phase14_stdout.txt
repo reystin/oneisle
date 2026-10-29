@@ -1,0 +1,11 @@
+<testsuite name="com.hack337.omniisle.test.Phase14ClimateTransitionTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-10-28T16:52:50.711Z" hostname="MacBook-Neo-reystin.local" time="3.032"
+<testsuite name="com.hack337.omniisle.test.Phase14ShoreInteriorTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-10-28T16:52:53.744Z" hostname="MacBook-Neo-reystin.local" time="0.803"
+<testsuite name="com.hack337.omniisle.test.Phase14VillagePackTest" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-10-28T16:52:54.547Z" hostname="MacBook-Neo-reystin.local" time="3.939"
+PHASE14 climate MINESHIELD_4_MAP families={0=1620, 1=353, 2=3164, 3=3433, 4=671, 5=353, 6=148, 7=496, 8=59, 9=5, 10=47, 11=1335, 12=147, 13=576, 16=133, 17=207} warmCore=2105 coldCore=1973 mountainCore=0 adjacent=0 switches=39 unbanded=0 banded=39 bands={2=1590, 4=287, 5=160}
+PHASE14 climate NATURAL families={0=1266, 1=619, 2=5030, 3=1746, 4=683, 5=1659, 6=367, 7=482, 8=2, 10=79, 11=1855, 12=26, 13=483, 16=21, 17=223} warmCore=2443 coldCore=1885 mountainCore=0 adjacent=0 switches=100 unbanded=0 banded=100 bands={2=4316, 4=558, 5=1629}
+PHASE14 fjord none=198 minBay=1.0
+PHASE14 shore NATURAL d in [0,40] coastal=2597 shore=136 interior=21 beyondBand=0 shallow=0 highTier=0 inlandC=0
+PHASE14 shore FJORDS d in [0,40] coastal=5198 shore=150 interior=22 beyondBand=0 shallow=0 highTier=0 inlandC=0
+PHASE14 shore ARCHIPELAGO d in [0,40] coastal=7272 shore=224 interior=38 beyondBand=0 shallow=0 highTier=0 inlandC=0
+PHASE14 openCoast sand=76/201
+PHASE14 naturalCoast sand=302

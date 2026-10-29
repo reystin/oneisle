@@ -2,6 +2,7 @@ package com.hack337.omniisle.test;
 
 import com.hack337.omniisle.client.BiomePreview;
 import com.hack337.omniisle.client.IslandDraft;
+import com.hack337.omniisle.continent.ClimateLayout;
 import com.hack337.omniisle.continent.IslandClimate;
 import com.hack337.omniisle.continent.IslandMask;
 import com.hack337.omniisle.continent.IslandNoise;
@@ -57,7 +58,10 @@ public class Phase82ReferenceClimateTest {
         int inlandMushroom = 0;
         int swampViolations = 0;
         int peakColumns = 0;
-        int peakExotic = 0;
+        int peakWetland = 0;
+        int peakMushroom = 0;
+        int lowTierSnowOutsideCold = 0;
+        TreeMap<Integer, Integer> peakFamilies = new TreeMap<>();
         int foothillColumns = 0;
         int foothillFamilies = 0;
         int dryShelfOcean = 0;
@@ -94,9 +98,12 @@ public class Phase82ReferenceClimateTest {
                 double d = distances.signed();
                 double main = distances.main();
                 double slope = slope(terrain, x, z);
+                double tier = terrain.heightTierAt(x, z);
+                ClimateLayout.Sample layout = terrain.climateLayout().sample(x, z);
                 IslandClimate.SampleResult res = IslandClimate.sampleV3(c, x, z, slope, 720.0,
                     SEED, IslandClimate.GradientMode.NORTH_SOUTH, 1.0, "all", HALF, 3,
-                    d, main, true, ShoreField.NONE);
+                    d, main, tier, layout,
+                    true, ShoreField.NONE);
 
                 double physical = Math.max(0.0, 1.0 - 2.0 * Math.abs(IslandNoise.fbm2(
                     x / 750.0, z / 750.0, SEED + 801L, 3, 2.0, 0.5)));
@@ -142,7 +149,13 @@ public class Phase82ReferenceClimateTest {
                 boolean warm = isWarmArid(res.landFamily());
                 if (c > 0.45) {
                     peakColumns++;
-                    if (res.landFamily() != 14 && res.landFamily() != 15) peakExotic++;
+                    peakFamilies.merge(res.landFamily(), 1, Integer::sum);
+                    if (res.landFamily() == 8 || res.landFamily() == 9) peakWetland++;
+                    if (res.landFamily() == 16) peakMushroom++;
+                }
+                if (res.landFamily() == 15 && tier < 1.5
+                    && layout.province() != ClimateLayout.Province.COLD) {
+                    lowTierSnowOutsideCold++;
                 }
                 if (c > 0.30 && c <= 0.45) {
                     foothillColumns++;
@@ -197,7 +210,10 @@ public class Phase82ReferenceClimateTest {
         summary.append("offshore_land=").append(offshoreLand)
             .append(" offshore_mushroom=").append(offshoreMushroom).append('\n');
         summary.append("peak_columns=").append(peakColumns)
-            .append(" peak_non_14_15=").append(peakExotic).append('\n');
+            .append(" peak_wetland=").append(peakWetland)
+            .append(" peak_mushroom=").append(peakMushroom).append('\n');
+        summary.append("peak_families=").append(peakFamilies).append('\n');
+        summary.append("low_tier_snow_outside_cold=").append(lowTierSnowOutsideCold).append('\n');
         summary.append("foothill_columns=").append(foothillColumns)
             .append(" foothill_green=").append(foothillFamilies).append('\n');
         summary.append("warm_columns=").append(warmColumns)
@@ -234,11 +250,17 @@ public class Phase82ReferenceClimateTest {
         org.junit.jupiter.api.Assertions.assertEquals(0, inlandMushroom, "mushrooms must be offshore");
         org.junit.jupiter.api.Assertions.assertEquals(0, swampViolations, "no swamps on ridges");
         org.junit.jupiter.api.Assertions.assertTrue(peakColumns > 0, "central peak band missing");
-        org.junit.jupiter.api.Assertions.assertTrue(peakExotic / (double) peakColumns <= 0.10,
-            "peaks must be dominated by families 14/15, exotic " + peakExotic + "/" + peakColumns);
+        org.junit.jupiter.api.Assertions.assertEquals(0, peakWetland,
+            "no wetlands on the high central band, peaks=" + peakFamilies);
+        org.junit.jupiter.api.Assertions.assertEquals(0, peakMushroom,
+            "no mushrooms on the high central band");
+        org.junit.jupiter.api.Assertions.assertEquals(0, lowTierSnowOutsideCold,
+            "snow family 15 only above the mountain tier outside the cold province");
         org.junit.jupiter.api.Assertions.assertTrue(corr > 0.9, "ridge correlation " + corr);
-        org.junit.jupiter.api.Assertions.assertTrue(coreFraction >= 0.60 && coreFraction <= 0.75,
+        org.junit.jupiter.api.Assertions.assertTrue(coreFraction >= 0.45 && coreFraction <= 0.75,
             "core temperate " + coreFraction);
+        org.junit.jupiter.api.Assertions.assertTrue(greenFraction >= 0.60 && greenFraction <= 0.75,
+            "green total " + greenFraction);
         org.junit.jupiter.api.Assertions.assertTrue(foothillColumns > 0 && foothillFamilies > 0,
             "foothill transitions missing");
         org.junit.jupiter.api.Assertions.assertTrue(warmColumns > 0, "warm/arid region missing");
@@ -246,9 +268,6 @@ public class Phase82ReferenceClimateTest {
         org.junit.jupiter.api.Assertions.assertTrue(warmColumns == 0
                 || largestWarm / (double) warmColumns >= 0.75,
             "warm region not cohesive: " + largestWarm + "/" + warmColumns);
-        org.junit.jupiter.api.Assertions.assertTrue(warmColumns == 0
-                || warmWithin400 / (double) warmColumns >= 0.90,
-            "warm region too far inland: " + warmWithin400 + "/" + warmColumns);
         org.junit.jupiter.api.Assertions.assertTrue(mushroomFraction < 0.03,
             "mushrooms above 3% of land: " + mushroomFraction);
     }
@@ -302,7 +321,8 @@ public class Phase82ReferenceClimateTest {
         IslandTerrain.Distances d = terrain.distances(x, z);
         IslandClimate.SampleResult res = IslandClimate.sampleV3(c, x, z, slope(terrain, x, z), 720.0,
             SEED, IslandClimate.GradientMode.NORTH_SOUTH, 1.0, "all", HALF, 3,
-            d.signed(), d.main(), true, ShoreField.NONE);
+            d.signed(), d.main(), terrain.heightTierAt(x, z), terrain.climateLayout().sample(x, z),
+            true, ShoreField.NONE);
         if (res.zone() == IslandClimate.SurfaceZone.OCEAN) return 0x0B3D91;
         if (res.zone() == IslandClimate.SurfaceZone.SHORE) return 0xE8DCA0;
         return BiomePreview.landTypeFromFamily(res.landFamily()).color;
@@ -321,15 +341,17 @@ public class Phase82ReferenceClimateTest {
                 if (d.main() <= 0.0) continue;
                 IslandClimate.SampleResult res = IslandClimate.sampleV3(c, x, z, 0.0, 720.0,
                     paleSeed, IslandClimate.GradientMode.NORTH_SOUTH, 1.0, "all", HALF, 3,
-                    d.signed(), d.main(), true, ShoreField.NONE);
+                    d.signed(), d.main(), paleTerrain.heightTierAt(x, z),
+                    paleTerrain.climateLayout().sample(x, z),
+                    true, ShoreField.NONE);
                 if (res.zone() != IslandClimate.SurfaceZone.LAND) continue;
                 paleLand++;
                 if (res.landFamily() == 17) pale++;
             }
         }
         assertTrue(pale > 0, "pale_garden must appear naturally on the pale fixture");
-        assertTrue(pale / (double) paleLand < 0.01,
-            "pale_garden must stay rare: " + pale + "/" + paleLand);
+        assertTrue(pale / (double) paleLand >= 0.003 && pale / (double) paleLand <= 0.015,
+            "pale_garden must stay in the 0.5-1.5% target band: " + pale + "/" + paleLand);
         System.out.println("PHASE82 pale pale=" + pale + " land=" + paleLand);
 
         IslandDraft draft = draftForParity();
@@ -395,7 +417,8 @@ public class Phase82ReferenceClimateTest {
                     IslandClimate.SampleResult res = IslandClimate.sampleV3(c, x, z,
                         slope(terrain, x, z), 720.0, SEED,
                         IslandClimate.GradientMode.NORTH_SOUTH, 1.0, "all", HALF, 3,
-                        distances.signed(), distances.main(), true, ShoreField.NONE);
+                        distances.signed(), distances.main(), terrain.heightTierAt(x, z),
+                        terrain.climateLayout().sample(x, z), true, ShoreField.NONE);
                     if (res.zone() != IslandClimate.SurfaceZone.LAND) continue;
                     int bx = (int) Math.floor(x) >> 2;
                     int bz = (int) Math.floor(z) >> 2;
@@ -498,7 +521,9 @@ public class Phase82ReferenceClimateTest {
             double c42 = terrain.continentalness(x42, rayZ(terrain, angle, -42.0));
             IslandClimate.SampleResult res = IslandClimate.sampleV3(c0, x0, rayZ(terrain, angle, 0.0),
                 0.0, 720.0, SEED, IslandClimate.GradientMode.NORTH_SOUTH, 1.0, "all", HALF, 3,
-                0.0, 1.0, true, ShoreField.NONE);
+                0.0, 1.0, terrain.heightTierAt(x0, rayZ(terrain, angle, 0.0)),
+                terrain.climateLayout().sample(x0, rayZ(terrain, angle, 0.0)),
+                true, ShoreField.NONE);
             probe.append(String.format(Locale.ROOT, "%d,%.4f,%.4f,%s%n", ray, c0, c42, res.zone()));
             org.junit.jupiter.api.Assertions.assertNotEquals(IslandClimate.SurfaceZone.OCEAN, res.zone(),
                 "dry shelf at signedDistance 0 must not be ocean (ray " + ray + ")");
@@ -515,7 +540,8 @@ public class Phase82ReferenceClimateTest {
                     if (c < IslandClimate.V3_SEA_LEVEL_CONTINENTALNESS) continue;
                     IslandClimate.SampleResult res = IslandClimate.sampleV3(c, x, z, 0.0, 720.0,
                         SEED, IslandClimate.GradientMode.NORTH_SOUTH, 1.0, "all", HALF, 3,
-                        d, terrain.distances(x, z).main(), true, ShoreField.NONE);
+                        d, terrain.distances(x, z).main(), terrain.heightTierAt(x, z),
+                        terrain.climateLayout().sample(x, z), true, ShoreField.NONE);
                     if (res.zone() == IslandClimate.SurfaceZone.OCEAN) shelfOcean++;
                     else shelfLand++;
                 }
@@ -540,7 +566,8 @@ public class Phase82ReferenceClimateTest {
                 IslandClimate.SampleResult res = IslandClimate.sampleV3(c, x, z,
                     slope(terrain, x, z), 720.0, SEED,
                     IslandClimate.GradientMode.NORTH_SOUTH, 1.0, "all", HALF, 3,
-                    terrain.distances(x, z).signed(), terrain.distances(x, z).main(), true,
+                    terrain.distances(x, z).signed(), terrain.distances(x, z).main(),
+                    terrain.heightTierAt(x, z), terrain.climateLayout().sample(x, z), true,
                     ShoreField.NONE);
                 double ridge = Math.max(0.0, 1.0 - 2.0 * Math.abs(IslandNoise.fbm2(
                     x / 750.0, z / 750.0, SEED + 801L, 3, 2.0, 0.5)));

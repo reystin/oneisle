@@ -1,0 +1,4 @@
+# JUnit aggregation of build/test-results/test after ./gradlew test (2026-10-28)
+suites=47 tests=193 failures=0 errors=0 skipped=2
+skipped: com.hack337.omniisle.test.GoldenV1Test.regenerateGoldenIfRequested()
+skipped: com.hack337.omniisle.test.Phase9HarnessPacksTest.exportHarnessPacks()

@@ -161,7 +161,7 @@ public class Phase7EditorTest {
     }
 
     @Test
-    @DisplayName("7.4 Shape Presets Validation: 12 presets x 20 seeds, land fraction 12-55%, component >= 70%, 0 border pixels")
+    @DisplayName("7.4 Shape Presets Validation: 13 presets x 20 seeds, land fraction 12-55%, component >= 70%, 0 border pixels")
     void testAllShapePresets() {
         IslandDraft.Preset[] presets = IslandDraft.Preset.values();
 

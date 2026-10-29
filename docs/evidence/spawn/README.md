@@ -1,5 +1,12 @@
 # Phase 9.4 — spawn across 45 configs
 
+> **STALE (Phase 13):** these measurements were taken while v3 packs still emitted the
+> `omniisle:spawn_plateau` density dome, which forced `marker_match = 45/45`. v3 now removes the
+> dome and accepts the editor marker only if its column is dry, otherwise it searches rings
+> 16–512 for a dry column at server start. World spawn may therefore differ from the marker (x/z),
+> and **this 45/45 marker-match result no longer describes current behavior**. The `land`, `dry`
+> and ray-probe columns are retained as historical baseline; a new sweep was not performed.
+
 Every row was measured on a headless 26.3 Fabric server with a fresh world. The server
 writes the config's `spawn` block into the generated pack, and the world spawn is read
 back with `omniisle query spawn` (it uses `ServerLevel.getRespawnData().pos()`, the same

@@ -1,0 +1,4 @@
+resolution,tier3_components,tier3_area,tier3_centroid_x,tier3_centroid_z,tier2_components,tier2_min_area,tier2_max_centroid_x
+192,1,612,0.5214,0.3976,3,70,0.2500
+256,1,990,0.5198,0.3916,3,141,0.2506
+384,1,2396,0.5265,0.3953,3,314,0.2516

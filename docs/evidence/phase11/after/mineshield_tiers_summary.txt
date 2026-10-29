@@ -1,0 +1,13 @@
+Mineshield 4 height tiers, resolution 192
+source before: docs/evidence/phase11/before/mineshield_tiers_before.png (raw extraction)
+source after:  docs/evidence/phase11/after/mineshield_tiers.png (3x3 median + range/band cleanup)
+
+before: land=11232 tier1=8983 tier2=1509 tier3=740
+after:  land=11232 tier1=9189 tier2=1431 tier3=612
+
+8-connected components (before -> after):
+tier3: 16 -> 1   (largest before 571, then detached lobes 121, 12, 8, 7, 6, 4, 3, 1, 1...)
+tier2: 48 -> 3   (largest before 1080, 253, 92, then 45 specks <= 10 cells)
+after tier2 components: 1108 / 253 / 70 cells, all centroids west of x=0.26
+after tier3 range: 612 cells, bbox 46x52, centroid (0.521, 0.398), one curved central-north range
+resolution sweep after: 256 -> 990 tier3 cells single component; 384 -> 2396 cells single component
