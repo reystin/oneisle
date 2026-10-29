@@ -72,7 +72,8 @@ public final class IslandDraft {
         TWIN_ISLANDS("omniisle.preset.twin_islands"),
         INLAND_SEA("omniisle.preset.inland_sea"),
         HORSESHOE_BAY("omniisle.preset.horseshoe_bay"),
-        RIDGE_ISLAND("omniisle.preset.ridge_island");
+        RIDGE_ISLAND("omniisle.preset.ridge_island"),
+        MINESHIELD_4_MAP("omniisle.preset.mineshield_4_map");
 
         public final String translationKey;
         Preset(String translationKey) { this.translationKey = translationKey; }
@@ -1075,6 +1076,15 @@ public final class IslandDraft {
         boolean[] next = new boolean[resolution * resolution];
         byte[] nextHeight = defaultHeight(resolution);
 
+        if (preset == Preset.MINESHIELD_4_MAP) {
+            Mineshield4Map.Data map = Mineshield4Map.sample(resolution);
+            System.arraycopy(map.land(), 0, next, 0, next.length);
+            System.arraycopy(map.height(), 0, nextHeight, 0, nextHeight.length);
+            this.land = next;
+            this.height = nextHeight;
+            return;
+        }
+
         Random random = new Random(shapeSeed);
         double rotation = random.nextDouble() * Math.PI * 2.0;
         List<ArchipelagoBlob> archipelago = preset == Preset.ARCHIPELAGO
@@ -1608,6 +1618,12 @@ public final class IslandDraft {
     private BiomePreview.Type resolvePreviewBiome(BiomePreview.Selection selection,
                                                   int weightX, int weightZ, double worldX, double worldZ) {
         if (selection == null) return null;
+        if (selection.isLand() && selection.landHint() != null
+            && !hasNonNeutralWeights()) {
+            BiomePreview.Type hinted = BiomePreview.landTypeForFamily(
+                selection.landFamily(), selection.landHint());
+            if (hinted != null && hinted.isLand() && enabledBiomes.contains(hinted)) return hinted;
+        }
         if (!selection.isLand() || !hasNonNeutralWeights()
             || BiomeShare.isTerrainDriven(selection.landFamily())) {
             return selectBiome(selection.type(), worldX, worldZ);

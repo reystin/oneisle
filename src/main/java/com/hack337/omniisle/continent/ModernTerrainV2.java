@@ -1,5 +1,7 @@
 package com.hack337.omniisle.continent;
 
+import java.util.Arrays;
+
 /**
  * Modern terrain generator (v2) for OmniIsle 0.6.0+.
  * Features:
@@ -39,8 +41,10 @@ public final class ModernTerrainV2 implements IslandTerrain {
     private final ShoreSettings shoreSettings;
 
     private final float[] sdfGrid;
+    private final float[] mainSdfGrid;
     private final float[] heightGrid;
     private final IslandRivers rivers;
+    private volatile ClimateLayout climateLayout;
 
     public ModernTerrainV2(IslandShapeConfig config) {
         this.config = config;
@@ -72,6 +76,7 @@ public final class ModernTerrainV2 implements IslandTerrain {
         this.shoreSettings = config != null && config.generationVersion >= 3 ? config.shore : null;
 
         this.sdfGrid = buildSdfGrid();
+        this.mainSdfGrid = v3Ocean ? buildSdfGrid(largestLandComponent()) : null;
         this.heightGrid = buildHeightGrid(config != null ? config.unpackedHeight : null);
         this.rivers = new IslandRivers(config, this.mask, this.sdfGrid, this.heightGrid);
     }
@@ -99,8 +104,9 @@ public final class ModernTerrainV2 implements IslandTerrain {
 
     @Override
     public Distances distances(double worldX, double worldZ) {
-        double main = computeSignedDistance(worldX, worldZ, true);
-        double signed = main;
+        double signed = computeSignedDistance(worldX, worldZ, true);
+        double main = mainSdfGrid != null
+            ? computeSignedDistance(worldX, worldZ, true, mainSdfGrid) : signed;
 
         // Check if inside any satellite islet
         if (signed < 0.0 && isletDensity > 0.0) {
@@ -116,6 +122,36 @@ public final class ModernTerrainV2 implements IslandTerrain {
     @Override
     public double signedDistance(double worldX, double worldZ) {
         return distances(worldX, worldZ).signed();
+    }
+
+    @Override
+    public double heightTierAt(double worldX, double worldZ) {
+        if (heightGrid == null) return 1.0;
+        double px = ((Math.max(minX, Math.min(maxX, worldX)) - minX) / (maxX - minX)) * width - 0.5;
+        double pz = ((Math.max(minZ, Math.min(maxZ, worldZ)) - minZ) / (maxZ - minZ)) * height - 0.5;
+        return sampleHeight(px, pz);
+    }
+
+    @Override
+    public ClimateLayout climateLayout() {
+        if (!v3Ocean) return null;
+        ClimateLayout local = climateLayout;
+        if (local == null) {
+            synchronized (this) {
+                local = climateLayout;
+                if (local == null) {
+                    local = new ClimateLayout(mask, seed);
+                    climateLayout = local;
+                }
+            }
+        }
+        return local;
+    }
+
+    /** Physical ridged spine shared by terrain relief and climate mountain bias. */
+    public static double physicalRidge(double worldX, double worldZ, long seed) {
+        return 1.0 - 2.0 * Math.abs(IslandNoise.fbm2(
+            worldX / 750.0, worldZ / 750.0, seed + 801L, 3, 2.0, 0.5));
     }
 
     @Override
@@ -152,8 +188,7 @@ public final class ModernTerrainV2 implements IslandTerrain {
 
             // Procedural ridged mountain spines
             double inlandFactor = IslandNoise.smoothstep((d - 60.0) / 190.0);
-            double ridgeFbm = IslandNoise.fbm2(worldX / 750.0, worldZ / 750.0, seed + 801L, 3, 2.0, 0.5);
-            double ridge = 1.0 - 2.0 * Math.abs(ridgeFbm);
+            double ridge = physicalRidge(worldX, worldZ, seed);
             double ridgeTerm = ridge * 0.22 * inlandFactor * mountainBias * reliefScale;
 
             double cTotal = baseUnclamped + ridgeTerm + tierOffset;
@@ -175,8 +210,9 @@ public final class ModernTerrainV2 implements IslandTerrain {
                 c += roughness;
             }
 
-            // v3 shore terrain: flatten beach pockets, slightly steepen no-beach coasts
-            if (shoreSettings != null && shoreSettings.enabled() && d < 52.0) {
+            // v3 shore terrain: flatten beach pockets, slightly steepen no-beach coasts.
+            // Hills keep their relief: the shore outcome is gated to the same low-tier band.
+            if (shoreSettings != null && shoreSettings.enabled() && d < 52.0 && tierVal <= 1.05) {
                 double patch = ShoreField.patch(worldX, worldZ, shoreSettings, seed);
                 double beachMask = 0.0;
                 if (patch > 0.0) {
@@ -433,6 +469,10 @@ public final class ModernTerrainV2 implements IslandTerrain {
      * @return signed distance in blocks (> 0 inland, < 0 offshore)
      */
     public double computeSignedDistance(double worldX, double worldZ, boolean applyWarp) {
+        return computeSignedDistance(worldX, worldZ, applyWarp, sdfGrid);
+    }
+
+    private double computeSignedDistance(double worldX, double worldZ, boolean applyWarp, float[] grid) {
         double targetX = worldX;
         double targetZ = worldZ;
 
@@ -452,7 +492,7 @@ public final class ModernTerrainV2 implements IslandTerrain {
         double px = (sampledX - minX) / (maxX - minX) * width - 0.5;
         double pz = (sampledZ - minZ) / (maxZ - minZ) * height - 0.5;
 
-        double pixelDistance = sampleBicubicClamped(px, pz);
+        double pixelDistance = sampleBicubicClamped(px, pz, grid);
         double worldDistance = pixelDistance * blocksPerPixel;
 
         double outsideX = targetX - sampledX;
@@ -470,6 +510,10 @@ public final class ModernTerrainV2 implements IslandTerrain {
      * Catmull-Rom bicubic interpolation on the SDF grid with 4x4 neighbourhood clamping.
      */
     public double sampleBicubicClamped(double px, double pz) {
+        return sampleBicubicClamped(px, pz, sdfGrid);
+    }
+
+    private double sampleBicubicClamped(double px, double pz, float[] grid) {
         px = Math.max(0.0, Math.min(width - 1.0, px));
         pz = Math.max(0.0, Math.min(height - 1.0, pz));
 
@@ -495,16 +539,16 @@ public final class ModernTerrainV2 implements IslandTerrain {
         for (int z : zs) {
             int row = z * width;
             for (int x : xs) {
-                float v = sdfGrid[row + x];
+                float v = grid[row + x];
                 if (v < minVal) minVal = v;
                 if (v > maxVal) maxVal = v;
             }
         }
 
-        double r0 = catmullRom1D(sdfGrid[z0 * width + x0], sdfGrid[z0 * width + x1], sdfGrid[z0 * width + x2], sdfGrid[z0 * width + x3], tx);
-        double r1 = catmullRom1D(sdfGrid[z1 * width + x0], sdfGrid[z1 * width + x1], sdfGrid[z1 * width + x2], sdfGrid[z1 * width + x3], tx);
-        double r2 = catmullRom1D(sdfGrid[z2 * width + x0], sdfGrid[z2 * width + x1], sdfGrid[z2 * width + x2], sdfGrid[z2 * width + x3], tx);
-        double r3 = catmullRom1D(sdfGrid[z3 * width + x0], sdfGrid[z3 * width + x1], sdfGrid[z3 * width + x2], sdfGrid[z3 * width + x3], tx);
+        double r0 = catmullRom1D(grid[z0 * width + x0], grid[z0 * width + x1], grid[z0 * width + x2], grid[z0 * width + x3], tx);
+        double r1 = catmullRom1D(grid[z1 * width + x0], grid[z1 * width + x1], grid[z1 * width + x2], grid[z1 * width + x3], tx);
+        double r2 = catmullRom1D(grid[z2 * width + x0], grid[z2 * width + x1], grid[z2 * width + x2], grid[z2 * width + x3], tx);
+        double r3 = catmullRom1D(grid[z3 * width + x0], grid[z3 * width + x1], grid[z3 * width + x2], grid[z3 * width + x3], tx);
 
         double val = catmullRom1D(r0, r1, r2, r3, tz);
         return Math.max(minVal, Math.min(maxVal, val));
@@ -540,12 +584,17 @@ public final class ModernTerrainV2 implements IslandTerrain {
     }
 
     private float[] buildSdfGrid() {
+        return buildSdfGrid(null);
+    }
+
+    private float[] buildSdfGrid(boolean[] sourceLand) {
         int paddedWidth = width + 2;
         int paddedHeight = height + 2;
         boolean[] padded = new boolean[paddedWidth * paddedHeight];
         for (int z = 0; z < height; z++) {
             for (int x = 0; x < width; x++) {
-                if (mask.isLand(x, z)) {
+                boolean isLand = sourceLand != null ? sourceLand[z * width + x] : mask.isLand(x, z);
+                if (isLand) {
                     padded[(z + 1) * paddedWidth + (x + 1)] = true;
                 }
             }
@@ -559,7 +608,7 @@ public final class ModernTerrainV2 implements IslandTerrain {
             for (int x = 0; x < width; x++) {
                 int source = (z + 1) * paddedWidth + x + 1;
                 int target = z * width + x;
-                boolean isLand = mask.isLand(x, z);
+                boolean isLand = sourceLand != null ? sourceLand[target] : mask.isLand(x, z);
                 if (isLand) {
                     double dOut = Math.sqrt(toOcean[source]);
                     rawSdf[target] = (float) Math.max(0.0, dOut - 0.5);
@@ -592,6 +641,47 @@ public final class ModernTerrainV2 implements IslandTerrain {
         }
 
         return smoothed;
+    }
+
+    private boolean[] largestLandComponent() {
+        int cells = width * height;
+        boolean[] visited = new boolean[cells];
+        boolean[] current = new boolean[cells];
+        boolean[] best = new boolean[cells];
+        int[] queue = new int[cells];
+        int bestSize = 0;
+        for (int start = 0; start < cells; start++) {
+            if (visited[start] || !mask.isLand(start % width, start / width)) continue;
+            int head = 0;
+            int tail = 0;
+            queue[tail++] = start;
+            visited[start] = true;
+            int size = 0;
+            while (head < tail) {
+                int index = queue[head++];
+                current[index] = true;
+                size++;
+                int x = index % width;
+                int z = index / width;
+                if (x > 0) tail = enqueueLand(index - 1, visited, queue, tail);
+                if (x + 1 < width) tail = enqueueLand(index + 1, visited, queue, tail);
+                if (z > 0) tail = enqueueLand(index - width, visited, queue, tail);
+                if (z + 1 < height) tail = enqueueLand(index + width, visited, queue, tail);
+            }
+            if (size > bestSize) {
+                bestSize = size;
+                System.arraycopy(current, 0, best, 0, cells);
+            }
+            Arrays.fill(current, false);
+        }
+        return best;
+    }
+
+    private int enqueueLand(int index, boolean[] visited, int[] queue, int tail) {
+        if (visited[index] || !mask.isLand(index % width, index / width)) return tail;
+        visited[index] = true;
+        queue[tail] = index;
+        return tail + 1;
     }
 
     private static double[] distanceTransform(boolean[] mask, int width, int height, boolean targetValue) {

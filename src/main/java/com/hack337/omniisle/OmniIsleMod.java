@@ -26,6 +26,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.storage.LevelData;
 import net.minecraft.world.level.storage.LevelResource;
@@ -152,36 +153,64 @@ public class OmniIsleMod implements ModInitializer {
         IslandDensityFunction activeDf = IslandDensityFunction.getActive();
         IslandTerrain terrain = activeDf != null ? activeDf.terrain() : null;
         if (terrain != null && terrain.signedDistance(startX, startZ) > 0.0) {
-            return surfaceAt(world, startX, startZ);
+            BlockPos dry = drySpawnAt(world, startX, startZ);
+            if (dry != null) return dry;
         }
 
         if (terrain != null) {
-            // The marker is meant to be land; if it is not, pick the deepest land
-            // within a short radius rather than the first 1-2 block spit.
+            // Walk outward one ring at a time and only materialize the deepest column
+            // of each ring, so a wet marker does not load hundreds of chunks.
             double bestDepth = -1.0e9;
             int bestX = startX;
             int bestZ = startZ;
             for (int radius = 16; radius <= 512; radius += 16) {
-                int samples = 32;
-                for (int i = 0; i < samples; i++) {
-                    double angle = Math.PI * 2.0 * i / samples;
+                int ringX = startX;
+                int ringZ = startZ;
+                double ringDepth = -1.0e9;
+                for (int i = 0; i < 32; i++) {
+                    double angle = Math.PI * 2.0 * i / 32;
                     int x = startX + (int) Math.round(Math.cos(angle) * radius);
                     int z = startZ + (int) Math.round(Math.sin(angle) * radius);
                     double depth = terrain.signedDistance(x, z);
-                    if (depth > bestDepth) {
-                        bestDepth = depth;
-                        bestX = x;
-                        bestZ = z;
+                    if (depth > ringDepth) {
+                        ringDepth = depth;
+                        ringX = x;
+                        ringZ = z;
                     }
                 }
-                if (bestDepth >= 48.0) break;
+                if (ringDepth > bestDepth) {
+                    bestDepth = ringDepth;
+                    bestX = ringX;
+                    bestZ = ringZ;
+                }
+                if (ringDepth > 0.0) {
+                    BlockPos dry = drySpawnAt(world, ringX, ringZ);
+                    if (dry != null) return dry;
+                }
             }
             if (bestDepth > 0.0) {
-                return surfaceAt(world, bestX, bestZ);
+                BlockPos dry = drySpawnAt(world, bestX, bestZ);
+                if (dry != null) return dry;
             }
         }
 
+        BlockPos dry = drySpawnAt(world, startX, startZ);
+        if (dry != null) return dry;
+        LOGGER.warn("OmniIsle: no dry spawn within 512 blocks of [{}, {}]; using the surface column",
+            startX, startZ);
         return surfaceAt(world, startX, startZ);
+    }
+
+    private static BlockPos drySpawnAt(ServerLevel world, int x, int z) {
+        world.getChunk(x >> 4, z >> 4);
+        int y = world.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
+        if (y <= world.getMinY()) return null;
+        BlockPos pos = new BlockPos(x, y, z);
+        BlockState ground = world.getBlockState(pos.below());
+        if (!ground.isSolid() || !ground.getFluidState().isEmpty()) return null;
+        if (!world.getBlockState(pos).isAir() || !world.getBlockState(pos.above()).isAir()) return null;
+        if (!world.getFluidState(pos).isEmpty() || !world.getFluidState(pos.above()).isEmpty()) return null;
+        return pos;
     }
 
     private static BlockPos surfaceAt(ServerLevel world, int x, int z) {

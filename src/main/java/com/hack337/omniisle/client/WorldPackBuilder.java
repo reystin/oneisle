@@ -7,6 +7,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.hack337.omniisle.continent.BiomeShare;
+import com.hack337.omniisle.continent.ClimateLayout;
 import com.hack337.omniisle.continent.IslandMask;
 import com.hack337.omniisle.continent.IslandTerrain;
 import com.hack337.omniisle.platform.TargetPlatform;
@@ -41,28 +42,38 @@ public final class WorldPackBuilder {
     private static final double DEEP_MONUMENT_MAX_CONTINENTALNESS = -0.62;
     private static final int VILLAGE_SPACING = 34;
     private static final int VILLAGE_SEPARATION = 8;
+    /** v3 pulls villages to ~40% of the old density: (34/54)^2 = 0.396. */
+    private static final int VILLAGE_SPACING_V3 = 54;
+    private static final int VILLAGE_SEPARATION_V3 = 12;
     private static final int TRIAL_CHAMBERS_SPACING = 34;
     private static final int TRIAL_CHAMBERS_SEPARATION = 12;
     private static final int VILLAGE_SALT = 10387312;
     private static final int TRIAL_CHAMBERS_SALT = 94251327;
     private static final double STRONGHOLD_MIN_PAIR_DISTANCE = 250.0;
     private static final double STRONGHOLD_MAX_REACH = 1500.0;
+    private static final double[] HIGHLAND_C = {-1.10, 0.45, 0.55, 0.65, 0.75, 0.85, 0.90, 0.95, 1.10};
+    private static final double[] HIGHLAND_LIFT = {0.00, 0.00, 0.15, 0.40, 0.60, 0.80, 0.90, 1.00, 1.00};
+    private static final double[] HIGHLAND_SCALE = {1.00, 1.00, 0.85, 0.65, 0.45, 0.30, 0.22, 0.20, 0.20};
+    private static final double HIGHLAND_FADE_FROM = 300.0;
+    private static final double HIGHLAND_FADE_TO = 316.0;
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
     private record StructureDefinition(IslandDraft.StructureOption option, String setName, String structure, String biomeTag,
                                        Set<BiomePreview.Type> biomes, boolean deepDark) {}
     private record Point(int chunkX, int chunkZ) {}
-    private record Sample(double continentalness, BiomePreview.Type biome, boolean deepDark, int family, double slope) {}
+    private record Sample(double continentalness, BiomePreview.Type biome, boolean deepDark, int family,
+                          double slope, double topY, ClimateLayout.Province province) {}
 
     private enum PolicyZone { LAND, OCEAN, SHORE, OCEAN_OR_SHORE }
 
     /**
      * v3 fixed structures are placed only on a chunk whose actual atmosphere matches the
-     * structure's intended biome family, continentalness band and slope. Empty families mean
-     * "any enabled biome in the zone".
+     * structure's intended biome family, climate province, continentalness band, slope and
+     * surface ceiling. Empty families mean "any enabled biome in the zone".
      */
-    private record StructurePolicy(Set<Integer> families, double minC, double maxC,
-                                   double maxSlope, PolicyZone zone, double preferC) {
+    private record StructurePolicy(Set<Integer> families, ClimateLayout.Province province,
+                                   double minC, double maxC, double maxSlope, double maxSurfaceY,
+                                   PolicyZone zone, double preferC) {
         boolean accepts(Sample sample) {
             boolean zoneOk = switch (zone) {
                 case LAND -> sample.biome.isLand();
@@ -74,6 +85,8 @@ public final class WorldPackBuilder {
             if (!zoneOk) return false;
             if (sample.continentalness < minC || sample.continentalness > maxC) return false;
             if (maxSlope > 0.0 && sample.slope >= maxSlope) return false;
+            if (maxSurfaceY > 0.0 && sample.topY > maxSurfaceY) return false;
+            if (province != null && sample.province != province) return false;
             if (!families.isEmpty()
                 && (!families.contains(sample.family) || !families.contains(sample.biome.family))) {
                 return false;
@@ -83,8 +96,7 @@ public final class WorldPackBuilder {
     }
 
     private static final List<StructureDefinition> STRUCTURES = List.of(
-        structure(IslandDraft.StructureOption.VILLAGE, "villages", "minecraft:village_plains", "village_plains", BiomePreview.Type.PLAINS),
-        structure(IslandDraft.StructureOption.OUTPOST, "pillager_outposts", "minecraft:pillager_outpost", "pillager_outpost", BiomePreview.Type.PLAINS),
+        structure(IslandDraft.StructureOption.VILLAGE, "villages", "minecraft:village_plains", "village_plains", BiomePreview.Type.PLAINS),        structure(IslandDraft.StructureOption.OUTPOST, "pillager_outposts", "minecraft:pillager_outpost", "pillager_outpost", BiomePreview.Type.PLAINS),
         structure(IslandDraft.StructureOption.MANSION, "woodland_mansions", "minecraft:mansion", "woodland_mansion", BiomePreview.Type.DARK_FOREST),
         structure(IslandDraft.StructureOption.DESERT_PYRAMID, "desert_pyramids", "minecraft:desert_pyramid", "desert_pyramid", BiomePreview.Type.DESERT),
         structure(IslandDraft.StructureOption.IGLOO, "igloos", "minecraft:igloo", "igloo", BiomePreview.Type.SNOWY_PLAINS),
@@ -104,24 +116,59 @@ public final class WorldPackBuilder {
         structure(IslandDraft.StructureOption.ABANDONED_CAMP, "abandoned_camp", "minecraft:abandoned_camp_forest", "abandoned_camp_forest", BiomePreview.Type.FOREST)
     );
 
+    private record VillageVariant(String structure, String tag, Set<Integer> families,
+                                  Set<BiomePreview.Type> excluded) {}
+
+    /**
+     * Vanilla's five village types, re-scoped to the biome families whose tree palette
+     * matches the village. Grove and ice spikes get no village; the plains type covers
+     * the temperate forests.
+     */
+    private static final List<VillageVariant> VILLAGE_VARIANTS = List.of(
+        new VillageVariant("minecraft:village_plains", "village_plains",
+            Set.of(2, 3, 4, 5, 6), EnumSet.of(BiomePreview.Type.GROVE)),
+        new VillageVariant("minecraft:village_desert", "village_desert",
+            Set.of(12, 13), EnumSet.noneOf(BiomePreview.Type.class)),
+        new VillageVariant("minecraft:village_savanna", "village_savanna",
+            Set.of(11), EnumSet.noneOf(BiomePreview.Type.class)),
+        new VillageVariant("minecraft:village_snowy", "village_snowy",
+            Set.of(0), EnumSet.of(BiomePreview.Type.ICE_SPIKES)),
+        new VillageVariant("minecraft:village_taiga", "village_taiga",
+            Set.of(1), EnumSet.noneOf(BiomePreview.Type.class))
+    );
+
     private WorldPackBuilder() {}
 
     private static StructurePolicy structurePolicy(IslandDraft.StructureOption option) {
         return switch (option) {
-            case DESERT_PYRAMID -> new StructurePolicy(Set.of(12), 0.00, 0.32, 0.22, PolicyZone.LAND, 0.16);
-            case JUNGLE_TEMPLE -> new StructurePolicy(Set.of(10), -2.0, 0.36, 0.28, PolicyZone.LAND, 0.20);
-            case SWAMP_HUT -> new StructurePolicy(Set.of(8, 9), -2.0, 0.16, 0.10, PolicyZone.LAND, 0.05);
-            case MANSION -> new StructurePolicy(Set.of(7), -2.0, 0.36, 0.30, PolicyZone.LAND, 0.20);
-            case IGLOO -> new StructurePolicy(Set.of(0, 1), -2.0, 0.30, 0.25, PolicyZone.LAND, 0.12);
-            case OUTPOST -> new StructurePolicy(Set.of(), -2.0, 0.40, 0.30, PolicyZone.LAND, 0.15);
-            case TRAIL_RUINS -> new StructurePolicy(Set.of(1), -2.0, 0.40, 0.30, PolicyZone.LAND, 0.15);
-            case RUINED_PORTAL -> new StructurePolicy(Set.of(), -2.0, 0.40, 0.30, PolicyZone.LAND, 0.15);
-            case ABANDONED_CAMP -> new StructurePolicy(Set.of(3), -2.0, 0.36, 0.28, PolicyZone.LAND, 0.20);
-            case MINESHAFT -> new StructurePolicy(Set.of(), -2.0, 2.0, 0.0, PolicyZone.LAND, 0.15);
-            case OCEAN_MONUMENT -> new StructurePolicy(Set.of(), -2.0, DEEP_MONUMENT_MAX_CONTINENTALNESS, 0.0, PolicyZone.OCEAN, -0.72);
-            case OCEAN_RUINS -> new StructurePolicy(Set.of(), -2.0, -0.30, 0.0, PolicyZone.OCEAN, -0.40);
-            case SHIPWRECK -> new StructurePolicy(Set.of(), -2.0, -0.20, 0.0, PolicyZone.OCEAN_OR_SHORE, -0.40);
-            case BURIED_TREASURE -> new StructurePolicy(Set.of(), -0.30, 0.02, 0.20, PolicyZone.SHORE, -0.14);
+            case DESERT_PYRAMID -> new StructurePolicy(Set.of(12), ClimateLayout.Province.WARM,
+                0.00, 0.32, 0.22, 88.0, PolicyZone.LAND, 0.16);
+            case JUNGLE_TEMPLE -> new StructurePolicy(Set.of(10), ClimateLayout.Province.WARM,
+                -2.0, 0.36, 0.28, 96.0, PolicyZone.LAND, 0.20);
+            case SWAMP_HUT -> new StructurePolicy(Set.of(8, 9), null,
+                -2.0, 0.16, 0.10, 88.0, PolicyZone.LAND, 0.05);
+            case MANSION -> new StructurePolicy(Set.of(7), null,
+                -2.0, 0.36, 0.30, 96.0, PolicyZone.LAND, 0.20);
+            case IGLOO -> new StructurePolicy(Set.of(0, 1), ClimateLayout.Province.COLD,
+                -2.0, 0.30, 0.25, 92.0, PolicyZone.LAND, 0.12);
+            case OUTPOST -> new StructurePolicy(Set.of(), null,
+                -2.0, 0.40, 0.30, 100.0, PolicyZone.LAND, 0.15);
+            case TRAIL_RUINS -> new StructurePolicy(Set.of(1), null,
+                -2.0, 0.40, 0.30, 100.0, PolicyZone.LAND, 0.15);
+            case RUINED_PORTAL -> new StructurePolicy(Set.of(), null,
+                -2.0, 0.40, 0.30, 100.0, PolicyZone.LAND, 0.15);
+            case ABANDONED_CAMP -> new StructurePolicy(Set.of(3), null,
+                -2.0, 0.36, 0.28, 96.0, PolicyZone.LAND, 0.20);
+            case MINESHAFT -> new StructurePolicy(Set.of(), null,
+                -2.0, 2.0, 0.0, 0.0, PolicyZone.LAND, 0.15);
+            case OCEAN_MONUMENT -> new StructurePolicy(Set.of(), null,
+                -2.0, DEEP_MONUMENT_MAX_CONTINENTALNESS, 0.0, 0.0, PolicyZone.OCEAN, -0.72);
+            case OCEAN_RUINS -> new StructurePolicy(Set.of(), null,
+                -2.0, -0.30, 0.0, 0.0, PolicyZone.OCEAN, -0.40);
+            case SHIPWRECK -> new StructurePolicy(Set.of(), null,
+                -2.0, -0.20, 0.0, 0.0, PolicyZone.OCEAN_OR_SHORE, -0.40);
+            case BURIED_TREASURE -> new StructurePolicy(Set.of(), null,
+                -0.30, 0.02, 0.20, 0.0, PolicyZone.SHORE, -0.14);
             default -> null;
         };
     }
@@ -147,8 +194,12 @@ public final class WorldPackBuilder {
             putEntry(zip, "data/omniisle/worldgen/density_function/overworld/continents.json",
                 createDensityJson(state, halfSpan));
             if (state.generationVersionNumber() >= 3) {
+                putEntry(zip, "data/omniisle/worldgen/density_function/overworld/offset.json",
+                    createHighlandOffsetJson());
                 putEntry(zip, "data/omniisle/worldgen/density_function/overworld/final_density.json",
-                    createSpawnPlateauJson(state));
+                    createHighlandFinalDensityJson());
+                putEntry(zip, "data/omniisle/worldgen/density_function/overworld/preliminary_surface_level.json",
+                    createHighlandPreliminarySurfaceJson());
                 putEntry(zip, "data/minecraft/worldgen/structure/desert_pyramid.json",
                     relaxedPyramidJson("omniisle:relaxed_desert_pyramid", "desert_pyramid"));
                 putEntry(zip, "data/minecraft/worldgen/structure/jungle_pyramid.json",
@@ -258,16 +309,85 @@ public final class WorldPackBuilder {
         return GSON.toJson(root) + "\n";
     }
 
-    private static String createSpawnPlateauJson(IslandDraft state) {
-        int[] sp = state.effectiveSpawnPx();
-        JsonObject plateau = new JsonObject();
-        plateau.addProperty("type", "omniisle:spawn_plateau");
-        plateau.addProperty("input", "omniisle:overworld/final_density_base");
-        plateau.addProperty("spawn_x", (int) Math.round(state.worldX(sp[0])));
-        plateau.addProperty("spawn_z", (int) Math.round(state.worldZ(sp[1])));
-        plateau.addProperty("radius", 80.0);
-        plateau.addProperty("top_y", 78.0);
-        return GSON.toJson(plateau) + "\n";
+    private static String createHighlandOffsetJson() throws IOException {
+        JsonObject root = new JsonObject();
+        root.addProperty("type", "minecraft:add");
+        JsonObject scaled = new JsonObject();
+        scaled.addProperty("type", "minecraft:mul");
+        scaled.add("left", readDensityTemplate("offset.json"));
+        scaled.add("right", highlandSpline(HIGHLAND_SCALE));
+        root.add("left", scaled);
+        root.add("right", highlandSpline(HIGHLAND_LIFT));
+        return GSON.toJson(root) + "\n";
+    }
+
+    private static JsonObject highlandSpline(double[] values) {
+        JsonArray points = new JsonArray();
+        for (int i = 0; i < HIGHLAND_C.length; i++) {
+            JsonObject point = new JsonObject();
+            point.addProperty("location", HIGHLAND_C[i]);
+            point.addProperty("derivative", 0.0);
+            point.addProperty("value", values[i]);
+            points.add(point);
+        }
+        JsonObject body = new JsonObject();
+        body.addProperty("coordinate", "omniisle:overworld/continents");
+        body.add("points", points);
+        JsonObject spline = new JsonObject();
+        spline.addProperty("type", "minecraft:spline");
+        spline.add("spline", body);
+        return spline;
+    }
+
+    private static String createHighlandFinalDensityJson() throws IOException {
+        JsonObject root = readDensityTemplate("final_density_base.json");
+        requireSingleFade(root, "final density");
+        return GSON.toJson(root) + "\n";
+    }
+
+    private static String createHighlandPreliminarySurfaceJson() throws IOException {
+        JsonObject root = readDensityTemplate("preliminary_surface_level.json");
+        requireSingleFade(root, "preliminary surface level");
+        return GSON.toJson(root) + "\n";
+    }
+
+    private static JsonObject readDensityTemplate(String name) throws IOException {
+        try (var input = WorldPackBuilder.class.getResourceAsStream(
+            "/data/omniisle/worldgen/density_function/overworld/" + name)) {
+            if (input == null) throw new IOException("Missing density function template " + name);
+            try (InputStreamReader reader = new InputStreamReader(input, StandardCharsets.UTF_8)) {
+                return JsonParser.parseReader(reader).getAsJsonObject();
+            }
+        }
+    }
+
+    private static void requireSingleFade(JsonElement element, String label) throws IOException {
+        int changed = raiseFade(element);
+        if (changed != 1) {
+            throw new IOException("Expected one 240->256 fade in " + label + ", found " + changed);
+        }
+    }
+
+    private static int raiseFade(JsonElement element) {
+        int changed = 0;
+        if (element.isJsonObject()) {
+            JsonObject object = element.getAsJsonObject();
+            if (object.has("type") && "minecraft:gradient".equals(object.get("type").getAsString())
+                && object.has("from_coordinate") && object.get("from_coordinate").getAsDouble() == 240.0
+                && object.has("to_coordinate") && object.get("to_coordinate").getAsDouble() == 256.0) {
+                object.addProperty("from_coordinate", HIGHLAND_FADE_FROM);
+                object.addProperty("to_coordinate", HIGHLAND_FADE_TO);
+                changed++;
+            }
+            for (Map.Entry<String, JsonElement> entry : object.entrySet()) {
+                changed += raiseFade(entry.getValue());
+            }
+        } else if (element.isJsonArray()) {
+            for (JsonElement child : element.getAsJsonArray()) {
+                changed += raiseFade(child);
+            }
+        }
+        return changed;
     }
 
     private static String createPresetJson(IslandDraft state) throws IOException {
@@ -366,6 +486,7 @@ public final class WorldPackBuilder {
         int minChunk = (int)Math.floor(-halfSpan / 16.0);
         int maxChunk = (int)Math.ceil(halfSpan / 16.0);
         int width = maxChunk - minChunk + 1;
+        ClimateLayout layout = state.generationVersionNumber() >= 3 ? terrain.climateLayout() : null;
         Sample[] samples = new Sample[width * width];
         for (int cz = minChunk; cz <= maxChunk; cz++) {
             for (int cx = minChunk; cx <= maxChunk; cx++) {
@@ -400,9 +521,10 @@ public final class WorldPackBuilder {
                         BiomePreview.surface(continentalness, x, z, state.biomeSeed()), x, z);
                     family = biome.family;
                 }
+                ClimateLayout.Province province = layout != null ? layout.sample(x, z).province() : null;
                 samples[(cz - minChunk) * width + cx - minChunk] =
                     new Sample(continentalness, biome, BiomePreview.isDeepDark(x, z, state.biomeSeed()),
-                        family, slope);
+                        family, slope, terrain.surfaceHeight(x, z), province);
             }
         }
 
@@ -449,14 +571,29 @@ public final class WorldPackBuilder {
                 continue;
             }
 
-            if (isV3 && (definition.option == IslandDraft.StructureOption.VILLAGE
-                    || definition.option == IslandDraft.StructureOption.TRIAL_CHAMBERS)) {
+            if (isV3 && definition.option == IslandDraft.StructureOption.VILLAGE) {
+                List<VillageVariant> variants = enabled ? enabledVillageVariants(state) : List.of();
+                if (!variants.isEmpty()) {
+                    int[] spread = scaledSpread(state, VILLAGE_SPACING_V3, VILLAGE_SEPARATION_V3);
+                    putEntry(zip, "data/minecraft/worldgen/structure_set/" + definition.setName + ".json",
+                        villageSetJson(variants, spread[0], spread[1], VILLAGE_SALT));
+                    for (VillageVariant variant : variants) {
+                        putEntry(zip,
+                            "data/minecraft/tags/worldgen/biome/has_structure/" + variant.tag() + ".json",
+                            biomeTagJson(villageBiomeIds(state, variant)));
+                    }
+                } else {
+                    putEntry(zip, "data/minecraft/worldgen/structure_set/" + definition.setName + ".json",
+                        fixedSetJson(definition, new Point(0, 0), false));
+                }
+                continue;
+            }
+
+            if (isV3 && definition.option == IslandDraft.StructureOption.TRIAL_CHAMBERS) {
                 if (enabled) {
                     int[] spread = scaledSpread(definition.option, state);
-                    int salt = definition.option == IslandDraft.StructureOption.VILLAGE
-                        ? VILLAGE_SALT : TRIAL_CHAMBERS_SALT;
                     putEntry(zip, "data/minecraft/worldgen/structure_set/" + definition.setName + ".json",
-                        randomSpreadSetJson(definition, spread[0], spread[1], salt));
+                        randomSpreadSetJson(definition, spread[0], spread[1], TRIAL_CHAMBERS_SALT));
                     putEntry(zip, "data/minecraft/tags/worldgen/biome/has_structure/" + definition.biomeTag + ".json",
                         biomeTagJson(enabledLandBiomeIds(state)));
                 } else {
@@ -516,22 +653,42 @@ public final class WorldPackBuilder {
                                               Sample pointSample) {
         StructurePolicy policy = structurePolicy(option);
         if (policy == null) return allEnabledBiomeIds(state);
-        Set<String> ids = new LinkedHashSet<>();
-        List<BiomePreview.Category> categories = switch (policy.zone()) {
+        Set<String> ids = enabledBiomeIdsInZone(state, policy);
+        ids.add(pointSample.biome.biomeId());
+        return ids;
+    }
+
+    private static List<BiomePreview.Category> zoneCategories(PolicyZone zone) {
+        return switch (zone) {
             case LAND -> List.of(BiomePreview.Category.LAND);
             case OCEAN -> List.of(BiomePreview.Category.OCEAN);
             case SHORE -> List.of(BiomePreview.Category.SHORE);
             case OCEAN_OR_SHORE -> List.of(BiomePreview.Category.OCEAN, BiomePreview.Category.SHORE);
         };
-        for (BiomePreview.Category category : categories) {
+    }
+
+    private static Set<String> enabledBiomeIdsInZone(IslandDraft state, StructurePolicy policy) {
+        Set<String> ids = new LinkedHashSet<>();
+        for (BiomePreview.Category category : zoneCategories(policy.zone())) {
             for (BiomePreview.Type type : state.enabledBiomes(category)) {
                 if (policy.families().isEmpty() || policy.families().contains(type.family)) {
                     ids.add(type.biomeId());
                 }
             }
         }
-        ids.add(pointSample.biome.biomeId());
         return ids;
+    }
+
+    private static Set<BiomePreview.Type> policyBiomes(IslandDraft state, StructurePolicy policy) {
+        EnumSet<BiomePreview.Type> types = EnumSet.noneOf(BiomePreview.Type.class);
+        for (BiomePreview.Category category : zoneCategories(policy.zone())) {
+            for (BiomePreview.Type type : state.enabledBiomes(category)) {
+                if (policy.families().isEmpty() || policy.families().contains(type.family)) {
+                    types.add(type);
+                }
+            }
+        }
+        return types;
     }
 
     private static String fixedSetJson(StructureDefinition definition, Point point, boolean enabled) {
@@ -559,6 +716,37 @@ public final class WorldPackBuilder {
             "\",\n    \"weight\": 1\n  }],\n  \"placement\": {\n    \"type\": \"minecraft:random_spread\",\n" +
             "    \"salt\": " + salt + ",\n    \"spacing\": " + spacing + ",\n    \"separation\": " + separation +
             "\n  }\n}\n";
+    }
+
+    private static String villageSetJson(List<VillageVariant> variants, int spacing, int separation, int salt) {
+        StringBuilder structures = new StringBuilder();
+        for (VillageVariant variant : variants) {
+            if (!structures.isEmpty()) structures.append(",\n    ");
+            structures.append("{\n      \"structure\": \"").append(variant.structure())
+                .append("\",\n      \"weight\": 1\n    }");
+        }
+        return "{\n  \"structures\": [\n    " + structures +
+            "\n  ],\n  \"placement\": {\n    \"type\": \"minecraft:random_spread\",\n" +
+            "    \"salt\": " + salt + ",\n    \"spacing\": " + spacing + ",\n    \"separation\": " + separation +
+            "\n  }\n}\n";
+    }
+
+    private static List<VillageVariant> enabledVillageVariants(IslandDraft state) {
+        List<VillageVariant> variants = new ArrayList<>();
+        for (VillageVariant variant : VILLAGE_VARIANTS) {
+            if (!villageBiomeIds(state, variant).isEmpty()) variants.add(variant);
+        }
+        return variants;
+    }
+
+    private static Set<String> villageBiomeIds(IslandDraft state, VillageVariant variant) {
+        Set<String> ids = new LinkedHashSet<>();
+        for (BiomePreview.Type type : state.enabledBiomes(BiomePreview.Category.LAND)) {
+            if (!variant.families().contains(type.family)) continue;
+            if (variant.excluded().contains(type)) continue;
+            ids.add(type.biomeId());
+        }
+        return ids;
     }
 
     private static String relaxedPyramidJson(String type, String biomeTag) {
@@ -600,8 +788,12 @@ public final class WorldPackBuilder {
 
     private static int[] scaledSpread(IslandDraft.StructureOption option, IslandDraft state) {
         boolean trial = option == IslandDraft.StructureOption.TRIAL_CHAMBERS;
-        int baseSpacing = trial ? TRIAL_CHAMBERS_SPACING : VILLAGE_SPACING;
-        int baseSeparation = trial ? TRIAL_CHAMBERS_SEPARATION : VILLAGE_SEPARATION;
+        return scaledSpread(state,
+            trial ? TRIAL_CHAMBERS_SPACING : VILLAGE_SPACING,
+            trial ? TRIAL_CHAMBERS_SEPARATION : VILLAGE_SEPARATION);
+    }
+
+    private static int[] scaledSpread(IslandDraft state, int baseSpacing, int baseSeparation) {
         double islandScale = Math.min(1.0, state.islandSize() / 4000.0);
         double density = Math.max(0.5, Math.min(2.0, state.structureDensity()));
         double densityScale = 1.0 / Math.sqrt(density);
@@ -738,9 +930,14 @@ public final class WorldPackBuilder {
     private static Point locateStructure(StructureDefinition definition, IslandDraft state, Sample[] samples,
                                      int minChunk, int maxChunk, int width, List<Point> used,
                                      boolean strict) throws IOException {
-        Set<BiomePreview.Type> accepted = EnumSet.noneOf(BiomePreview.Type.class);
-        definition.biomes.forEach(type -> accepted.addAll(state.compatibleChoices(type)));
         StructurePolicy policy = strict ? structurePolicy(definition.option) : null;
+        Set<BiomePreview.Type> accepted;
+        if (policy != null) {
+            accepted = policyBiomes(state, policy);
+        } else {
+            accepted = EnumSet.noneOf(BiomePreview.Type.class);
+            definition.biomes.forEach(type -> accepted.addAll(state.compatibleChoices(type)));
+        }
         Point best = null;
         double bestScore = Double.NEGATIVE_INFINITY;
         double spawnX = state.worldSpawnX();

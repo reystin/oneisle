@@ -18,7 +18,7 @@ import java.util.Map;
  */
 public final class BiomeShareCalibrator {
     public static final int GRID_SIZE = 64;
-    public static final int MAX_ITERATIONS = 24;
+    public static final int MAX_ITERATIONS = 40;
     public static final double DAMPING = 0.7;
     public static final double CONVERGED_ERROR_PP = 1.0;
     public static final double FEASIBLE_ERROR_PP = 3.0;
@@ -80,6 +80,7 @@ public final class BiomeShareCalibrator {
         int[] preferredFamilies = new int[capacity];
         double[] temperatures = new double[capacity];
         double[] humidities = new double[capacity];
+        String[] landHints = new String[capacity];
         double[] tickets = new double[capacity];
         double[] legacyTickets = new double[capacity];
         int samples = 0;
@@ -114,6 +115,7 @@ public final class BiomeShareCalibrator {
                 preferredFamilies[samples] = family;
                 temperatures[samples] = selection.temperature();
                 humidities[samples] = selection.humidity();
+                landHints[samples] = selection.landHint();
                 int sampleX = (int) Math.floor(wx / 4.0) * 4;
                 int sampleZ = (int) Math.floor(wz / 4.0) * 4;
                 tickets[samples] = BiomeShare.weightedTicketFor(biomeSeed, sampleX, sampleZ);
@@ -128,11 +130,13 @@ public final class BiomeShareCalibrator {
         double[] bias = new double[count];
         double[] factors = new double[count];
         java.util.Arrays.fill(factors, 1.0);
+        boolean hintsActive = !draft.hasNonNeutralWeights();
         int[] baselineCounts = new int[count];
         BiomeShare.SelectorScratch scratch = new BiomeShare.SelectorScratch();
         for (int i = 0; i < samples; i++) {
-            int selected = BiomeShare.select(preferredFamilies[i], temperatures[i], humidities[i],
-                ids, factors, count, tickets[i], legacyTickets[i], scratch);
+            int selected = selectWithHint(preferredFamilies[i], temperatures[i], humidities[i],
+                hintsActive ? landHints[i] : null, ids, factors, count, positionByCatalog,
+                tickets[i], legacyTickets[i], scratch);
             if (selected < 0) continue;
             int position = positionByCatalog[selected];
             if (position >= 0) baselineCounts[position]++;
@@ -158,6 +162,9 @@ public final class BiomeShareCalibrator {
         for (int i = 0; i < count; i++) target[i] /= targetSum;
 
         double[] achieved = new double[count];
+        double[] bestAchieved = new double[count];
+        double[] bestBias = bias.clone();
+        double bestErrorPp = Double.POSITIVE_INFINITY;
         double maxErrorPp = 0.0;
         int iterations = 0;
         int[] counts = new int[count];
@@ -181,8 +188,9 @@ public final class BiomeShareCalibrator {
             iterations = iteration;
             java.util.Arrays.fill(counts, 0);
             for (int i = 0; i < samples; i++) {
-                int selected = BiomeShare.select(preferredFamilies[i], temperatures[i], humidities[i],
-                    ids, factors, count, tickets[i], legacyTickets[i], scratch);
+                int selected = selectWithHint(preferredFamilies[i], temperatures[i], humidities[i],
+                    hintsActive ? landHints[i] : null, ids, factors, count, positionByCatalog,
+                    tickets[i], legacyTickets[i], scratch);
                 if (selected < 0) continue;
                 int position = positionByCatalog[selected];
                 if (position >= 0) counts[position]++;
@@ -192,6 +200,11 @@ public final class BiomeShareCalibrator {
             if (total <= 0) total = 1;
             for (int i = 0; i < count; i++) achieved[i] = counts[i] / (double) total;
             maxErrorPp = maxErrorPp(achieved, target);
+            if (maxErrorPp < bestErrorPp) {
+                bestErrorPp = maxErrorPp;
+                System.arraycopy(bias, 0, bestBias, 0, count);
+                System.arraycopy(achieved, 0, bestAchieved, 0, count);
+            }
             if (maxErrorPp <= CONVERGED_ERROR_PP) break;
             if (iteration == maxIterations) break;
 
@@ -208,6 +221,9 @@ public final class BiomeShareCalibrator {
                 factors[i] = BiomeShare.biasFactor(bias[i]);
             }
         }
+        bias = bestBias;
+        achieved = bestAchieved;
+        maxErrorPp = bestErrorPp;
 
         Map<String, Double> biasById = new LinkedHashMap<>();
         Map<String, Double> achievedById = new LinkedHashMap<>();
@@ -221,6 +237,18 @@ public final class BiomeShareCalibrator {
         boolean feasible = maxErrorPp <= FEASIBLE_ERROR_PP && !unreachable;
         return new Result(weightsById, biasById, achievedById, targetById,
             feasible, maxErrorPp, samples, iterations);
+    }
+
+    private static int selectWithHint(int family, double temperature, double humidity, String hint,
+                                      int[] ids, double[] factors, int count,
+                                      int[] positionByCatalog, double ticket, double legacyTicket,
+                                      BiomeShare.SelectorScratch scratch) {
+        if (hint != null) {
+            int hinted = BiomeShare.indexOf(hint);
+            if (hinted >= 0 && positionByCatalog[hinted] >= 0) return hinted;
+        }
+        return BiomeShare.select(family, temperature, humidity, ids, factors, count,
+            ticket, legacyTicket, scratch);
     }
 
     private static boolean familyHasCandidate(int family, int[] ids, int count) {

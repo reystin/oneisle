@@ -10,3 +10,6 @@ out/
 hs_err_pid*
 
 logs/
+
+.DS_Store
+docs/screens/1.0.0/

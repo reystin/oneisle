@@ -1,6 +1,7 @@
 package com.hack337.omniisle.worldgen;
 
 import com.hack337.omniisle.OmniIsleIds;
+import com.hack337.omniisle.continent.ClimateLayout;
 import com.hack337.omniisle.continent.IslandTerrain;
 import com.mojang.serialization.MapCodec;
 import java.util.Optional;
@@ -35,14 +36,14 @@ public final class RelaxedPyramids {
     public static final StructureType<Desert> DESERT_TYPE = () -> Desert.CODEC;
     public static final StructureType<JungleTemple> JUNGLE_TYPE = () -> JungleTemple.CODEC;
 
-    public record Policy(Set<String> biomes, double maxY, double maxRelief,
-                         double minC, double maxC, double maxSlope) {}
+    public record Policy(Set<String> biomes, ClimateLayout.Province province, double maxY,
+                         double maxRelief, double minC, double maxC, double maxSlope) {}
 
     public static final Policy DESERT_POLICY = new Policy(
-        Set.of("minecraft:desert"), 95.0, 8.0, 0.00, 0.32, 0.22);
+        Set.of("minecraft:desert"), ClimateLayout.Province.WARM, 88.0, 8.0, 0.00, 0.32, 0.22);
     public static final Policy JUNGLE_POLICY = new Policy(
         Set.of("minecraft:jungle", "minecraft:sparse_jungle", "minecraft:bamboo_jungle"),
-        100.0, 8.0, -2.0, 0.36, 0.28);
+        ClimateLayout.Province.WARM, 96.0, 8.0, -2.0, 0.36, 0.28);
 
     private RelaxedPyramids() {}
 
@@ -56,11 +57,23 @@ public final class RelaxedPyramids {
     /** Testable site predicate: biome, ceiling, local relief, continentalness and slope. */
     public static boolean allowsSurface(String biomePath, int topY, double relief,
                                         double continentalness, double slope, Policy policy) {
+        return allowsSurface(biomePath, topY, relief, continentalness, slope, null, policy);
+    }
+
+    /**
+     * Full v3 predicate. A null province means "unknown" (legacy caller); the export
+     * already gates every fixed site by province, so only a known mismatching province
+     * rejects a site here.
+     */
+    public static boolean allowsSurface(String biomePath, int topY, double relief,
+                                        double continentalness, double slope,
+                                        ClimateLayout.Province province, Policy policy) {
         if (policy == null) return true;
         if (biomePath == null || !policy.biomes().contains(biomePath)) return false;
         if (topY > policy.maxY()) return false;
         if (relief > policy.maxRelief()) return false;
         if (continentalness < policy.minC() || continentalness > policy.maxC()) return false;
+        if (policy.province() != null && province != null && province != policy.province()) return false;
         return !(policy.maxSlope() > 0.0 && slope >= policy.maxSlope());
     }
 
@@ -90,6 +103,7 @@ public final class RelaxedPyramids {
 
         double continentalness = 0.0;
         double slope = 0.0;
+        ClimateLayout.Province province = null;
         IslandDensityFunction active = IslandDensityFunction.getActive();
         if (active != null && active.terrain() != null) {
             IslandTerrain terrain = active.terrain();
@@ -99,8 +113,10 @@ public final class RelaxedPyramids {
             double cS = terrain.continentalness(x, z + 8);
             double cN = terrain.continentalness(x, z - 8);
             slope = Math.hypot((cE - cW) / 16.0, (cS - cN) / 16.0) * 64.0;
+            ClimateLayout layout = terrain.climateLayout();
+            if (layout != null) province = layout.sample(x, z).province();
         }
-        return allowsSurface(path, topY, highest - lowest, continentalness, slope, policy);
+        return allowsSurface(path, topY, highest - lowest, continentalness, slope, province, policy);
     }
 
     public static final class Desert extends DesertPyramidStructure {

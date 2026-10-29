@@ -248,9 +248,12 @@ public final class ImageImportExport {
                         double cS = terrain.continentalness(wx, wz + 8);
                         double cN = terrain.continentalness(wx, wz - 8);
                         double slope = Math.hypot((cE - cW) / 16.0, (cS - cN) / 16.0) * 64.0;
-                        double bay = com.hack337.omniisle.continent.ShoreField.bayness(terrain, wx, wz, distance);
+                        double c = terrain.continentalness(wx, wz);
+                        com.hack337.omniisle.continent.ShoreField.Ring ring =
+                            com.hack337.omniisle.continent.ShoreField.ring(terrain, wx, wz, distance);
                         int outcome = com.hack337.omniisle.continent.ShoreField.outcome(
-                            distance, wx, wz, slope, bay, settings, draft.biomeSeed());
+                            distance, wx, wz, slope, terrain.heightTierAt(wx, wz), c, ring,
+                            settings, draft.biomeSeed());
                         if (outcome == com.hack337.omniisle.continent.ShoreField.SAND) color = 0xF0E6A0;
                         else if (outcome == com.hack337.omniisle.continent.ShoreField.STONY) color = 0x90989B;
                     }

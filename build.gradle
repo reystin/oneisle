@@ -23,6 +23,8 @@ test {
     useJUnitPlatform()
     def evidence = System.getProperty("omniisle.evidence")
     if (evidence != null) systemProperty "omniisle.evidence", evidence
+    def evidenceLabel = System.getProperty("omniisle.evidence.label")
+    if (evidenceLabel != null) systemProperty "omniisle.evidence.label", evidenceLabel
     def regen = System.getProperty("omniisle.regenerateGolden")
     if (regen != null) systemProperty "omniisle.regenerateGolden", regen
     testLogging { events "failed", "skipped" }
@@ -65,6 +67,16 @@ tasks.withType(JavaCompile).configureEach {
 
 tasks.matching { it.name == "sourcesJar" }.configureEach {
     dependsOn(tasks.named("generateTargetPlatform"))
+}
+
+tasks.matching { it.name == "runClient" }.configureEach {
+    ["omniisle.uiScreenshot", "omniisle.uiScreenshot.lang", "omniisle.uiScreenshot.smoke"].each { key ->
+        def value = System.getProperty(key)
+        if (value != null) {
+            if (key == "omniisle.uiScreenshot") value = new File(value).absolutePath
+            systemProperty key, value
+        }
+    }
 }
 
 tasks.withType(ProcessResources).configureEach {

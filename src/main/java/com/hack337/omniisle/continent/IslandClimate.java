@@ -19,7 +19,10 @@ public final class IslandClimate {
     public static final double V3_OFFSHORE_OCEAN_DISTANCE = -42.0;
     public static final double V3_GRADIENT_SCALE = 0.55;
     public static final double V3_TEMPERATURE_NOISE_SCALE = 1.15;
-    public static final double V3_MUSHROOM_THRESHOLD = 0.22;
+    public static final double V3_MUSHROOM_THRESHOLD = 0.36;
+    /** Climate-distance bands for v3 family selection (warmStrength - coldStrength). */
+    public static final double V3_CLIMATE_CORE_DIFF = 0.35;
+    public static final double V3_CLIMATE_BAND_DIFF = 0.12;
 
     public enum GradientMode {
         OFF("omniisle.gradient.off"),
@@ -63,8 +66,14 @@ public final class IslandClimate {
         int landFamily,
         double temperature,
         double humidity,
-        double mountains
-    ) {}
+        double mountains,
+        String landHint
+    ) {
+        public SampleResult(SurfaceZone zone, String subType, int landFamily,
+                            double temperature, double humidity, double mountains) {
+            this(zone, subType, landFamily, temperature, humidity, mountains, null);
+        }
+    }
 
     public static double temperatureSpan(String themeName) {
         return themeClimate(themeName).temperatureSpan();
@@ -135,8 +144,7 @@ public final class IslandClimate {
             gradOffset *= V3_GRADIENT_SCALE;
             baseNoise *= V3_TEMPERATURE_NOISE_SCALE;
             long terrainSeed = biomeSeed != 0L ? biomeSeed : 0x5EED1234ABCDL;
-            double terrainRidge = 1.0 - 2.0 * Math.abs(IslandNoise.fbm2(
-                x / 750.0, z / 750.0, terrainSeed + 801L, 3, 2.0, 0.5));
+            double terrainRidge = ModernTerrainV2.physicalRidge(x, z, terrainSeed);
             mountainBands = clamp01(0.70 * Math.max(0.0, terrainRidge) + 0.30 * ridge);
         } else {
             mountainBands = 0.60 * ridge
@@ -199,19 +207,28 @@ public final class IslandClimate {
     public static SampleResult sampleV3(double continentalness, double x, double z, double slope,
                                         double scale, long biomeSeed, GradientMode gradientMode, double gradientStrength,
                                         String themeName, double islandHalfSpan, int version,
-                                        double signedDistance, double mainIslandDistance, boolean shoreAllowed,
-                                        int shoreOutcome) {
+                                        double signedDistance, double mainIslandDistance,
+                                        double heightTier, ClimateLayout.Sample layout,
+                                        boolean shoreAllowed, int shoreOutcome) {
         double cQuantized = (double)((long)((float)continentalness * 10000.0f)) / 10000.0;
         ClimateValues c = climateAt(x, z, scale, biomeSeed, gradientMode, gradientStrength, themeName, islandHalfSpan, version);
+        ClimateLayout.Sample climateLayout = layout != null ? layout : ClimateLayout.temperate();
+        boolean provinceBias = provinceBias(themeName);
 
-        int landFam = selectLandFamilyV3(c, cQuantized, x, z, biomeSeed, signedDistance, mainIslandDistance);
+        int landFam = selectLandFamilyV3(c, cQuantized, x, z, biomeSeed, signedDistance,
+            mainIslandDistance, heightTier, slope, climateLayout, provinceBias);
+        double landTemp = landFam >= 0 ? BiomeShare.familyCenterTemperature(landFam) : c.temperature;
+        double landHum = landFam >= 0 ? BiomeShare.familyCenterHumidity(landFam) : c.humidity;
+        String landHint = landHintFor(landFam, climateLayout);
+
         if (shoreOutcome != ShoreField.NONE) {
             boolean suppressed = landFam == 16 || landFam == 8 || landFam == 9
                 || (shoreOutcome == ShoreField.STONY && (landFam == 12 || landFam == 13));
             if (!suppressed) {
                 String subType = shoreOutcome == ShoreField.STONY
                     ? "stony_shore"
-                    : (c.temperature < 0.24 ? "snowy_beach" : "beach");
+                    : (climateLayout.province() == ClimateLayout.Province.COLD
+                        && climateLayout.strength() > 0.20 ? "snowy_beach" : "beach");
                 return new SampleResult(SurfaceZone.SHORE, subType, -1,
                     c.temperature, c.humidity, c.mountains);
             }
@@ -221,7 +238,7 @@ public final class IslandClimate {
                 || cQuantized < V3_SEA_LEVEL_CONTINENTALNESS;
             if (submerged) {
                 boolean deep = cQuantized < DEEP_OCEAN_THRESHOLD;
-                return new SampleResult(SurfaceZone.OCEAN, oceanSubType(c, deep), -1,
+                return new SampleResult(SurfaceZone.OCEAN, oceanSubType(c, deep, climateLayout), -1,
                     c.temperature, c.humidity, c.mountains);
             }
             if (shoreAllowed && (slope > STEEP_SHORE_SLOPE || c.mountains > 0.60)) {
@@ -229,12 +246,41 @@ public final class IslandClimate {
                     c.temperature, c.humidity, c.mountains);
             }
             return new SampleResult(SurfaceZone.LAND, "land", landFam,
-                c.temperature, c.humidity, c.mountains);
+                landTemp, landHum, c.mountains, landHint);
         }
-        return new SampleResult(SurfaceZone.LAND, "land", landFam, c.temperature, c.humidity, c.mountains);
+        return new SampleResult(SurfaceZone.LAND, "land", landFam,
+            landTemp, landHum, c.mountains, landHint);
     }
 
-    private static String oceanSubType(ClimateValues c, boolean deep) {
+    private static boolean provinceBias(String themeName) {
+        if (themeName == null) return true;
+        return themeName.equalsIgnoreCase("all") || themeName.equalsIgnoreCase("standard");
+    }
+
+    private static String landHintFor(int family, ClimateLayout.Sample layout) {
+        if (family != 0) return null;
+        if (layout.province() == ClimateLayout.Province.COLD
+            && layout.iceStrength() > 0.50) {
+            return "ice_spikes";
+        }
+        return "snowy_plains";
+    }
+
+    private static String oceanSubType(ClimateValues c, boolean deep, ClimateLayout.Sample layout) {
+        if (layout.province() == ClimateLayout.Province.WARM && layout.strength() > 0.20) {
+            if (layout.strength() < 0.55) {
+                return deep ? "deep_lukewarm_ocean" : "lukewarm_ocean";
+            }
+            return c.temperature > 0.66
+                ? (deep ? "deep_lukewarm_ocean" : "warm_ocean")
+                : (deep ? "deep_lukewarm_ocean" : "lukewarm_ocean");
+        }
+        if (layout.province() == ClimateLayout.Province.COLD && layout.strength() > 0.20) {
+            boolean frozen = c.temperature < 0.34 && layout.strength() >= 0.55;
+            return frozen
+                ? (deep ? "deep_frozen_ocean" : "frozen_ocean")
+                : (deep ? "deep_cold_ocean" : "cold_ocean");
+        }
         if (c.temperature < 0.16) return deep ? "deep_frozen_ocean" : "frozen_ocean";
         if (c.temperature < 0.32) return deep ? "deep_cold_ocean" : "cold_ocean";
         if (c.temperature > 0.82) return "warm_ocean";
@@ -295,56 +341,102 @@ public final class IslandClimate {
      * v3 family tree. Differs from the legacy tree in three ways: mushrooms are an
      * offshore-only island feature, high terrain cools the effective temperature and
      * swamps/mangroves are restricted to low, flat, genuinely humid columns.
+     *
+     * Warm and cold selection follows the continuous climate distance
+     * {@code warmStrength - coldStrength}: cold core, cold band, temperate, warm band,
+     * warm core. The categorical province only drives oceans, shores and ice hints, so
+     * a desert never borders taiga directly; snow peaks are allowed in any province
+     * once the terrain is high enough.
      */
     public static int selectLandFamilyV3(ClimateValues c, double continentalness, double x, double z,
-                                         long biomeSeed, double signedDistance, double mainDistance) {
+                                         long biomeSeed, double signedDistance, double mainDistance,
+                                         double heightTier, double slope, ClimateLayout.Sample layout,
+                                         boolean provinceBias) {
         if (isOffshoreMushroom(continentalness, x, z, biomeSeed, signedDistance, mainDistance)) return 16;
 
+        ClimateLayout.Sample sector = layout != null ? layout : ClimateLayout.temperate();
+        // Just like 1.0.0, themed maps keep the physical warm/cold layout; the theme
+        // flag only scales the effective-temperature nudge.
+        double warm = sector.warmStrength();
+        double cold = sector.coldStrength();
+        double diff = warm - cold;
         double effTemp = clamp01(c.temperature - Math.max(0.0, continentalness - 0.28) * 0.62);
+        if (provinceBias) {
+            effTemp = clamp01(effTemp + 0.14 * warm - 0.24 * cold);
+        }
         double hum = c.humidity;
 
-        if (continentalness > 0.45 || (continentalness > 0.30 && c.mountains > 0.56)) {
-            if (effTemp < 0.38 || continentalness > 0.54) return 15;
+        if (heightTier >= 1.5 && continentalness > 0.50) {
+            if (effTemp < 0.50) return 15;
             if (effTemp > 0.72) return 14;
-            return hum > 0.48 ? 6 : 5;
+            return 5;
         }
-        if (continentalness > 0.30 && c.mountains > 0.42) {
+        if (heightTier >= 1.25 && continentalness > 0.30 && c.mountains > 0.42) {
+            if (diff >= V3_CLIMATE_CORE_DIFF) return hum < 0.50 ? 13 : 11;
             if (effTemp < 0.35) return 1;
-            return hum > 0.52 ? 6 : 5;
+            return 5;
         }
-        if (continentalness < 0.15 && c.mountains < 0.42 && hum > 0.64) {
-            if (effTemp >= 0.60 && hum > 0.72) return 9;
-            if (effTemp < 0.72) return 8;
+
+        if (diff <= -V3_CLIMATE_CORE_DIFF) {
+            if (sector.iceStrength() > 0.50) return 0;
+            return hum < 0.58 ? 0 : 1;
         }
-        if (effTemp < 0.25) return hum < 0.58 ? 0 : 1;
-        if (effTemp < 0.36) {
+        if (diff <= -V3_CLIMATE_BAND_DIFF) {
+            return hum >= 0.55 ? 5 : 2;
+        }
+
+        if (diff < V3_CLIMATE_BAND_DIFF
+            && continentalness > 0.34 && continentalness <= 0.48
+            && hum > 0.58 && sector.cherryStrength() > 0.45) {
+            return 6;
+        }
+
+        if (continentalness < 0.15 && slope < 0.12 && heightTier <= 1.0
+            && c.mountains < 0.35 && hum > 0.64) {
+            if (diff >= V3_CLIMATE_BAND_DIFF) {
+                if (hum > 0.72 && effTemp > 0.60) return 9;
+            } else {
+                return 8;
+            }
+        }
+
+        if (diff >= V3_CLIMATE_CORE_DIFF) {
+            if (continentalness <= 0.32 && hum < 0.42) return 12;
+            if (hum < 0.52) return continentalness <= 0.40 ? 13 : 11;
+            if (hum < 0.68) return 11;
+            return 10;
+        }
+        if (diff >= V3_CLIMATE_BAND_DIFF) {
+            if (hum > 0.60) return 5;
+            if (hum > 0.35) return 4;
+            return 11;
+        }
+
+        double paleHum = clamp01(hum + 0.65 * sector.paleStrength());
+        if (sector.paleStrength() > 0.50 && paleHum > 0.88
+            && effTemp >= 0.33 && effTemp <= 0.82) {
+            return 17;
+        }
+
+        if (effTemp < 0.45) {
             if (hum < 0.42) return 5;
             if (hum < 0.66) return 2;
-            return 1;
+            if (hum < 0.78) return 3;
+            return 7;
         }
         if (effTemp < 0.72) {
             if (hum < 0.38) return 4;
-            if (hum < 0.64) return 3;
-            if (hum < 0.76) return 2;
-            if (hum < 0.88) return 7;
-            return 17;
+            if (hum < 0.58) return 3;
+            if (hum < 0.68) return 2;
+            return 7;
         }
-        if (continentalness > 0.36) {
-            return hum < 0.50 ? 13 : 11;
-        }
-        if (hum < 0.35) return 12;
-        if (hum < 0.52) return 13;
-        if (hum < 0.68) return 11;
-        if (continentalness < 0.15 && hum > 0.68 && c.mountains < 0.42) return 9;
-        return 10;
+        return hum < 0.50 ? 4 : 3;
     }
 
     private static boolean isOffshoreMushroom(double continentalness, double x, double z, long biomeSeed,
                                               double signedDistance, double mainDistance) {
         if (continentalness >= 0.05) return false;
-        boolean offshore = mainDistance < 0.0
-            || (signedDistance <= 0.0 && signedDistance > V3_OFFSHORE_OCEAN_DISTANCE);
-        if (!offshore) return false;
+        if (mainDistance >= 0.0) return false;
         return fbm(x / 650.0, z / 650.0, saltedSeed(biomeSeed, 811)) > V3_MUSHROOM_THRESHOLD;
     }
 

@@ -568,9 +568,10 @@ public final class OmniCommands {
                         } else if (d > ShoreField.MAX_INLAND) {
                             color = 0xFF5C8A4E;
                         } else {
-                            double bay = ShoreField.bayness(terrain, x, z, d);
-                            int outcome = ShoreField.outcome(d, x, z, slopeAt(terrain, x, z), bay,
-                                cfg.shore, cfg.biomeSeed);
+                            double c = terrain.continentalness(x, z);
+                            ShoreField.Ring ring = ShoreField.ring(terrain, x, z, d);
+                            int outcome = ShoreField.outcome(d, x, z, slopeAt(terrain, x, z),
+                                terrain.heightTierAt(x, z), c, ring, cfg.shore, cfg.biomeSeed);
                             color = switch (outcome) {
                                 case ShoreField.SAND -> 0xFFE8D9A0;
                                 case ShoreField.STONY -> 0xFF8C8C8C;

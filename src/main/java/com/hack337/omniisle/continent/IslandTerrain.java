@@ -37,6 +37,28 @@ public interface IslandTerrain {
     }
 
     /**
+     * Smoothed height tier in [0, 3]; 1.0 is the neutral lowland fallback.
+     */
+    default double heightTierAt(double x, double z) {
+        return 1.0;
+    }
+
+    /**
+     * Estimated surface Y at the column. The default uses the calibrated
+     * continentalness-to-elevation curve.
+     */
+    default double surfaceHeight(double x, double z) {
+        return continentalnessToElevation(continentalness(x, z));
+    }
+
+    /**
+     * Universal v3 climate sectors, or null for legacy/v2 generation.
+     */
+    default ClimateLayout climateLayout() {
+        return null;
+    }
+
+    /**
      * Carved river system, or null if rivers are disabled / v1.
      */
     default IslandRivers rivers() {

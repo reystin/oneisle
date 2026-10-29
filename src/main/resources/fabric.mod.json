@@ -20,6 +20,9 @@
     ],
     "main": [
       "com.hack337.omniisle.OmniIsleMod"
+    ],
+    "client": [
+      "com.hack337.omniisle.client.OmniIsleClient"
     ]
   },
   "mixins": [

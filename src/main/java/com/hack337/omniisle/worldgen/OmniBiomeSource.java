@@ -5,6 +5,7 @@ import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import com.hack337.omniisle.OmniIsleIds;
 import com.hack337.omniisle.continent.BiomeShare;
+import com.hack337.omniisle.continent.ClimateLayout;
 import com.hack337.omniisle.continent.IslandClimate;
 import com.hack337.omniisle.continent.IslandTerrain;
 import com.hack337.omniisle.continent.ShoreField;
@@ -288,6 +289,8 @@ public final class OmniBiomeSource extends BiomeSource {
         double mainDistance;
         int shoreOutcome;
         double weightedTicket;
+        double heightTier;
+        ClimateLayout.Sample layout;
         if (hit) {
             slope = cache.slope[slot];
             halfSpan = cache.halfSpan[slot];
@@ -295,6 +298,8 @@ public final class OmniBiomeSource extends BiomeSource {
             mainDistance = cache.mainDistance[slot];
             shoreOutcome = cache.shoreOutcome[slot];
             weightedTicket = cache.weightedTicket[slot];
+            heightTier = cache.heightTier[slot];
+            layout = cache.layout[slot];
         } else {
             double cE = net.minecraft.world.level.biome.Climate.unquantizeCoord(sampler.sample(biomeX + 1, biomeY, biomeZ).continentalness());
             double cW = net.minecraft.world.level.biome.Climate.unquantizeCoord(sampler.sample(biomeX - 1, biomeY, biomeZ).continentalness());
@@ -310,6 +315,9 @@ public final class OmniBiomeSource extends BiomeSource {
             distance = 0.0;
             mainDistance = 0.0;
             shoreOutcome = ShoreField.NONE;
+            heightTier = terrain != null ? terrain.heightTierAt(x, z) : 1.0;
+            ClimateLayout terrainLayout = terrain != null ? terrain.climateLayout() : null;
+            layout = terrainLayout != null ? terrainLayout.sample(x, z) : null;
             if (generationVersion >= 3) {
                 if (terrain != null) {
                     IslandTerrain.Distances distances = terrain.distances(x, z);
@@ -322,8 +330,9 @@ public final class OmniBiomeSource extends BiomeSource {
                 }
                 if (!shoreDisabled && shore != null && shore.enabled()
                     && distance >= ShoreField.intertidalLimit(x, z, biomeSeed) && distance <= ShoreField.MAX_INLAND) {
-                    double bay = ShoreField.bayness(terrain, x, z, distance);
-                    shoreOutcome = ShoreField.outcome(distance, x, z, slope, bay, shore, biomeSeed);
+                    ShoreField.Ring ring = ShoreField.ring(terrain, x, z, distance);
+                    shoreOutcome = ShoreField.outcome(distance, x, z, slope, heightTier,
+                        continentalness, ring, shore, biomeSeed);
                 }
             }
 
@@ -338,6 +347,8 @@ public final class OmniBiomeSource extends BiomeSource {
             cache.mainDistance[slot] = mainDistance;
             cache.shoreOutcome[slot] = shoreOutcome;
             cache.weightedTicket[slot] = weightedTicket;
+            cache.heightTier[slot] = heightTier;
+            cache.layout[slot] = layout;
             cache.v3Result[slot] = null;
             cache.valid[slot] = true;
         }
@@ -349,7 +360,7 @@ public final class OmniBiomeSource extends BiomeSource {
                 res = IslandClimate.sampleV3(
                     continentalness, x, z, slope, climateScale, biomeSeed,
                     gradientMode, gradientStrength, biomeThemeStr, halfSpan, generationVersion,
-                    distance, mainDistance, !shoreDisabled, shoreOutcome
+                    distance, mainDistance, heightTier, layout, !shoreDisabled, shoreOutcome
                 );
                 cache.v3Result[slot] = res;
             }
@@ -389,7 +400,7 @@ public final class OmniBiomeSource extends BiomeSource {
 
         Holder<Biome> weightedChoice = weightedLand(res.landFamily(), res.temperature(),
             res.humidity(), x, z, weightedTicket);
-        return weightedChoice != null ? weightedChoice : enabledLand(res.landFamily(), x, z);
+        return weightedChoice != null ? weightedChoice : enabledLand(res.landFamily(), x, z, res.landHint());
     }
 
     private static boolean isRiverValley(double continentalness, double erosion, double weirdness) {
@@ -482,7 +493,23 @@ public final class OmniBiomeSource extends BiomeSource {
         return null;
     }
 
+    private Holder<Biome> enabledHint(String hint) {
+        if (hint == null) return null;
+        for (Holder<Biome> entry : enabledLandBiomes) {
+            if (path(entry).equals(hint)) return entry;
+        }
+        return null;
+    }
+
     private Holder<Biome> enabledLand(int preferredIndex, int x, int z) {
+        return enabledLand(preferredIndex, x, z, null);
+    }
+
+    private Holder<Biome> enabledLand(int preferredIndex, int x, int z, String landHint) {
+        if (landHint != null && !weighted) {
+            Holder<Biome> hinted = enabledHint(landHint);
+            if (hinted != null) return hinted;
+        }
         List<Holder<Biome>> family = enabledLandBiomes.stream()
             .filter(entry -> landFamily(path(entry)) == preferredIndex).toList();
         if (!family.isEmpty()) return choosePatch(family, x, z, preferredIndex);
@@ -651,6 +678,8 @@ public final class OmniBiomeSource extends BiomeSource {
         final double[] mainDistance = new double[SIZE];
         final int[] shoreOutcome = new int[SIZE];
         final double[] weightedTicket = new double[SIZE];
+        final double[] heightTier = new double[SIZE];
+        final ClimateLayout.Sample[] layout = new ClimateLayout.Sample[SIZE];
         final IslandClimate.SampleResult[] v3Result = new IslandClimate.SampleResult[SIZE];
         final boolean[] valid = new boolean[SIZE];
 

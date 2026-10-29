@@ -86,7 +86,11 @@ public final class BiomePreview {
     }
 
     /** Climate selection result used by weighted previews; type is the preferred variant. */
-    public record Selection(Type type, int landFamily, double temperature, double humidity) {
+    public record Selection(Type type, int landFamily, double temperature, double humidity, String landHint) {
+        public Selection(Type type, int landFamily, double temperature, double humidity) {
+            this(type, landFamily, temperature, humidity, null);
+        }
+
         public boolean isLand() { return type != null && type.isLand(); }
     }
 
@@ -211,24 +215,29 @@ public final class BiomePreview {
         }
         com.hack337.omniisle.continent.IslandTerrain.Distances distances = terrain.distances(x, z);
         double distance = distances.signed();
+        double heightTier = terrain.heightTierAt(x, z);
         int shoreOutcome = com.hack337.omniisle.continent.ShoreField.NONE;
         if (shoreAllowed && shore != null && shore.enabled()
             && distance >= com.hack337.omniisle.continent.ShoreField.intertidalLimit(x, z, seed)
             && distance <= com.hack337.omniisle.continent.ShoreField.MAX_INLAND) {
-            double bay = com.hack337.omniisle.continent.ShoreField.bayness(terrain, x, z, distance);
-            shoreOutcome = com.hack337.omniisle.continent.ShoreField.outcome(distance, x, z, slope, bay, shore, seed);
+            com.hack337.omniisle.continent.ShoreField.Ring ring =
+                com.hack337.omniisle.continent.ShoreField.ring(terrain, x, z, distance);
+            shoreOutcome = com.hack337.omniisle.continent.ShoreField.outcome(
+                distance, x, z, slope, heightTier, continentalness, ring, shore, seed);
         }
         com.hack337.omniisle.continent.IslandClimate.SampleResult res =
             com.hack337.omniisle.continent.IslandClimate.sampleV3(
                 continentalness, x, z, slope, climateScale, seed,
                 gradientMode, gradientStrength, theme != null ? theme.name() : "standard",
-                islandHalfSpan, version, distance, distances.main(), shoreAllowed, shoreOutcome);
+                islandHalfSpan, version, distance, distances.main(),
+                heightTier, climateSample(terrain, x, z),
+                shoreAllowed, shoreOutcome);
         Type type = switch (res.zone()) {
             case OCEAN -> oceanTypeFromId(res.subType());
             case SHORE -> shoreTypeFromId(res.subType());
-            case LAND -> landTypeFromFamily(res.landFamily());
+            case LAND -> landTypeForFamily(res.landFamily(), res.landHint());
         };
-        return new Selection(type, res.landFamily(), res.temperature(), res.humidity());
+        return new Selection(type, res.landFamily(), res.temperature(), res.humidity(), res.landHint());
     }
 
     public static Selection selection(double continentalness, double x, double z, long seed,
@@ -294,6 +303,17 @@ public final class BiomePreview {
             case 17 -> Type.PALE_GARDEN;
             default -> Type.PLAINS;
         };
+    }
+
+    public static Type landTypeForFamily(int family, String hint) {
+        if ("ice_spikes".equals(hint)) return Type.ICE_SPIKES;
+        return landTypeFromFamily(family);
+    }
+
+    private static com.hack337.omniisle.continent.ClimateLayout.Sample climateSample(
+        com.hack337.omniisle.continent.IslandTerrain terrain, double x, double z) {
+        com.hack337.omniisle.continent.ClimateLayout layout = terrain.climateLayout();
+        return layout != null ? layout.sample(x, z) : null;
     }
 
     public static Type shoreTypeFromId(String id) {
