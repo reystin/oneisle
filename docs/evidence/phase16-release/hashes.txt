@@ -1,0 +1,14 @@
+# OneIsle 1.0.0 — publication hashes
+
+Local build:
+
+45a1cf04aa4deda5ae039f6b213542615046b3539a092bc7cd4177702cb9db22  build/libs/OneIsle-26.3-Fabric-1.0.0+mc26.3.jar
+ff85609f097a42fe3cfb9f595fab66a2b7b3c4dae1301c8ab8f9b5cc72fe3b4c  build/libs/OneIsle-26.3-Fabric-1.0.0+mc26.3-sources.jar
+
+Downloaded from the GitHub release and re-hashed:
+
+45a1cf04aa4deda5ae039f6b213542615046b3539a092bc7cd4177702cb9db22  OneIsle-26.3-Fabric-1.0.0+mc26.3.jar
+ff85609f097a42fe3cfb9f595fab66a2b7b3c4dae1301c8ab8f9b5cc72fe3b4c  OneIsle-26.3-Fabric-1.0.0+mc26.3-sources.jar
+
+Tag object: a9caa79d57c38141697493205375653d9e725eab
+Tag target: 17c17e84349bd4b3e924621181984f12ccf9e8cf

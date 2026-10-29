@@ -367,6 +367,6 @@ No performance measurements were made for the ring gates (same 8 SDF calls per e
 - [x] **15.3** Tests updated for the new identity; `OneIsleIdentityTest` asserts constants, resource namespace, generated pack entries, and rejection of legacy `OMNI2-` codes
 - [x] **15.4** Docs: README, CHANGELOG, `ONEISLE_AI_SPEC.md` (I1/I2/I7), CREDITS.md, DECISIONS 077, FINDINGS banner, UI_CHECKLIST; historical OmniIsle evidence left intact
 - [x] **15.5** Final `clean test build` (197 tests, 0 failures, 2 assumption-gated skips), jar inspection, namespace gates (0 lowercase `omniisle` in `src/main` and in the extracted jar; only the intended attribution line in `fabric.mod.json`), in-game `runClient` smoke (mod `oneisle 1.0.0+mc26.3` loads, editor header reads “OneIsle”, harness `ok`; 4 captures at 1280×720 s1/s4 and 640×480 s1/s2). Python-cache sandbox writes are unrelated to the mod. See `docs/evidence/phase15-rename/`
-- [ ] **15.6** New GitHub repository, push, tag and release — pending
-- [ ] **15.7** New Modrinth project and version — pending (requires a new PAT)
-- [ ] **15.8** Final publication verification — pending
+- [x] **15.6** New GitHub repository, push, tag and release — <https://github.com/reystin/oneisle> (public, not a fork, default branch `main`), tag `v1.0.0+mc26.3-fabric` on `17c17e8`, release with the jar and sources jar; downloaded assets re-hashed and matched. Original repository untouched (`pushedAt` 2026-08-19)
+- [ ] **15.7** New Modrinth project and version — **BLOCKED**: slug `oneisle` is free, but the stored PAT returns 401 on `GET /v2/user`. Drafts (`modrinth_project_body.md`, `modrinth_version_plan.md`) and required scopes are recorded in `docs/evidence/phase16-release/`; no project or version exists yet
+- [ ] **15.8** Final publication verification — GitHub release verified (metadata, branches, assets, SHA-256); Modrinth half pending the PAT. See `docs/evidence/phase16-release/`

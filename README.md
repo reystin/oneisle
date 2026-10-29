@@ -174,6 +174,18 @@ Share codes from OmniIsle (`OMNI2-...`) are rejected; export a new `ONE2-...` co
 
 ---
 
+## Requirements
+
+- Minecraft **26.3** (Fabric)
+- Fabric Loader **0.19.3** or newer
+- Fabric API **0.165.0+26.3** or newer
+- Java **25**
+
+The mod is required on both client and server. The JAR is attached to the
+[v1.0.0 release](https://github.com/reystin/oneisle/releases/latest).
+
+---
+
 ## Building from Source
 
 Requirements: JDK 25 and Gradle (the Gradle wrapper is included).
