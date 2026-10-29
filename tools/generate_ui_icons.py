@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate the OmniIsle 16-px UI icon atlas with the Python standard library only.
+"""Generate the OneIsle 16-px UI icon atlas with the Python standard library only.
 
 Atlas: 8 columns x 3 rows of 16x16 cells (128x48 RGBA), pure white pixels so the
 client can tint them with any theme colour. Run from the repository root:
@@ -272,7 +272,7 @@ def main():
         # Guarantee every declared cell is non-empty.
         if not any(img[y][x][3] for y in range(oy, oy + CELL) for x in range(ox, ox + CELL)):
             plot(img, ox + 8, oy + 8)
-    path = os.path.join("src", "main", "resources", "assets", "omniisle", "textures", "gui", "icons.png")
+    path = os.path.join("src", "main", "resources", "assets", "oneisle", "textures", "gui", "icons.png")
     write_png(path, img)
     print(f"wrote {path} ({WIDTH}x{HEIGHT}, {len(ICONS)} icons)")
 

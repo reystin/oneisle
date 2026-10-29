@@ -1,12 +1,19 @@
-# OmniIsle 1.0.1 — Implementation Progress Tracker
+# OneIsle 1.0.0 — Implementation Progress Tracker
+
+> **Historical record.** Phases 0–14 were developed under the OmniIsle name; their package
+> paths, IDs, version labels and `OMNIISLE_*` file names are historical. Phase 15 renames the
+> runtime identity to OneIsle and republishes the project.
 
 ## Global Invariants
-- [x] **I1.** Old worlds (0.5.0 / v1) keep generating identically (no seams).
+- [x] **I1.** v1/v2 terrain math is frozen (golden tests pass). Since OneIsle 1.0.0 the identity
+  rename makes OmniIsle worlds unloadable by design; there is no migration.
 - [x] **I2.** Spec §7 invariants maintained (fallbacks, texture cleanup, UTF-8, InputConstants).
 - [x] **I3.** Server/preview parity (single source of truth in side-neutral package).
 - [x] **I4.** Determinism & thread safety (pure functions, no shared Random, double arithmetic).
 - [x] **I5.** Graceful failure on unknown version / corrupt mask data.
 - [x] **I6.** Bilingual localization (en_us and ru_ru).
+- [x] **I7.** All runtime identifiers use `oneisle:*`; legacy `omniisle:*` IDs are not registered
+  (deliberate breaking change).
 
 ---
 
@@ -351,3 +358,15 @@ Full build: **193 tests, 0 failures, 2 assumption-gated skips** (183 baseline + 
 `-6312501814918578635` unchanged. Existing v3 worlds are **not** repaired — create a new world.
 No performance measurements were made for the ring gates (same 8 SDF calls per eligible column).
 25×25 chunk-generation timing remains **UNVERIFIED**; Phase 9 remains **PARTIAL 15/45**; no commits.
+
+---
+
+### Phase 15 — OneIsle rebrand & standalone release (1.0.0)
+- [x] **15.1** Full runtime rename: mod id/namespace `oneisle`, package `com.reystin.oneisle`, `OneIsle*`/`One*` classes, world preset `oneisle:oneisle`, noise settings `oneisle:one_terrain`, biome source/density functions, saved data, command `/oneisle`, config `config/oneisle.json`, datapack `oneisle-generated.zip`, paths, share prefix `ONE2-`, debug markers `ONE_*`, system properties and harness env
+- [x] **15.2** Build/metadata rename: `archivesName`, group, generated target package, mixin config, LICENSE resource, `fabric.mod.json` authors/contributors/contact, lang keys, version 1.0.0
+- [x] **15.3** Tests updated for the new identity; `OneIsleIdentityTest` asserts constants, resource namespace, generated pack entries, and rejection of legacy `OMNI2-` codes
+- [x] **15.4** Docs: README, CHANGELOG, `ONEISLE_AI_SPEC.md` (I1/I2/I7), CREDITS.md, DECISIONS 077, FINDINGS banner, UI_CHECKLIST; historical OmniIsle evidence left intact
+- [x] **15.5** Final `clean test build` (197 tests, 0 failures, 2 assumption-gated skips), jar inspection, namespace gates (0 lowercase `omniisle` in `src/main` and in the extracted jar; only the intended attribution line in `fabric.mod.json`), in-game `runClient` smoke (mod `oneisle 1.0.0+mc26.3` loads, editor header reads “OneIsle”, harness `ok`; 4 captures at 1280×720 s1/s4 and 640×480 s1/s2). Python-cache sandbox writes are unrelated to the mod. See `docs/evidence/phase15-rename/`
+- [ ] **15.6** New GitHub repository, push, tag and release — pending
+- [ ] **15.7** New Modrinth project and version — pending (requires a new PAT)
+- [ ] **15.8** Final publication verification — pending

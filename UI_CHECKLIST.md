@@ -1,7 +1,13 @@
-# OmniIsle 1.0.0 — Editor UI checklist (flat widget system)
+# OneIsle 1.0.0 — Editor UI checklist (flat widget system)
 
-Date: 2026-10-26. Target: Minecraft 26.3 / Fabric, `OmniIsleEditorScreen` and
-`com.hack337.omniisle.client.ui`.
+Date: 2026-10-26 (captures taken under the OmniIsle name); document updated 2026-10-29.
+Target: Minecraft 26.3 / Fabric, `OneIsleEditorScreen` and `com.reystin.oneisle.client.ui`.
+
+> The 200 real-client captures below are local-only artifacts in `docs/screens/1.0.0/` (ignored
+> by Git, not republished with OneIsle) and were captured before the rename, so their UI title
+> says "OmniIsle". Four post-rename OneIsle smoke captures (Shape tab, 1280×720 s1/s4 and
+> 640×480 s1/s2) are tracked in `docs/screens/oneisle-1.0.0-smoke/`; the full matrix was not
+> re-shot under the new name.
 
 Status legend: DONE = verified by automated test, direct code inspection, or a captured and
 validated screenshot; PARTIAL = implemented but only partly verified; NOT DONE = not produced;
@@ -25,7 +31,7 @@ UNVERIFIED = not exercised in a real client session.
 | `BiomeSelectionScreen` and satellite screens restyled | DONE (code/tests) | Existing behavior tests unchanged; not captured by the editor harness |
 | Create World button stays vanilla | DONE | `WorldTypeEditorMixin` untouched |
 | Texture lifecycle | DONE (unit) | `PreviewTextureSlotTest`, 50 open/close cycles |
-| Screenshots (after matrix) | DONE (captured, sampled inspection) | `docs/screens/1.0.0/after/` — 200 PNGs + 200-row `manifest.csv` |
+| Screenshots (after matrix) | DONE (captured, sampled inspection) | `docs/screens/1.0.0/after/` — 200 PNGs + 200-row `manifest.csv` (local-only, pre-rename) |
 | Render cost <= 2 ms median | PARTIAL | 11/12 medians <= 2 ms; en Climate 2.007 ms; p95 2.214–3.702 ms |
 | GUI screenshots at every tier incl. MEDIUM/MINIMAL | PARTIAL | MEDIUM not produced by the matrix; MINIMAL unreachable in a real client |
 
@@ -110,8 +116,9 @@ final capture).
   `-6312501814918578635` unchanged.
 - Contrast: text/bg 15.02, text/panel 13.75, muted/panel 5.31, muted/raised 4.71, accent/panel 9.70,
   danger/panel 6.08, warn/panel 10.97, ok/panel 9.44; accent-button text 10.59.
-- Screenshots: 200/200 files, 200/200 manifest rows, correct dimensions; before evidence is
-  `docs/screens/1.0.0/before/editor_0.8.4_old_ui.png` (user-supplied 0.8.4 capture).
+- Screenshots: 200/200 files, 200/200 manifest rows, correct dimensions (local-only, captured
+  under the OmniIsle name); before evidence is `docs/screens/1.0.0/before/editor_0.8.4_old_ui.png`
+  (user-supplied 0.8.4 capture, local-only).
 - Render cost at 1920×1080 GUI scale 2 (960×540), 300 frames after warm-up: medians 1.219–2.007 ms,
   p95 2.214–3.702 ms; 11/12 medians <= 2 ms, en_us Climate 2.007 ms. Full table in
   `FINDINGS.md` §19.6 and `render_cost.csv`.

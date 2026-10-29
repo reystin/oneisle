@@ -1,5 +1,9 @@
 # OmniIsle 0.6.0 — Architectural Decisions Log
 
+> **Historical record.** Decisions 001–076 were made under the OmniIsle name; references to
+> OmniIsle, its package paths and version numbers in those entries are historical. OneIsle
+> 1.0.0 (Decision 077) renamed the runtime identity and republished the project.
+
 This log records every design choice, trade-off, and architectural resolution made during the development of OmniIsle 0.6.0.
 
 ---
@@ -696,3 +700,14 @@ This log records every design choice, trade-off, and architectural resolution ma
 * **Choice:** Option 2. No `generation_version` change. v1/v2 stay bit-identical (`GoldenV1Test`/`GoldenV2Test`; v2 hash `-4990092939012319655`). Existing v3 worlds keep their generated datapack and need a new world to see the fixes. Shore/village/climate thresholds in `Phase9ShoreTest`, `Phase11ShoreTest` and the province/climate tests were updated from measured output; composition targets (warm ≥ 8 %, cold ≥ 8 %, green 60–75 %, rare families < 3.5 %) and the zero-counters were kept unchanged.
 * **Reason:** v3 has been the evolving generation since 0.8.2 (Decision 070); a v4 would duplicate the entire terrain pipeline for no player benefit. Recalibrating from measured distributions keeps evidence honest; silently loosening the SPEC targets would not. The v3 biome-source hash stayed `-6312501814918578635` on the regression grid.
 * **Evidence:** `BiomeSourceV2V3RegressionTest` (both hashes unchanged), full suite **193 tests, 0 failures, 2 assumption-gated skips**, jar `OmniIsle-26.3-Fabric-1.0.1+mc26.3.jar`; `docs/evidence/phase14/test_run.log`, `Phase14*` tests, `FINDINGS.md` §21.4.
+
+### Decision 077: rebrand as OneIsle with a new runtime identity
+* **Question:** OmniIsle 0.5.0 is GPL-3.0-only, but the original GitHub repository (`y9hack337/OmniIsle`) and Modrinth project (`omniisle`) belong to Hack337. The authenticated account `reystin` has read-only access to the repository and the stored Modrinth token is invalid (401). How should the finished 0.5.0→1.0.1 work be published?
+* **Options:**
+  1. Publish into the original GitHub repository and Modrinth project.
+  2. Republish under the OmniIsle name as a fork with attribution.
+  3. Create a new project identity (name, namespace, repository and page) and credit the original.
+* **Choice:** Option 3. The project becomes **OneIsle**, first release **1.0.0**. The rename covers mod id and resource namespace (`omniisle` → `oneisle`), Java package (`com.hack337.omniisle` → `com.reystin.oneisle`), `OmniIsle*`/`Omni*` class names, world preset (`oneisle:oneisle`), noise settings (`oneisle:one_terrain`), biome source and density functions, saved data, command (`/oneisle`), config (`config/oneisle.json`), datapack name, import/export/debug paths, share-code prefix (`ONE2-`), debug markers, system properties, harness environment, build naming and the new GitHub/Modrinth pages. Version numbering restarts at 1.0.0. Original pages and tags stay untouched.
+* **Reason:** GPL-3.0-only permits redistribution of modified code with source and notices, but the original pages are not writable and publishing there would misrepresent ownership. A distinct name avoids impersonation and confusion with the original author's releases; attribution to Hack337 is prominent (CREDITS.md, README, `fabric.mod.json` contributors, Modrinth body), and no endorsement is claimed. The Git history keeps the original 0.5.0 commits. The user explicitly chose "rename everything".
+* **Consequences:** Breaking change: OmniIsle worlds (0.5.0–1.0.1), `OMNI2-` share codes and `config/omniisle.json` do not carry over; there is no migration. Terrain math is untouched — v1/v2 goldens still pass and v3 produces the 1.0.1 behavior. Modrinth's reupload rule remains a residual risk; if moderation rejects the project, the fallback is GitHub-only distribution.
+* **Evidence:** `docs/evidence/phase15-rename/` (namespace gates, test run, jar metadata, SHA-256), new GitHub repository `reystin/oneisle`, new Modrinth project `oneisle` (publication tracked in Phase 16 evidence); the original `y9hack337/OmniIsle` repository and Modrinth project are not modified.

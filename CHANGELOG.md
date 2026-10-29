@@ -1,8 +1,43 @@
 # Changelog
 
-All notable changes to OmniIsle are documented in this file.
+All notable changes to OneIsle are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [1.0.0+mc26.3-fabric] - 2026-10-29
+
+First standalone **OneIsle** release: an independent continuation of
+[OmniIsle](https://github.com/y9hack337/OmniIsle) 0.5.0 by Hack337. OneIsle 1.0.0 includes all
+work prepared in the OmniIsle 0.5.0→1.0.1 line; version numbering restarts with the new
+project. Licensed GPL-3.0-only; not affiliated with or endorsed by the original author.
+
+### Changed
+- **Full rebrand.** Mod id and resource namespace `omniisle` → `oneisle`; Java package
+  `com.hack337.omniisle` → `com.reystin.oneisle`; `OmniIsle*`/`Omni*` classes →
+  `OneIsle*`/`One*`; world preset `oneisle:oneisle`; noise settings `oneisle:one_terrain`;
+  biome source, density functions and saved data under `oneisle:*`; command `/oneisle`;
+  config `config/oneisle.json`; server datapack `oneisle-generated.zip`; import/export and
+  debug paths under `oneisle/`; share-code prefix `ONE2-`; debug markers `ONE_*`; system
+  properties and harness environment variables under `oneisle`/`ONEISLE`.
+- New GitHub repository (<https://github.com/reystin/oneisle>) and Modrinth project
+  (`oneisle`). The original OmniIsle repository and Modrinth page are left untouched.
+
+### Breaking
+- **Worlds created with OmniIsle 0.5.0–1.0.1 cannot be loaded by OneIsle.** Registry
+  identifiers changed namespace, so the world preset, biome source, density functions and
+  saved data no longer resolve. There is no migration; create a new world.
+- Legacy `OMNI2-...` share codes are rejected; export a new `ONE2-...` code.
+- `config/omniisle.json` is not read; use `config/oneisle.json` (defaults are regenerated).
+- The version number restarts at 1.0.0; OmniIsle 1.0.0/1.0.1 are different projects.
+
+### Unchanged
+- Terrain math is untouched: v1 reproduces OmniIsle 0.5.0 and v2 reproduces 0.6.0
+  bit-for-bit (`GoldenV1Test`, `GoldenV2Test`); v3 matches the OmniIsle 1.0.1 behavior.
+  Only identifiers and packaging changed.
+- No `generation_version` change; existing OneIsle v3 worlds follow the same
+  "create a new world for fixes" rule.
+
+The sections below document the OmniIsle lineage before the rename and are kept for history.
 
 ## [1.0.1+mc26.3-fabric] - 2026-10-28
 

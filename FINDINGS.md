@@ -1,5 +1,9 @@
 # OmniIsle 0.6.0 — Architectural Findings & Verifications
 
+> **Historical record.** Findings collected under the OmniIsle name before the 1.0.0 rebrand.
+> Package paths, IDs and version labels in the sections below are historical. Section 22 records
+> the OneIsle identity verification.
+
 This document records the empirical verification of Minecraft 26.3 worldgen internals, Loom cache decompilations, and existing OmniIsle code as required by Phase 0 of `OMNIISLE_IMPROVEMENT_PROMPT.md`.
 
 ---
@@ -1161,3 +1165,53 @@ measured, and no explanation is claimed for it. Tests: `Phase14ShoreInteriorTest
 `./gradlew test` **193 tests, 0 failures, 2 assumption-gated skips**. Interactive checks
 (in-game beach inspection, village inspection, a warm→cold walk) were **NOT** performed.
 Evidence: `docs/evidence/phase14/README.md`, `docs/evidence/shore/`, `docs/evidence/phase11/after/shore_runs.csv`.
+
+## 22. [VERIFY] Phase 15 — OneIsle rebrand and standalone 1.0.0 release
+
+### 22.1 What changed
+
+The project was renamed from OmniIsle to OneIsle and republished as an independent GPL-3.0-only
+continuation of OmniIsle 0.5.0 by Hack337. The rename is mechanical: mod id and namespace
+`omniisle` → `oneisle`, Java package `com.hack337.omniisle` → `com.reystin.oneisle`, 27 `Omni*`
+classes → `One*`, world preset `oneisle:oneisle`, noise settings `oneisle:one_terrain`, saved data
+`oneisle:spawn`, command `/oneisle`, config `config/oneisle.json`, server pack
+`oneisle-generated.zip`, directories `oneisle/presets|debug|imports|exports`, share prefix
+`ONE2-`, debug markers `ONE_*`, system properties `oneisle.*`, env `ONEISLE_HARNESS_DIR`,
+resources `assets/oneisle` / `data/oneisle` / `oneisle.client.mixins.json`,
+`LICENSE_OneIsle`, jar `OneIsle-26.3-Fabric-1.0.0+mc26.3.jar`. No alias or legacy ID is
+registered.
+
+The terrain/climate mathematics, `generation_version` and golden values were not touched.
+
+### 22.2 Measured checks
+
+| check | result |
+|---|---|
+| `clean test build` | 197 tests, 0 failures, 0 errors, 2 assumption-gated skips, 48 classes |
+| goldens | `GoldenV1Test` / `GoldenV2Test` pass unchanged; v2 hash `−4990092939012319655`, v3 hash `−6312501814918578635` |
+| namespace gate `rg -i omniisle src/main` | 0 matches |
+| namespace gate `rg '\bOmni' src/main/java` | 0 matches |
+| old IDs in `src/main/resources` | 0 matches |
+| lowercase `omniisle` in extracted jar | 0 matches; the only remaining mention is the intended `fabric.mod.json` attribution sentence “Independent continuation of OmniIsle 0.5.0 by Hack337.” |
+| new namespace in `src/main/resources` | 16 files, 648 matches |
+| jar size / SHA-256 | 2,819,326 bytes, `45a1cf04aa4deda5ae039f6b213542615046b3539a092bc7cd4177702cb9db22`; sources `ff85609f097a42fe3cfb9f595fab66a2b7b3c4dae1301c8ab8f9b5cc72fe3b4c` |
+| in-game smoke (`runClient`, smoke harness) | log line `oneisle 1.0.0+mc26.3`; editor header “OneIsle”; `harness_done.txt` = `ok`; captures at 1280×720 s1 (1280×720) and s4 (427×240), 640×480 s1 (640×480) and s2 (320×240) |
+
+### 22.3 Compatibility
+
+Worlds created with OmniIsle 0.5.0–1.0.1 reference `omniisle:*` and **do not load** in OneIsle.
+There is no migration, by design. Within OneIsle, the v1/v2 generation math is unchanged, so
+worlds created by OneIsle v1/v2 match what OmniIsle produced for the same drafts; v3 is the
+1.0.1 result plus the identifier change.
+
+### 22.4 Not verified
+
+- Interactive feel beyond the smoke capture (tooltips, toasts, dropdown, IME) — unchanged from
+  §19 and not re-exercised.
+- The smoke run captured only the Shape tab; the other five tabs were not re-inspected after the
+  rename (layout code unchanged).
+- Modrinth publication had not happened at the time of this measurement; see
+  `docs/evidence/phase16-release/` once published.
+
+Evidence: `docs/evidence/phase15-rename/` (`namespace_gates.txt`, `test_summary.txt`,
+`jar_metadata.txt`, `sha256.txt`, `build.log`, `README.md`).

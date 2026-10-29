@@ -1,16 +1,22 @@
-# Editor screenshots
+# Historical editor screenshots (OmniIsle-era, local-only)
+
+> These captures were taken before the OneIsle rename; the editor title and harness used the
+> OmniIsle name. This directory is ignored by Git and is not part of the OneIsle repository.
+
+Post-rename captures live in [`oneisle-1.0.0-smoke/`](oneisle-1.0.0-smoke/): four Shape-tab
+smoke images that prove the OneIsle identity loads in a real client.
 
 ## 1.0.0 — captured with the dev harness
 
-The 1.0.0 editor is captured by the in-mod development harness
-(`client/dev/UiScreenshotHarness`, enabled by `client/OmniIsleClient` only when
-`-Domniisle.uiScreenshot=<dir>` is set). It opens the editor with a default
+The 1.0.0 editor was captured by the in-mod development harness
+(`client/dev/UiScreenshotHarness`, enabled by `client/OneIsleClient` only when
+`-Doneisle.uiScreenshot=<dir>` is set). It opens the editor with a default
 `IslandDraft`, switches language, window size, GUI scale and tab, and grabs the
 main render target.
 
 ```sh
 export JAVA_HOME="/Users/reystin/Library/Application Support/PrismLauncher/java/java-runtime-epsilon/jre.bundle/Contents/Home"
-./gradlew runClient --console=plain -Domniisle.uiScreenshot="$PWD/docs/screens/1.0.0/after"
+./gradlew runClient --console=plain -Doneisle.uiScreenshot="$PWD/docs/screens/1.0.0/after"
 ```
 
 - `after/<lang>/<window>_scale<g>/<tab>.png` — 2 languages × 4 window sizes ×
@@ -24,8 +30,8 @@ export JAVA_HOME="/Users/reystin/Library/Application Support/PrismLauncher/java/
   at 1920×1080, GUI scale 2, 300 frames after warm-up.
 - `after/harness_done.txt` or `after/harness_error.txt`.
 
-Smoke runs use `-Domniisle.uiScreenshot.smoke=1` (four screenshots) and
-`-Domniisle.uiScreenshot.lang=ru_ru` to restrict the language.
+Smoke runs use `-Doneisle.uiScreenshot.smoke=1` (four screenshots) and
+`-Doneisle.uiScreenshot.lang=ru_ru` to restrict the language.
 
 ### Measured environment constraints
 
