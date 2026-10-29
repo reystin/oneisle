@@ -39,11 +39,26 @@ modified, and no old tags were pushed to the new repository.
   `PATCH /v2/project/SIvHqEPO {"requested_status":"approved"}` → 204. On 2026-10-29
   <https://modrinth.com/mod/oneisle> still renders “Project not found … may still be under
   review”, so the listing must not be described as live until that page resolves.
+- Icon: replaced on 2026-10-29 with the square floating-island artwork
+  (`Floating Voxel Biome Island-topaz-upscale-2.8x.png`, 3461×3461), downscaled to a 512×512
+  JPEG (103,101 bytes, SHA-1 `6667230fd2c08aee0163c6433e1d4767fd6dd4a0`) and uploaded with
+  `PATCH /v2/project/SIvHqEPO/icon?ext=jpeg` → 204. The CDN copy
+  <https://cdn.modrinth.com/data/SIvHqEPO/6667230fd2c08aee0163c6433e1d4767fd6dd4a0.jpeg>
+  returns 200. The earlier `assets/oneisle/icon.png` resize is no longer used.
 - Banner: `docs/branding/oneisle-banner.jpg` (2000×1000, SHA-256
-  `848a7d18f3e320fdbca15548a80dc36943ad76e7e0b60af8e171f272eaa6a851`) uploaded with
-  `POST /v2/project/SIvHqEPO/gallery?ext=jpg&featured=true` → 204. It is the only gallery
-  image (“banner only”). The project icon is the existing `assets/oneisle/icon.png`, resized
-  to a 512×512 JPEG (52,852 bytes) to fit the 256 KiB icon limit.
+  `848a7d18f3e320fdbca15548a80dc36943ad76e7e0b60af8e171f272eaa6a851`) is embedded at the top
+  of the project description body through its GitHub raw URL (verified 200);
+  `PATCH /v2/project/SIvHqEPO` with the new body → 204. It was removed from the gallery with
+  `DELETE /v2/project/SIvHqEPO/gallery?url=…32344f…_350.webp` → 204, so the banner is not a
+  screenshot. `modrinth_project_body.md` mirrors the published body, banner line included.
+- Gallery: six editor screenshots supplied by the project owner on 2026-10-29, resized to 1920
+  px on the long side, uploaded with
+  `POST /v2/project/SIvHqEPO/gallery?ext=png&title=…` → 204 each. The first image
+  (`01_editor_archipelago.png`) is featured. Files and hashes: `gallery/` and
+  `gallery_sha256.txt`; the CDN URL of every image
+  (`https://cdn.modrinth.com/data/SIvHqEPO/images/<sha1>.png`) returns 200. The screenshots
+  show the editor (English and Russian UI) and its height/biome/shore previews; no in-world
+  gameplay captures were uploaded.
 - Version: `Oon3xljR`, `1.0.0+mc26.3-fabric`, release, game `26.3`, loader `fabric`,
   environment `client_and_server`, required dependency Fabric API `P7dR8mSH`; jar 2,819,326
   bytes. Modrinth sha512/sha1 match the local release jar (see `hashes.txt`).
@@ -62,7 +77,10 @@ rejected, GitHub remains the distribution channel.
 ## Not verified
 
 - Modrinth public page, version metadata and CDN file hash cannot be checked until the project
-  leaves review; API reads are unavailable without read scopes.
+  leaves review; API reads are unavailable without read scopes. Gallery membership cannot be
+  listed through the API either; the uploads are evidenced by the 204 responses and the CDN
+  objects above. `modrinth_project.json` is the creation-time snapshot and predates the icon,
+  body and gallery changes listed in this section.
 - Interactive gameplay beyond the rename smoke (see `phase15-rename/README.md`).
 
 ## Files
@@ -72,7 +90,9 @@ rejected, GitHub remains the distribution channel.
 | `github_release.json` | public release metadata (name, tag, URL, assets) |
 | `remote_refs.txt` | `git ls-remote --heads --tags origin` at verification time |
 | `hashes.txt` | local and downloaded asset hashes |
-| `modrinth_project_body.md` | project body that was published |
+| `modrinth_project_body.md` | project body that was published, banner line included |
+| `gallery/` | six 1920 px PNG editor screenshots used as the Modrinth gallery |
+| `gallery_sha256.txt` | dimensions and SHA-256 of the gallery images |
 | `modrinth_version_plan.md` | version metadata plan for `POST /v2/version` |
 | `modrinth_project.json` | project ID/status/categories/icon/gallery at creation |
 | `modrinth_version.json` | version metadata, dependency and file hashes |

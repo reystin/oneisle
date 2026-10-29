@@ -1,0 +1,10 @@
+# OneIsle 1.0.0 Modrinth gallery images (uploaded 2026-10-29)
+# source files: ~/Desktop/Снимок экрана — 2026-10-29 в 22.12.15/22.14.07/22.14.29/22.14.42/22.14.55/22.15.11.png
+# resized to 1920 px on the long side with sips, PNG
+file                         dimensions         sha256
+01_editor_archipelago.png    1920x1201          aa1e6cf1d4d0c51ba8c29633695eab10c06d36ff75e70ef5cf57eeb635d8afac
+02_biome_map.png             1920x1619          967dcb94e8f86c4bcfa8b026925b775e2e37123072ce97d1aa4277c133128cae
+03_height_preview.png        1920x1645          f99d3e462c629b88acc438bb3756f0b87290bf459e3502480f09c35beb562cdc
+04_shore_map.png             1920x1631          1d32e18180b816d29b7523b3058f9216e89c5213dbe533834d46fe5f2839102c
+05_height_map.png            1920x1622          394d4ae359488486297b01a70efaec1f690de8390dd086c77ebfae37da59d4c0
+06_editor_russian.png        1920x1201          a840fe24f6b74b52ff6cf896cd905b5478c8fde63d448f425d3c993b37aae308

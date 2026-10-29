@@ -11,7 +11,7 @@ Project
   public page https://modrinth.com/mod/oneisle -> "Project not found
   ... It may still be under review or no longer publicly available on Modrinth."
 
-Banner (only gallery image)
+Banner (initial gallery upload, superseded on 2026-10-29 — see “Post-submission changes”)
   docs/branding/oneisle-banner.jpg
   2000x1000 JPEG, 322,938 bytes, SHA-256 848a7d18f3e320fdbca15548a80dc36943ad76e7e0b60af8e171f272eaa6a851
   POST /v2/project/SIvHqEPO/gallery?ext=jpg&featured=true&title=OneIsle%20banner -> 204
@@ -45,3 +45,43 @@ Authentication notes
 Moderation
   No moderation bypass was attempted. If the project is rejected, GitHub
   remains the distribution channel and this file records the outcome.
+
+Post-submission changes (2026-10-29, after the review request)
+
+Icon
+  source square floating-island artwork, downscaled to 512x512 JPEG
+  103,101 bytes, SHA-1 6667230fd2c08aee0163c6433e1d4767fd6dd4a0
+  PATCH /v2/project/SIvHqEPO/icon?ext=jpeg -> 204
+  https://cdn.modrinth.com/data/SIvHqEPO/6667230fd2c08aee0163c6433e1d4767fd6dd4a0.jpeg
+    -> 200; derived ..._96.webp -> 200
+  Replaces the creation-time icon.png resize (52,852 bytes), which is no longer used.
+
+Description banner
+  The banner moved from the gallery into the body:
+    body starts with
+      ![OneIsle banner — a floating voxel island with desert, forest, snowy mountains
+      and ocean at sunset](https://raw.githubusercontent.com/reystin/oneisle/main/docs/branding/oneisle-banner.jpg)
+    GitHub raw URL -> 200
+    PATCH /v2/project/SIvHqEPO with the new body -> 204
+  Local mirror: modrinth_project_body.md (banner line included).
+  Gallery item deleted:
+    DELETE /v2/project/SIvHqEPO/gallery?url=<.../images/32344f215070de94f590b873d10880c89733248c_350.webp> -> 204
+    The original .jpg URL form returned 400 "not part of the project's gallery"; the stored
+    gallery URL is the derived _350.webp one.
+
+Gallery screenshots
+  Six editor screenshots provided by the project owner, resized to 1920 px on the long side:
+    file                        dimensions  sha1                                      sha256
+    01_editor_archipelago.png   1920x1201   c3e263f4ccdcc28433751ba1bca7db5c22088458  aa1e6cf1d4d0c51ba8c29633695eab10c06d36ff75e70ef5cf57eeb635d8afac
+    02_biome_map.png            1920x1619   580f1fb6159a530d1c70c109ad13c4198faa7f66  967dcb94e8f86c4bcfa8b026925b775e2e37123072ce97d1aa4277c133128cae
+    03_height_preview.png       1920x1645   c047f5237d3dd6f980d5421b50eaa29c49b7a2dd  f99d3e462c629b88acc438bb3756f0b87290bf459e3502480f09c35beb562cdc
+    04_shore_map.png            1920x1631   ed99f1da1be9cddd59ec1dfef28b889c07e01d33  1d32e18180b816d29b7523b3058f9216e89c5213dbe533834d46fe5f2839102c
+    05_height_map.png           1920x1622   e27ec0c2879fb40bdb0932e4e649200dc1636c4a  394d4ae359488486297b01a70efaec1f690de8390dd086c77ebfae37da59d4c0
+    06_editor_russian.png       1920x1201   6b371487aaa1a4e009be3dc14ece5c4671060354  a840fe24f6b74b52ff6cf896cd905b5478c8fde63d448f425d3c993b37aae308
+  POST /v2/project/SIvHqEPO/gallery?ext=png&title=<alt text> -> 204 for each upload;
+    the first image is featured=true.
+  CDN https://cdn.modrinth.com/data/SIvHqEPO/images/<sha1>.png -> 200 for all six.
+  The images show the OneIsle editor (English and Russian UI) and its height, biome and
+  shore previews; no in-world gameplay captures were uploaded.
+
+  modrinth_project.json remains the creation-time snapshot; it predates these changes.
