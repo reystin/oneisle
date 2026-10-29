@@ -1,5 +1,5 @@
-# V1 OmniBiomeSource snapshot: 200x200 surface grid (y=64) + 4 underground Y levels,
-# 100 LCG points each. Regenerate with -Domniisle.regenerateGolden=true.
+# V1 OneBiomeSource snapshot: 200x200 surface grid (y=64) + 4 underground Y levels,
+# 100 LCG points each. Regenerate with -Doneisle.regenerateGolden=true.
 # preset,relief,size,surface,y-32,y0,y40,y120
 NATURAL,BALANCED,2500,-1585950279361541021,-5935046955385231850,7242401689125365266,4267665090080752991,5750724135928223134
 NATURAL,BALANCED,8000,7257076570329464096,9188333314885565260,2503029799692600230,-8323522742591079948,4696735461434231265
