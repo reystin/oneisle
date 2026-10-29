@@ -1,0 +1,1382 @@
+================================================================================
+OMNIISLE 0.7.0+mc26.3-fabric — PHASE 9
+ПОДРОБНАЯ СВОДКА ДЛЯ ПРОВЕРКИ
+================================================================================
+
+Дата:            2026-10-25
+Проект:          /Users/reystin/antigravity/igloo/OmniIsle
+Ветка:           fabric/26.3
+HEAD:            26533a5c4012edc81fc90086b58e9125d4f80b09
+Файл:            docs/PHASE9_FINAL_REPORT_RU.txt
+Статус файла:    создан по запросу, НЕ закоммичен
+
+Легенда статусов:
+  DONE        — реализовано и проверено, есть воспроизводимое доказательство.
+  PARTIAL     — реализовано, но покрытие/приёмка неполные; границы оговорены.
+  NOT DONE    — требование не выполнено.
+  UNVERIFIED  — код/модель есть, но поведение не проверено в реальном клиенте
+                или на другой конфигурации оборудования.
+
+--------------------------------------------------------------------------------
+0. КРАТКИЙ ИТОГ
+--------------------------------------------------------------------------------
+
+  DONE:
+    - Phase 9.0–9.8 в целом; v3 shore, ocean, structures, spawn, climate,
+      editor, документация, финальная сборка и release jar.
+    - v1/v2 генерация остаётся бит-в-бит совместимой; v3 — новый default.
+    - 97 тестов, 0 failures, 0 errors, 2 assumption-gated skip.
+    - Jar собран и зеркалирован в два места; SHA-256 совпадает.
+
+  PARTIAL:
+    - Полная матрица 20 структур: 15/45 конфигов (300/300 строк найдены).
+      Stronghold-only отдельно проверен на всех 45/45 конфигах.
+    - Приёмка редактора: автотесты/round-trip/текстуры проходят, но скриншоты
+      GUI scales 1–4 не сделаны.
+
+  NOT DONE:
+    - Скриншоты редактора в docs/screens/ (сейчас там только README.md).
+
+  UNVERIFIED:
+    - Визуальное поведение и ощущение ввода редактора в настоящем клиенте.
+    - Внутренности структур на уровне блоков (использован /locate + StructureStart).
+    - Производительность за пределами одного macOS arm64 хоста и одного
+      inland-участка 25x25 чанков.
+
+  Ключевые числа:
+    - Shore: sand 22.6807 %, stony 4.0625 %, none 73.2568 %;
+      longest run 384.3 блока; parity 18 403/18 403.
+    - Perf: v1 14.891 s, v2 14.231 s, v3 14.557 s на 625 чанков;
+      бюджет +15 % выполнен.
+    - Strongholds: 135/135 стартов; spawn distance 526.0–551.9 (2500),
+      868.4–875.4 (4000), 818.8–1193.6 (8000); mutual min 273.9.
+    - Spawn: 45/45 marker=real, land, dry; 42/45 полностью dry на лучах до 64.
+    - Ocean band: 0 нарушений / 120 856 сэмплов; worst c = -0.712976.
+    - Climate: дефолтный delta 0.450/0.220/0.160/0.140;
+      самый длинный прямой border 230 блоков (< 400).
+    - Jar SHA-256: 7bee2cf87ec1537d2bbfd7f5e8459631448354766b36ed20a722fed4a5aea1b6.
+
+--------------------------------------------------------------------------------
+1. ПАСПОРТ СБОРКИ И АРТЕФАКТЫ
+--------------------------------------------------------------------------------
+
+Платформа:
+  Minecraft:       26.3
+  Fabric Loader:   0.19.3
+  Fabric API:      0.165.0+26.3
+  Loom:            1.17.19
+  Java:            25
+  pack_format:     121 (minor 0)
+  Gradle JVM args: -Xmx3G -Dfile.encoding=UTF-8
+
+Версия:
+  gradle.properties: mod_version=0.7.0
+  fabric.mod.json:   "version": "0.7.0+mc26.3"
+  CHANGELOG.md:      [0.7.0+mc26.3-fabric] - 2026-10-24
+
+Финальная сборка:
+  Команда:  ./gradlew build
+  Итог:     97 tests, 0 failures, 0 errors, 2 skipped
+  JAR:      2 242 425 bytes
+  Время:    2026-10-25 00:23:51
+
+JAR и зеркала (все три SHA-256 совпадают):
+  7bee2cf87ec1537d2bbfd7f5e8459631448354766b36ed20a722fed4a5aea1b6
+
+  1) /Users/reystin/antigravity/igloo/OmniIsle/build/libs/
+     OmniIsle-26.3-Fabric-0.7.0+mc26.3.jar
+
+  2) /Users/reystin/Downloads/
+     OmniIsle-26.3-Fabric-0.7.0+mc26.3.jar
+
+  3) /Users/reystin/Library/Application Support/PrismLauncher/instances/26.3/
+     minecraft/mods/OmniIsle-26.3-Fabric-0.7.0+mc26.3.jar
+
+Git:
+  Ветка: fabric/26.3
+  HEAD:  26533a5 phase9.8: record final 97-test build in progress and findings
+  Рабочее дерево: чистое, кроме намеренно untracked:
+    - SUMMARY_0.6.0.md (отчёт предыдущего агента, не коммитится)
+    - docs/PHASE9_FINAL_REPORT_RU.txt (этот файл, не коммитится)
+    - .DS_Store (macOS metadata; не коммитится)
+  Все изменения Phase 9 закоммичены.
+
+--------------------------------------------------------------------------------
+2. ЧТО ИМЕННО СДЕЛАНО ПО ФАЗАМ
+--------------------------------------------------------------------------------
+
+9.0 — baseline и ориентация
+  Коммит: 2465187
+  - Проверена исходная сборка, LF-нормализация.
+  - Зафиксирован JDK 25 из PrismLauncher java-runtime-epsilon.
+  - Составлена карта архитектуры и список противоречий в PHASE9_NOTES.md.
+  - Поведение генерации не менялось.
+
+9.1 — аудит заявлений 0.6.0
+  Коммит: 0400b14
+  - Реально перемерены 8 подозрительных пунктов + shore baseline.
+  - Обнаружено, что «stronghold 24–77 блоков» — арифметика без placement search.
+  - Исправлена недетерминированность StructurePlacementHarness:
+    evaluateLegacy/evaluateModern теперь вызывают setShapeSeed/setBiomeSeed.
+  - Ocean floor: мягкий floor -0.80, не плоский -0.92; deep band не гарантирован.
+  - 0.088 ms/chunk — micro-benchmark сэмплера, не chunk generation.
+  - Parity 256x256: 100 % без рек; с реками land-family 88.3 %.
+  - Golden расширен реальным v1 OmniBiomeSource snapshot.
+  - Ancient City: tag deep_dark + surface biome; city мог появиться без Deep Dark.
+  - WorldBorder default=false; найден баг copy() (терял river/border).
+  - Climate: ALL/STANDARD давали одинаковые fractions; theme span не использовался.
+  - Shore baseline: 100 % берега — shore biome на d≈6.
+  Доказательства: docs/evidence/phase9_before/README.md и 19 файлов.
+
+9.2 — shoreline redesign (v3)
+  Коммит: 1cd63aa
+  - Новый ShoreField:
+      patch mask (fbm 380/70), локальная ширина 3–26 блоков,
+      8-точечная bayness на радиусе 60, slope factor,
+      три исхода sand/stony/none, jitter границ.
+  - Опциональный JSON shore:{density,variety,style,rocky}; для v3 defaults
+    0.30 / 0.60 / natural / rocky enabled.
+  - v1/v2 идут старым путём без изменений (I1).
+  - В редакторе: Beaches 0–100 %, Shore variety, Rocky shores; live preview.
+  - /omniisle debug shore — трёхцветная маска; debug biome учитывает shore.
+  - v3 terrain easing: пляжные карманы мягче (x0.62), скалистые берега круче
+    (x1.18); max continuity delta 0.0109 < 0.015.
+  - 30 островов x 2048 точек = 61 440 контурных сэмплов.
+  Доказательства: docs/evidence/shore/ (17 файлов).
+
+9.3 — ocean floor и deep-ocean band (v3)
+  Коммит: d31a4d7
+  - v3 ramp:
+      base = -0.08 - 0.54*smoothstep(s/0.4Wo) - 0.18*smoothstep(s/Wo)
+      soft floor max(c, -0.80), глобальный clamp [-1.0, 0.70].
+  - Seabed noise weight smoothstep(s/0.5Wo) ровно 0 у берега.
+  - Seamounts max(0,fbm)*0.18 только за 1.0*Wo; trenches 0.12.
+  - Deep band [0.4Wo, 1.0Wo]: положительный seabed noise запрещён;
+    worst c = -0.712976 при пороге -0.58; 0 нарушений / 120 856 сэмплов.
+  - Islets: c=max(c_ocean,c_islet); clearance Wo+80; 62 land samples,
+    peak 0.2355, max profile delta 0.0446.
+  - Ocean monuments: 5x5 chunk survey ниже -0.62, score к -0.72;
+    placement extends RandomSpreadStructurePlacement, виден /locate.
+  - 10/10 real locate; centres c -0.748…-0.719; deep_ocean на y 62/50/40/30.
+  Доказательства: docs/evidence/ocean/ (10 файлов, radial CSV 23 184 строки).
+
+9.4 — structures и spawn (v3)
+  Коммит: 16896b5
+  - Strongholds: 3 фиксированных старта в секторах по 120 градусов.
+    Требования: spawn >=150 (2500) / >=300 (4000,8000), mutual >=250,
+    предпочтение main-island land. Записываются как omniisle:fixed_multi.
+  - Генерируются реальные /locate и Eye of Ender старты; не ring arithmetic.
+  - v3 relaxed pyramids обходят vanilla 21x21 sea-level gate; v1/v2 не тронуты.
+  - Village/trial spacing: min(1, size/4000), separation < spacing;
+    editor density 0.5x/1x/2x.
+  - Spawn plateau: 80-block radius, top y 78; SERVER_STARTED сверяет
+    getRespawnData().
+  - copy() теперь сохраняет riverDensity, worldBorder, worldBorderMargin.
+  - Real-server full sweep 15 конфигов x 20 строк = 300 строк.
+  - Stronghold-only sweep 45 конфигов = 135 стартов.
+  - Spawn evidence 45 конфигов.
+  Доказательства: docs/evidence/structures/, docs/evidence/spawn/.
+
+9.5 — theme-aware climate
+  Коммит: 4ceeed1
+  - Явные ThemeClimate(centre, span, noise):
+      ALL/STANDARD 0.90, MYSTIC 0.44, NORDIC 0.32, DESERT/TROPICAL 0.28.
+  - gradientAmplitude = 0.5 * span * clamp01(strength); default strength 0.5.
+  - Старые константы сохранены: 0.5*span*s = maxSpread*s, поэтому v1/v2/v3
+    температура не изменилась (I1).
+  - ±0.75 отклонён: на ALL это клинит большую часть карты; peak ±0.45.
+  - Border jitter ±0.04 temperature / ±0.032 humidity уже был для v2+;
+    заменён фиктивный run counter на реальный border-chain + line-fit.
+  - 6 themes x off/on/max: family fractions CSV, montage PNG, border CSV.
+  Доказательства: docs/evidence/climate/.
+
+9.6 — editor tools, presets, seed UX, inspector, PNG, layout
+  Коммит: d689c16
+  - Инструменты Fill/Line/Ellipse/Rectangle на land и height слоях;
+    Shift = square/circle; filled/outline; Undo/Redo.
+  - Symmetry X, Z, 4-way; добавлены 6-way и 8-way radial.
+    Радиальная симметрия исправлена: рисуется forward orbit каждого пикселя,
+    иначе были дырки растеризации.
+  - Zoom/Pan: wheel at cursor 1x–8x, middle-drag или Space+left-drag,
+    grid 16 px, reset.
+  - 7 новых presets: Atoll, Volcano, Fjords, Twin Islands, Inland Sea,
+    Horseshoe Bay, Ridge Island; всего 12.
+  - Seed UX: shape/biome seed, dice, copy both.
+  - Inspector: biome, X/Z, surface elevation, land/water, signed coast distance,
+    islet status, height tier, shore outcome.
+  - PNG export: mask, height, biomes, hillshade, shore.
+    PNG import: mask + heightmap threshold/quantiles (25/50/75 %).
+  - 6 tabs: Shape/Terrain/Climate/Biomes/Structures/Tools; compact
+    BiomeSelectionScreen сохранён.
+  - /omniisle info; Advanced generation v1/v2/v3, default v3.
+  - 50/50 texture registrations/releases.
+  - НЕ СДЕЛАНО: скриншоты GUI scales 1–4 (UI_CHECKLIST.md, docs/screens/README.md).
+  Доказательства: docs/evidence/editor/, UI_CHECKLIST.md.
+
+9.7 — relief, coast, rivers, dynamic biome, dedicated server
+  Коммит: e3dbd9b
+  - Relief: 93–107 локальных максимумов; max-height plateau <=96 блоков;
+    tier-3 boost +122.4; max slope 2.010–2.551 < 2.7.
+  - Coast fidelity: worst mean 0.2955 px / max 1.5778 px (4000);
+    на 2500 — 0.2462/1.3579 px; 0 failures; порог проверяется на обоих размерах.
+  - 2500 outlier ARCHIPELAGO seed 101 (2.5091 px) исправлен квадратичным
+    масштабированием warp ниже 4000.
+  - Rivers: legacy default 0.0; v3 density 0.45; threshold следует дренажу;
+    ocean-side carve пересекает waterline без ступеньки.
+  - River mouths: 10 000 точек, 2 799 ниже моря, 1 618 с carve;
+    max delta 0.024772 < 0.035; max slope 1.958 < 2.7; 10/10 crossings.
+  - Dynamic biome registry: 2/2 custom biomes через реальный RegistryDataLoader,
+    категории SHORE и CAVE.
+  - Dedicated server: OmniIslePreLaunch пишет pack до WorldLoader;
+    первый boot использует file/omniisle-generated.zip (world);
+    v3, 192x192, spawn 14,128,-1062; 1536/1536 spawn checks.
+  Доказательства: docs/evidence/relief/, coast/, rivers/, dynamic_biome/,
+  server/.
+
+9.8 — spec, changelog, README, golden v2, cache, final perf, release
+  Коммиты: c63c0ff, b8aba9e, 8a847de, 26533a5
+  - OMNIISLE_AI_SPEC.md переписан под фактическое состояние 0.7.0:
+    pipeline, class roles, JSON schema 1/2/3, shore/islet_density/river_density/
+    height_layer/spawn, формулы, I1–I7; удалены неверные minecraft:cache и
+    height_layer.bin утверждения.
+  - Независимый v2 golden из worktree коммита 7a5174d:
+    30 конфигов x 1500 точек x 4 double = 180 000 значений,
+    sha256 abb4bb1badd53b247759ffb06f313ad5d8ab71deb57ece61771bc55a589b96ee;
+    GoldenV2Test — точное битовое совпадение.
+  - BiomeSourceV2V3RegressionTest: 29 282 lookup'а, v2 unsigned
+    13456651134697231961, v3 7583129763709705084; output hashes до/после
+    column cache идентичны.
+  - OmniBiomeSource: per-thread 512-slot column cache по (biomeX, biomeZ) и
+    terrain identity; устраняет повторную Y-независимую работу.
+  - Final perf: 3 interleaved rounds v1→v2→v3, 25x25 inland chunks.
+  - Ancient City deep-dark gate: v3 отключает ancient_cities, если deep_dark
+    отсутствует в enabled palette; Phase9StructureTest проверяет флаг.
+  - Финальная сборка и зеркалирование jar.
+  Доказательства: docs/evidence/perf/, src/test/resources/golden/v2/,
+  FINDINGS.md §15, DECISIONS.md 034–038.
+
+--------------------------------------------------------------------------------
+3. СТАТУСЫ ПО ВСЕМ ПУНКТАМ SECTION 2–9
+--------------------------------------------------------------------------------
+
+2.1 [DONE] Stronghold audit
+  Evidence: docs/evidence/phase9_before/stronghold_ring_geometry.csv,
+            stronghold_harness_fix.txt, stronghold_harness_nondeterminism.csv
+  Факт: 24.12 — разница гипотетического радиуса и spawn, не найденная крепость.
+        Ring 0: 574.8 блока от origin; 136.4 от spawn при size 2500.
+        Реальные v3 strongholds исправлены в 9.4.
+
+2.2 [DONE] Ocean floor audit
+  Evidence: docs/evidence/phase9_before/ocean_profile_summary.csv,
+            ocean_radial_profiles.csv, ocean_height_6000_before.png
+  Факт: c_min -1.000000, c_max -0.704052; 94.02 % offshore deep;
+        deep band существовал случайно, без гарантии.
+
+2.3 [DONE] Real performance audit
+  Evidence: docs/evidence/phase9_before/density_sampling_perf.csv,
+            docs/evidence/perf/README.md
+  Факт: заявленные 0.088 ms/chunk — только sampler; реальная медиана v1
+        23.83 ms/chunk (14.891 s / 625). Полный замер выполнен в 9.8.
+
+2.4 [DONE] Preview/server parity
+  Evidence: docs/evidence/phase9_before/parity_before_summary.csv,
+            parity_rivers_on_summary.csv, parity_before_diff.png,
+            docs/evidence/shore/shore_parity_summary.txt
+  Факт: 65 536/65 536 без рек; 88.3 % land-family с river_density=0.35;
+        финальный shore zone 18 403/18 403 (1 016 shore samples).
+
+2.5 [DONE] Golden coverage
+  Evidence: docs/evidence/phase9_before/golden_audit.txt,
+            src/test/resources/golden/v1/golden_v1_source.txt,
+            src/test/resources/golden/v2/
+  Факт: 30 конфигов x 10 000 LCG точек; max diff 0.0.
+        v2 golden: 180 000 значений, sha256 abb4bb1b…b96ee, exact.
+        v1/v2 source snapshots добавлены и проверяются.
+
+2.6 [DONE] Ancient City audit/fix
+  Evidence: docs/evidence/phase9_before/ancient_city_audit.txt,
+            src/test/java/.../Phase9StructureTest.java
+  Факт: tag был deep_dark + surface biome; v3 теперь отключает set при
+        отсутствии deep_dark в palette. Остаточный spatial fallback описан
+        в разделе 14.
+
+2.7 [DONE] World border default
+  Evidence: docs/evidence/phase9_before/world_border_default.txt
+  Факт: default=false и в коде, и в codec; существующие миры не затронуты.
+        copy() теперь сохраняет riverDensity/worldBorder/worldBorderMargin.
+
+2.8 [DONE] Climate gradient audit
+  Evidence: docs/evidence/phase9_before/climate_family_fractions.csv
+  Факт: ALL и STANDARD дали идентичные fractions; cherry grove 33.4 %,
+        swamp 16.7 %, pale garden 6.7 %; theme span не использовался.
+
+3.1 [DONE] Shore problem confirmed
+  Evidence: docs/evidence/phase9_before/shore_ribbon_before.csv,
+            biome_before_6000.png
+  Факт: 100 % контурных точек имели shore biome на d≈6; непрерывная лента.
+
+3.2 [DONE] Shore cause confirmed
+  Evidence: тот же baseline + аудит OmniBiomeSource
+  Факт: условие c < 0.02, начиная с c=-0.30, даёт полосу постоянной ширины;
+        берег начинался даже под водой.
+
+3.3 [DONE] New shore field
+  Evidence: src/main/java/com/hack337/omniisle/continent/ShoreField.java,
+            docs/evidence/shore/shore_mask_4000_101.png
+  Факт: patch mask + width noise + bayness + slope + три исхода.
+
+3.4 [DONE] Config and editor
+  Evidence: docs/evidence/shore/shore_settings_roundtrip.txt
+  Факт: density=0.75, variety=0.40, rocky=false сохраняются в share code,
+        pack continents и pack preset; 3 контрола + debug shore.
+
+3.5 [DONE] Shore acceptance
+  Evidence: shore_acceptance_summary.txt, shore_acceptance.csv,
+            shore_density_sweep.csv, shore_bay_headland.txt,
+            shore_straight_border.txt, shore_continuity.csv,
+            shore_parity_summary.txt, 6 before/after PNG
+  Факт: sand 22.6807 %, stony 4.0625 %, none 73.2568 %;
+        longest run 384.3; 14–110 runs; max median 21.8; min width CV 0.678;
+        bay ratio 3.976; straight border 56; continuity 0.0109; parity 100 %.
+
+3.6 [DONE] Compatibility
+  Evidence: Phase1CompatibilityTest (8 tests), GoldenV1Test, GoldenV2Test
+  Факт: v3 parsing; unknown future version обрабатывается; v1/v2 golden exact;
+        полная сборка 97 tests green.
+
+4.1 [DONE] Ocean soft floor
+  Evidence: docs/evidence/ocean/README.txt, ocean_radial_profiles_v3.csv
+  Факт: base=-0.08-0.54*smoothstep(s/0.4Wo)-0.18*smoothstep(s/Wo);
+        soft floor -0.80; c(0)=-0.08 без ступеньки; clamp [-1.0,0.70].
+
+4.2 [DONE] Guaranteed deep band
+  Evidence: docs/evidence/ocean/ocean_band_summary.csv,
+            ocean_band_mismatches.csv
+  Факт: 0 violations / 120 856 samples; max c в полосе -0.712976 < -0.58.
+
+4.3 [DONE] Satellite islets
+  Evidence: docs/evidence/ocean/ocean_islets_v3.csv
+  Факт: c=max(c_ocean,c_islet); clearance Wo+80; 62 land samples;
+        peak 0.2355; nearest coast 611; max profile delta 0.0446.
+
+4.4 [DONE] Monument evidence
+  Evidence: docs/evidence/ocean/ocean_monument_locate.csv,
+            ocean_monument_band.csv
+  Факт: 10/10 real locate; distance 999–1000; deep_ocean на y 62/50/40/30;
+        centres c -0.748…-0.719. Пакетные теги: 14/15 deep_ocean,
+        один cold_ocean (описано в разделе 14).
+
+5.1 [DONE] Stronghold placement
+  Evidence: docs/evidence/structures/stronghold_validation.csv
+  Факт: 135/135 starts; 45/45 configs pass; spawn distance ranges:
+        2500 526.0–551.9 (req 150), 4000 868.4–875.4 (req 300),
+        8000 818.8–1193.6 (req 300); mutual min 273.9; on land 45/45;
+        eye targets 45/45.
+
+5.2 [PARTIAL] Full real-server structure matrix
+  Evidence: docs/evidence/structures/STRUCTURE_REPORT_after_v2.csv
+  Факт: 300/300 rows found/locate_ok; 15/45 configs (seed 101);
+        strongholds отдельно 45/45; остальные 30 конфигов не заявлены.
+
+5.3 [DONE] Village/trial scaling
+  Evidence: docs/evidence/structures/structure_scaling.csv
+  Факт: 18/18 rows expected=actual; 2500 d=0.5/1/2 -> spacing 30/21/15;
+        4000 и 8000 -> 48/34/24; separation всегда < spacing.
+
+5.4 [DONE] Spawn
+  Evidence: docs/evidence/spawn/spawn_evidence_45.csv,
+            docs/evidence/spawn/README.md
+  Факт: 45/45 marker x/z = real spawn; 45/45 land; 45/45 dry;
+        42/45 dry на всех 8 лучах до 64 блоков; nearest water min 56;
+        spawn plateau 80 radius, top y 78.
+
+6.1 [DONE] Theme-aware gradient
+  Evidence: docs/evidence/climate/climate_gradient_summary_v3.csv
+  Факт: spans 0.90/0.44/0.32/0.28; default strength 0.5;
+        measured delta 0.450/0.220/0.160/0.140, delta_error 0.000;
+        peak ±0.45 при strength 1.0; ±0.75 отклонён.
+
+6.2 [DONE] Family border jitter
+  Evidence: docs/evidence/climate/climate_straight_borders_v3.csv
+  Факт: longest straight border 230 < 400 (TROPICAL, gradient off,
+        vertical z=1100); v2 130; 24 измерения (6 themes x OFF/NORTH_SOUTH x
+        horizontal/vertical).
+
+6.3 [DONE] Slope-aware shore interplay
+  Evidence: docs/evidence/shore/shore_continuity.csv
+  Факт: не дублировано; реализовано в 9.2; max delta 0.0109 < 0.015.
+
+6.4 [DONE] Climate evidence
+  Evidence: docs/evidence/climate/climate_family_fractions_v3.csv,
+            theme_families_6000.png
+  Факт: NORDIC cold 91.4 -> 71.9 % (default); ALL +2.5 % cold и +12.1 % warm;
+        ALL/STANDARD идентичны; mushroom_fields fixed 0.74 %.
+
+7.1 [DONE] Editor tools
+  Evidence: Phase9EditorTest, PreviewViewport, PreviewTextureSlotTest
+  Факт: Fill/Line/Rectangle/Ellipse; Shift square/circle; fill/outline;
+        symmetry X/Z/4/6/8; zoom 1–8x at cursor; middle/Space pan; 16-px grid.
+        Radial closure test пройден.
+
+7.2 [DONE] Shape presets
+  Evidence: Phase7EditorTest, Phase9EditorTest
+  Факт: 12 presets x 20 seeds; land 13.5–40.1 % (требование 12–55 %);
+        main component 100 % в проверенных конфигах; 0 border pixels.
+        7 новых presets: Atoll, Volcano, Fjords, Twin Islands, Inland Sea,
+        Horseshoe Bay, Ridge Island.
+
+7.3 [DONE] Seed UX
+  Evidence: Phase9EditorTest.seedUxTest
+  Факт: shape/biome seed fields, dice, copy both.
+
+7.4 [DONE] Inspector tooltip
+  Evidence: Phase9EditorTest + UI_CHECKLIST.md
+  Факт: biome, X/Z, surface elevation, land/water, signed coast distance,
+        islet status, height tier, shore outcome.
+
+7.5 [DONE] PNG export/import
+  Evidence: docs/evidence/editor/png_export_*.png, Phase9EditorTest
+  Факт: 5/5 maps exported (mask/height/biomes/hillshade/shore);
+        heightmap quantiles 0/85/170/255 -> tiers 0/1/2/3;
+        flat map -> tier 1.
+
+7.6 [DONE] Tab layout
+  Evidence: EditorLayout, Phase9EditorTest.layoutFitsGuiScales
+  Факт: 6 tabs; 480x270 content/panel/Done bottom = 216/222/250;
+        compact BiomeSelectionScreen сохранён.
+
+7.7 [DONE] /omniisle info + version selector
+  Evidence: Phase9EditorTest, command implementation
+  Факт: info command; Advanced v1/v2/v3 selector; default v3.
+
+7.8 [DONE] Undo/Redo coverage
+  Evidence: Phase9EditorTest.toolsUndoRedoTest, PreviewTextureSlotTest
+  Факт: land, height, spawn, resolution и все инструменты;
+        50/50 texture registrations/releases.
+
+7.acceptance [PARTIAL] Editor acceptance
+  Evidence: UI_CHECKLIST.md, docs/screens/README.md
+  Факт: round-trip PNG/share code, preset validity, texture lifecycle tests pass.
+        Скриншоты GUI scales 1–4 — NOT DONE. Визуальный клиент — UNVERIFIED.
+
+8.1 [DONE] Relief criteria
+  Evidence: docs/evidence/relief/relief_round_islands.csv,
+            relief_tier3_boost.csv, relief_round_4000_seed1.png,
+            relief_tier3_4000_seed1.png
+  Факт: 93–107 local maxima на seeds 1–5; plateau <=96 блоков;
+        tier-3 +122.4 блока (требование >=40);
+        max 4-block slope 2.010–2.551 < 2.7 (vanilla 1.8 x 1.5).
+
+8.2 [DONE] Coast fidelity
+  Evidence: docs/evidence/coast/coast_displacement_summary.txt,
+            coast_displacement.csv, 15 overlay PNG
+  Факт: threshold mean 0.6 / max 2.0 px; worst 0.2955/1.5778 px на 4000;
+        0.2462/1.3579 px на 2500; 0 failures; оба размера проверяются.
+
+8.3 [DONE] Rivers
+  Evidence: docs/evidence/rivers/river_mouth_summary.txt,
+            river_mouth_samples.csv, river_waterline_crossings.csv
+  Факт: legacy default 0.0; v3 density 0.45; 10 000 точек;
+        2 799 ниже моря, 1 618 carved; max delta 0.024772 < 0.035;
+        max slope 1.957770 < 2.7; 10/10 waterline crossings;
+        max crossing delta 0.021143 < 0.035.
+
+8.4 [DONE] Dynamic biome registry
+  Evidence: docs/evidence/dynamic_biome/dynamic_biome_list.txt,
+            custom_beach.json, pack.mcmeta
+  Факт: 2/2 custom biomes через реальный RegistryDataLoader;
+        категории SHORE и CAVE; metadata корректна.
+
+8.5 [DONE] Dedicated server flow
+  Evidence: docs/evidence/server/README.md, server_startup.log,
+            rcon_world_info.txt, rcon_verify.txt,
+            generated_pack_entries.txt, config_omniisle.json
+  Факт: preLaunch export 21:58:12 -> world creation 21:58:19 ->
+        Done 21:58:22 -> spawn 21:58:23; v3, 192x192, bbox 5440,
+        spawn 14,128,-1062; 1536/1536 spawn checks; 19 distinct biomes.
+        Pack sha256 efd102af…9cd4e6 (17 760 bytes).
+
+9.1 [DONE] Spec
+  Evidence: OMNIISLE_AI_SPEC.md (262 строки)
+  Факт: pipeline, class roles, JSON schema 1/2/3,
+        shore/islet_density/river_density/height_layer/spawn,
+        формулы shore/ocean/ridge, invariants I1–I7;
+        удалены ложные minecraft:cache и height_layer.bin.
+
+9.2 [DONE] Changelog/README/progress/decisions/findings
+  Evidence: CHANGELOG.md, README.md, PROGRESS.md, DECISIONS.md, FINDINGS.md
+  Факт: [0.7.0+mc26.3-fabric]; README с before/after shore и compatibility;
+        PROGRESS с evidence links; DECISIONS 034–038; FINDINGS §15.
+
+9.3 [DONE] Final build and mirror
+  Evidence: build/libs/OmniIsle-26.3-Fabric-0.7.0+mc26.3.jar,
+            build/test-results/test/TEST-*.xml
+  Факт: 97 tests, 0 failures, 0 errors, 2 skipped; jar 2 242 425 bytes;
+        SHA 7bee2cf8…a1b6; оба зеркала совпадают.
+
+--------------------------------------------------------------------------------
+4. SHORE REDESIGN — ПОДРОБНО
+--------------------------------------------------------------------------------
+
+Проблема 0.6.0:
+  - Условие shore = continentalness < 0.02 давало полосу постоянной ширины
+    вдоль всего берега; полоса начиналась при c=-0.30, то есть под водой.
+  - 100 % контурных точек на d≈6 имели shore biome.
+
+Причина:
+  - continentalness монотонна по расстоянию до берега; порог превращает
+    расстояние в фиксированную ширину. Геометрия/шум не участвовали.
+
+Новая модель v3:
+  - patch mask: smoothstep(t0,t1, fbm(x/380,z/380,seedA)*0.65 +
+    fbm(x/70,z/70,seedB)*0.35).
+  - локальная ширина: lerp(3,26,noiseW)*patch; пляж при 0<=d<=w.
+  - intertidal: -6<=d<0 только перед существующими пляжными карманами.
+  - bayness: 8 точек кольца R=60; k=(mean(ring)-sdf(center))/R;
+    bay=smoothstep(-0.15,0.25,k).
+  - slope factor: крутые берега -> stony или none; пологие -> sand.
+  - три исхода с jitter порогов: sand beach / stony shore / none.
+  - none — самый частый исход при defaults.
+  - запрещены пляжи в mushroom_fields/mangrove_swamp/swamp; badlands/desert
+    могут иметь none или sand.
+  - учитывается enabled_shore_biomes; пустой набор -> none.
+  - ниже d<-6 всегда ocean, без покраски мелководья пляжами.
+
+Конфигурация:
+  shore: {
+    "density": 0.30,
+    "variety": 0.60,
+    "style": "natural",
+    "rocky": true
+  }
+  Для absence поля — legacy ribbon; v1/v2 не меняются.
+  Новые миры: generation_version=3, defaults 0.30/0.60.
+
+Редактор:
+  - Beaches 0–100 %.
+  - Shore variety.
+  - Rocky shores checkbox.
+  - Live preview: biome colors + shore overlay.
+  - /omniisle debug shore: 3 цвета (sand/stony/none).
+  - /omniisle debug biome: shore colors.
+
+Приёмка (30 островов, 61 440 точек):
+  sand  22.6807 %
+  stony  4.0625 %
+  none  73.2568 %
+
+  Longest run:          384.3 блока (лимит 500)
+  Runs per island:      14–110 (лимит >=10)
+  Largest median run:    21.8 блока (лимит 200)
+  Min width CV:          0.678 (лимит >=0.35)
+  Bay/headland ratio:    3.976 (лимит >=2.0)
+  Longest straight line: 56 блоков (лимит 120)
+  Longest border:        156.22 блока
+  Continuity max delta:  0.0109 (лимит 0.015)
+  Preview/server parity: 18 403/18 403 (1 016 shore samples)
+
+Density sweep:
+  density 0.0 -> 0.000000
+  density 0.2 -> 0.051270
+  density 0.4 -> 0.516113
+  density 0.6 -> 0.719727
+  density 0.8 -> 0.723633
+  density 1.0 -> 0.723633
+  Монотонно; 0 -> 0 %; 1.0 -> 72.36 % (в окне 70–90 %).
+
+Before/after PNG:
+  docs/evidence/shore/shore_before_ROUND.png
+  docs/evidence/shore/shore_after_ROUND.png
+  docs/evidence/shore/shore_before_NATURAL.png
+  docs/evidence/shore/shore_after_NATURAL.png
+  docs/evidence/shore/shore_before_CRESCENT.png
+  docs/evidence/shore/shore_after_CRESCENT.png
+  docs/evidence/shore/shore_mask_4000_101.png
+
+Совместимость:
+  - generation_version=1/2 идут старым путём бит-в-бит.
+  - Phase1CompatibilityTest: v3 parse + unknown future version handling.
+  - GoldenV1Test / GoldenV2Test зелёные.
+
+--------------------------------------------------------------------------------
+5. ПРОИЗВОДИТЕЛЬНОСТЬ — ПОДРОБНО
+--------------------------------------------------------------------------------
+
+Метод:
+  - Minecraft 26.3 dedicated server, Fabric Loader 0.19.3,
+    Fabric API 0.165.0+26.3, Java 25, macOS arm64.
+  - Fresh world на каждый запуск.
+  - Preset ROUND, size 4000, relief BALANCED, theme STANDARD,
+    shape/biome seed 4242, rivers 0.35, islets 0.25, shore 0.30/0.60 rocky,
+    structures density 1.0 (18 types), server seed 424242.
+  - 25x25 chunks = 625; область x 28–52, z -12..12 (inland,
+    448–847 блоков на +X для всех версий).
+  - RCON: 5 forceload strips; 25 `execute if loaded` probes;
+    wall clock от первого forceload до всех 625 loaded.
+  - RCON команда < ~1400 символов (буфер 26.3 ~1460 байт).
+  - 3 interleaved раунда v1 -> v2 -> v3 (reps 10–12), чтобы не смешивать
+    version order с drift.
+
+Результаты:
+  version  runs (s)                  median  mean    median vs v1  worst vs fastest v1
+  v1       13.916 / 14.891 / 17.445  14.891  15.417  —             baseline 13.916
+  v2       14.231 / 14.269 / 13.915  14.231  14.138  -4.43 %       +2.54 %
+  v3       14.557 / 14.850 / 13.466  14.557  14.291  -2.24 %       +6.71 %
+
+  ms/chunk median: v1 23.83, v2 22.77, v3 23.29.
+  Budget +15 % — PASS.
+  v1 17.445 s — outlier host drift; verdict не зависит от него, потому что
+  худшие modern runs всё равно в бюджете относительно быстрейшего v1.
+
+DomainAxes / кэш:
+  - IslandDensityFunction.domainAxes() = AXIS_X | AXIS_Z.
+  - Sampler.sampleVolume итерирует только XZ и заполняет Y-размер;
+    плотность не пересчитывается на каждый Y.
+  - minecraft:cache в 26.3 существует, но НЕ выделяет отдельный 2D slice;
+    старое утверждение 0.6.0 неверно.
+  - Реальное ускорение дал per-thread 512-slot column cache в OmniBiomeSource:
+      v2 median 19.432 -> 15.251 s
+      v3 median 20.534 -> 14.209 s
+      pre-change v1 median 16.785 s
+  - Кэш точный: 29 282 regression lookup и 180 000 double v2 golden;
+    output hashes before/after совпадают.
+  - Кэш в ModernTerrainV2 пробовали и откатили: 15.128/15.081 s vs 15.17 s,
+    выгоды нет (Decision 038).
+
+Диагностика (не вердикт):
+  - Offshore 25x25: v1 12.433, v2 15.171 (+22.0 %), v3 17.245 (+38.7 %).
+    Это разная работа: у v1 нет v3 bathymetry/deep band/islets.
+  - Offshore rivers off: 16.136 s; rivers не доминируют.
+  - Structures off: v1 13.374, v2 15.519 (offshore) — разрыв от terrain/biome.
+  - JFR stacks: vanilla Perlin доминирует; проценты индикативны, не evidence.
+
+Evidence:
+  docs/evidence/perf/README.md
+  docs/evidence/perf/chunkgen_25x25.csv
+  docs/evidence/perf/chunkgen_25x25_offshore.csv
+  docs/evidence/perf/chunkgen_25x25_diagnostics.csv
+
+--------------------------------------------------------------------------------
+6. STRUCTURES И SPAWN — ПОДРОБНО
+--------------------------------------------------------------------------------
+
+Stronghold algorithm (v3):
+  - Не используются vanilla concentric rings.
+  - WorldPackBuilder.placeStrongholds перебирает реальные land chunks
+    между island bounds и locate reach.
+  - Отбрасывает ближе 150 (2500) / 300 (4000/8000) блоков от spawn.
+  - Score: расстояние до min(1200,max(320,0.22*size)) минус continentalness.
+  - Выбирает по одному кандидату в каждом из трёх секторов по 120 градусов.
+  - mutual >=250; main-island land; shore — fallback.
+  - Результат: ordered omniisle:fixed_multi, extends
+    RandomSpreadStructurePlacement; /locate и Eye of Ender видят реальные старты.
+
+Stronghold validation (45 конфигов, real server):
+  size  configs  spawn distance min–max       min mutual  on land  eye
+  2500  15       526.0–551.9 (median 539.8)   273.9–738.8 15/15    15/15
+  4000  15       868.4–875.4 (median 869.2)   480.0–1346.8 15/15   15/15
+  8000  15       818.8–1193.6 (median 1190.2) 714.3–1996.6 15/15   15/15
+  Всего: 135/135 starts; 45/45 configs pass; minimum mutual 273.9.
+  Nearest dry land от центра старта: 0 x115, 4 x8, 8 x6, 12 x4, 20 x1,
+  24 x1 (лимит 112).
+
+Full 20-structure matrix:
+  - 15/45 конфигов (5 presets x 3 sizes x seed 101).
+  - 20 строк на конфиг: 17 других структур + 3 strongholds.
+  - 300/300 rows found=true и locate_ok=true.
+  - Каждый из 17 других типов: 15/15.
+  - Структуры: abandoned_camp_forest, ancient_city, buried_treasure,
+    desert_pyramid, igloo, jungle_pyramid, mansion, mineshaft, monument,
+    ocean_ruin_cold, pillager_outpost, ruined_portal, shipwreck, stronghold,
+    swamp_hut, trail_ruins, trial_chambers, village_plains.
+  - 30 конфигов без full sweep: никаких заявлений о 17 структурах.
+  - Это PARTIAL 15/45, зафиксировано в PROGRESS.md и final report.
+
+Pyramid gate:
+  - 26.3 SinglePieceStructure#findGenerationPoint отбрасывает старт, если
+    lowest Y 21x21 footprint < sea level; lowlands могли иметь y=63.
+  - v3 заменяет только desert_pyramid/jungle_pyramid на
+    omniisle:relaxed_desert_pyramid / relaxed_jungle_temple.
+  - Используются vanilla pieces/IDs/tags/afterPlace; v1/v2 packs не тронуты.
+  - Оба пирамиды 15/15, включая NATURAL_8000_101, которые падали раньше.
+
+Village/trial scaling:
+  - spacing/separation scale = min(1,size/4000), separation < spacing.
+  - 2500: d=0.5/1/2 -> spacing 30/21/15, separation 7/5/4 (village),
+    11/8/5 (trial).
+  - 4000/8000: 48/34/24; separation 11/8/6 (village), 17/12/8 (trial).
+  - 18/18 rows expected=actual.
+  - Editor density slider 0.5x/1x/2x.
+
+Spawn:
+  - v3 SpawnPlateauDensity: 80-block radius, top y=78.
+  - SERVER_STARTED reconcile getRespawnData().
+  - 45/45 marker x/z == real spawn.
+  - 45/45 land; 45/45 dry.
+  - 42/45 all 8 ray probes to 64 blocks dry; nearest water min 56;
+    no coast ray hits non-land within 96 blocks.
+  - 3/45 size-2500 configs have water within 64 blocks on a ray
+    (LONG_2500_101, NATURAL_2500_101, ROUND_2500_101);
+    marker itself dry — known issue.
+  - spawn_y — heightmap at query time; может отличаться на feature
+    (pale oak leaves vs moss carpet); x/z/biome/land/dry сверяются.
+
+Ancient City:
+  - 9.1: tag deep_dark + surface biome; city могла быть выбрана на surface
+    biome при выключенном Deep Dark.
+  - 9.8: v3 отключает ancient_cities, если deep_dark нет в enabled palette;
+    Phase9StructureTest экспортирует pack с/без deep_dark и проверяет
+    placement.enabled true -> false.
+  - v1/v2 tag JSON и placement не тронуты (I1).
+  - Остаточный fallback: если deep_dark включён, но 16-block sample grid не
+    содержит deep-dark, locate может вернуть non-deep-dark candidate;
+    ancient city также привязан к fixed chunk (2,-73). См. раздел 14.
+
+Evidence:
+  docs/evidence/structures/README.md
+  docs/evidence/structures/STRUCTURE_REPORT_after_v2.csv (300 строк)
+  docs/evidence/structures/stronghold_validation.csv (45 строк)
+  docs/evidence/structures/structure_scaling.csv (18 строк)
+  docs/evidence/spawn/spawn_evidence_45.csv (45 строк)
+  docs/evidence/spawn/README.md
+
+--------------------------------------------------------------------------------
+7. OCEAN FLOOR — ПОДРОБНО
+--------------------------------------------------------------------------------
+
+Формула v3:
+  base = -0.08 - 0.54*smoothstep(s/0.4Wo) - 0.18*smoothstep(s/Wo)
+  soft floor: max(c, -0.80)
+  global clamp: [-1.0, 0.70]
+  seabed weight: smoothstep(s/0.5Wo) — ровно 0 у берега
+  seamounts: max(0, fbm)*0.18 только за 1.0*Wo
+  trenches: 0.12
+  c(s=0) = -0.08, без шага на coastline.
+
+Deep band:
+  - [0.4Wo, 1.0Wo] положительный seabed noise запрещён.
+  - threshold deep ocean = -0.58 (из OmniBiomeSource).
+  - 15 конфигов: 0 violations / 120 856 samples.
+  - worst c = -0.712976; min c = -1.0.
+  - c centres monuments -0.748…-0.719.
+
+Islets:
+  - c=max(c_ocean,c_islet); v3 clearance Wo+80 (legacy 350).
+  - 62 land samples; peak 0.2355; nearest coast 611;
+    max profile delta 0.0446; deep-ocean violations 0; spikes 0.
+
+Monuments:
+  - 5x5 chunk-centre survey ниже -0.62 (mirrors 29-block biome check);
+    score toward -0.72.
+  - Placement extends RandomSpreadStructurePlacement, exact-chunk restriction.
+  - 10/10 real locate; distance 999–1000 blocks;
+    deep_ocean at y 62/50/40/30 for all 10.
+  - 14/15 pack tags deep_ocean; 1 config cold_ocean because deep-cold variants
+    not in default palette, though c below deep threshold.
+
+Evidence:
+  docs/evidence/ocean/README.txt
+  docs/evidence/ocean/ocean_radial_profiles_v3.csv (23 184 строки)
+  docs/evidence/ocean/ocean_profile_summary_v3.csv
+  docs/evidence/ocean/ocean_band_summary.csv
+  docs/evidence/ocean/ocean_band_mismatches.csv
+  docs/evidence/ocean/ocean_islets_v3.csv
+  docs/evidence/ocean/ocean_monument_locate.csv
+  docs/evidence/ocean/ocean_monument_band.csv
+  docs/evidence/ocean/ocean_height_6000_v3.png
+
+--------------------------------------------------------------------------------
+8. CLIMATE — ПОДРОБНО
+--------------------------------------------------------------------------------
+
+Theme spans:
+  ALL/STANDARD: 0.90
+  MYSTIC:       0.44
+  NORDIC:       0.32
+  DESERT:       0.28
+  TROPICAL:     0.28
+
+Формула:
+  gradientAmplitude = 0.5 * span * clamp01(strength)
+  default strength = 0.5
+  offset = u * gradientAmplitude, u in [-1,1]
+  south-north delta = 2 * gradientAmplitude
+
+При strength 0.5:
+  ALL/STANDARD: amplitude 0.225, delta 0.450
+  MYSTIC:        amplitude 0.110, delta 0.220
+  NORDIC:        amplitude 0.080, delta 0.160
+  DESERT/TROPICAL: amplitude 0.070, delta 0.140
+  delta_error = 0.000 на всех 12 rows.
+
+±0.75 отклонён:
+  centre ±0.75 выводит большую часть [0,1] за границы и клинит оба края.
+  Peak оставленной формулы ±0.45 при strength 1.0.
+
+Family fractions:
+  ALL и STANDARD идентичны (общий полный palette).
+  NORDIC cold (snowy_plains+taiga): 91.4 % off -> 71.9 % default -> 61.0 % max.
+  ALL: 0.0 % cold off -> 2.5 % default -> 21.5 % max;
+       warm families +12.1 % default.
+  DESERT: hot 57.0 -> 48.3 -> 41.5 %; на strength 1.0 появляется 1.5 %
+          temperate.
+  TROPICAL: warm 16.8 -> 27.9 -> 32.0 %; 9.7 % temperate на max.
+  mushroom_fields fixed 0.74 % независимо от climate.
+
+Borders:
+  - ±0.04 temperature / ±0.032 humidity jitter (8 % neutral axis) уже был v2+.
+  - Реальный border-chain + 4-block line-fit, 4 измерения на theme:
+    OFF/NORTH_SOUTH x horizontal/vertical.
+  - Longest straight 230 (TROPICAL, gradient off, vertical z=1100);
+    v2 130; лимит 400 — PASS.
+
+Evidence:
+  docs/evidence/climate/README.md
+  docs/evidence/climate/climate_gradient_summary_v3.csv
+  docs/evidence/climate/climate_family_fractions_v3.csv
+  docs/evidence/climate/climate_straight_borders_v3.csv
+  docs/evidence/climate/theme_families_6000.png
+
+--------------------------------------------------------------------------------
+9. EDITOR — ПОДРОБНО
+--------------------------------------------------------------------------------
+
+Реализовано:
+  - Fill (flood), Line, Ellipse, Rectangle.
+  - Shift = square/circle; filled/outline toggle.
+  - Zoom/Pan: wheel at cursor 1x–8x, middle-drag / Space+left-drag;
+    grid 16 px; zoom reset.
+  - Symmetry: X, Z, 4-way, 6-way, 8-way.
+    Для радиальной симметрии painting forward orbit каждого пикселя
+    обязателен: stamping диска в повёрнутых центрах давал дырки
+    (например (126,34) -> (164,91) для 6-way).
+  - 12 presets; 7 новых: Atoll, Volcano, Fjords, Twin Islands, Inland Sea,
+    Horseshoe Bay, Ridge Island.
+  - Валидация presets: 12 x 20 seeds, land 13.5–40.1 % (12–55 %),
+    main component 100 % в проверенных, 0 border pixels.
+  - Seed UX: shape/biome seed, dice, copy.
+  - Inspector: biome, X/Z, surface elevation, land/water, signed coast distance,
+    islet, height tier, shore outcome.
+  - PNG export 5 maps; import mask + heightmap threshold/quantiles.
+  - 6 tabs; per-tab widget visibility; 480x270 layout.
+  - /omniisle info; Advanced generation v1/v2/v3 (default v3).
+  - Undo/Redo: land, height, spawn, resolution, all tools.
+  - PreviewTextureSlot: 50/50 registrations/releases.
+  - compact BiomeSelectionScreen path retained.
+
+Проверено тестами:
+  Phase9EditorTest: 8 tests.
+  Phase7EditorTest: 6 tests.
+  PreviewTextureSlotTest: 2 tests.
+  Динамический реестр: DynamicBiomeRegistryTest 1 test.
+
+НЕ СДЕЛАНО / UNVERIFIED:
+  - Скриншоты GUI scales 1–4 — NOT DONE.
+  - Визуальный клиент, input feel, tooltips, реальный texture manager count —
+    UNVERIFIED (UI_CHECKLIST.md фиксирует это отдельно).
+  - FPS > 60 из 0.6.0 не подтверждён независимым замером.
+
+Evidence:
+  docs/evidence/editor/png_export_mask.png
+  docs/evidence/editor/png_export_height.png
+  docs/evidence/editor/png_export_biomes.png
+  docs/evidence/editor/png_export_hillshade.png
+  docs/evidence/editor/png_export_shore.png
+  UI_CHECKLIST.md
+  docs/screens/README.md (screenshots отсутствуют)
+
+--------------------------------------------------------------------------------
+10. RELIEF / COAST / RIVERS / DYNAMIC BIOME / SERVER — ПОДРОБНО
+--------------------------------------------------------------------------------
+
+Relief:
+  - ROUND 4000 seeds 1–5: 93–107 distinct local maxima на каждом seed.
+  - Max elevation 163.22–163.25.
+  - Max-height plateau: longest row 120, component span 48–96,
+    area diameter 46.9–60.6; лимит 150 — PASS.
+  - Tier-3 boost: +122.4 блока (требование >=40).
+  - Max 4-block slope 2.010–2.551 < 2.7.
+  - PNG: relief_round_4000_seed1.png, relief_tier3_4000_seed1.png.
+
+Coast:
+  - 5 presets x 3 seeds x sizes 2500/4000.
+  - Threshold mean <=0.6 px, max <=2 px.
+  - Worst 4000: 0.2955 mean / 1.5778 max.
+  - Worst 2500: 0.2462 mean / 1.3579 max.
+  - 0 failures; 15 overlay PNG.
+  - v3 warp below 4000 масштабируется квадратично
+    (0.5*(blocksPerPixel/28.3333)^2), 2500 outlier исправлен.
+
+Rivers:
+  - river_density=0.0 для legacy configs без поля; share code default 0.0.
+  - v3 density 0.45: 10 river-mouth cells.
+  - 10 000 точек: 2 799 below sea, 1 618 carved.
+  - max delta 0.024772 < bank budget 0.035.
+  - max slope 1.957770 < 2.7.
+  - 10/10 gravity-descended waterline crossings;
+    max crossing delta 0.021143 < 0.035.
+  - Нет floating-water или bank-step в sampled mouths.
+  - v3 threshold следует observed drainage (v2 556 vs v3 ~96 при 0.45).
+
+Dynamic biome:
+  - Fixture: datapack custom_beach.json.
+  - Реальный RegistryDataLoader.
+  - 2/2 custom biomes in list under SHORE and CAVE.
+  - Pack metadata корректна.
+
+Dedicated server:
+  - Config: NATURAL 4000, seeds 424242, v3, rivers 0.45.
+  - Fresh universe /tmp/omniisle-server-flow2.
+  - OmniIslePreLaunch exports pack before WorldLoader:
+      21:58:12 export
+      21:58:19 world creation
+      21:58:20 advancements
+      21:58:22 Done
+      21:58:23 spawn 14,128,-1062
+  - datapack list enabled: file/omniisle-generated.zip (world).
+  - omniisle info: v3, 192x192, size 5440, bbox [-2720..2720],
+    border disabled, rivers 45 %.
+  - verify: 1536/1536 spawn checks; 19 distinct biomes.
+  - generated pack sha256 efd102afafb7ce1abdd4adf5637630c2b99d4b4c1172ad5aad06fc8b7e9cd4e6
+    (17 760 bytes).
+
+Evidence:
+  docs/evidence/relief/
+  docs/evidence/coast/
+  docs/evidence/rivers/
+  docs/evidence/dynamic_biome/
+  docs/evidence/server/
+
+--------------------------------------------------------------------------------
+11. ИСПРАВЛЕНИЯ ЗАЯВЛЕНИЙ SUMMARY_0.6.0.md
+--------------------------------------------------------------------------------
+
+1) «Все 9 фаз 0–8 реализованы полностью (100 %), незавершённых задач нет».
+   Неверно/завышено: structure matrix PARTIAL 15/45, скриншоты редактора
+   NOT DONE, часть заявлений 0.6.0 оказалась артефактами измерений.
+
+2) «Stronghold 100 % на суше, 24–77 блоков от spawn».
+   24.12 — арифметика |гипотетический ring radius - spawn distance| без
+   placement search. Реальный ring 0: 574.8 блоков от origin, 136.4 от spawn
+   при 2500 и мог быть в океане. v3: 45/45 real locate, spawn distance
+   526.0–551.9 (2500), 868.4–875.4 (4000), 818.8–1193.6 (8000).
+
+3) «Все 18 структур проверены на 2500/4000/8000».
+   Полный sweep только 15/45 конфигов (300/300 строк найдены).
+   Для 30 конфигов нет заявлений по 17 структурам; strongholds 45/45.
+
+4) «~0.088 ms/chunk baseline».
+   Это micro-benchmark density sampler, не генерация чанков.
+   Реальные медианы: 23.83 ms/chunk v1, 22.77 v2, 23.29 v3 — примерно
+   в 270 раз выше 0.088.
+
+5) «Preview/server parity 100 % zones, >99.9 % families».
+   Тавтология (общий код) и без рек. При river_density=0.35 land-family
+   agreement 88.3 %. Корректный rivers-off тест: 65 536/65 536;
+   финальный shore zone: 18 403/18 403.
+
+6) «Ocean floor плоский при c <= -0.92 / сплайн».
+   Фактический floor max(c,-0.80), не плоский. Deep band существовал, но
+   [0.4Wo,Wo] не был гарантирован. v3: 0 нарушений / 120 856 сэмплов.
+
+7) «Широтный градиент ±0.75».
+   Неверно. Старые константы 0.45/0.22/0.16/0.14 при strength 1.0;
+   default 0.5 даёт delta 0.450 для ALL/STANDARD. ±0.75 отклонён;
+   peak сохранённой формулы ±0.45.
+
+8) «Ancient City разрешён в любой глубокой полости Y<0».
+   Tag был deep_dark + surface biome; city мог появиться при выключенном
+   Deep Dark. v3 теперь отключает set без deep_dark в palette.
+
+9) «minecraft:cache не существует; компилятор выделяет 2D slice».
+   Тип существует в 26.3, но 2D slice не выделяет. 2D-сэмплирование идёт
+   через domainAxes() = AXIS_X|AXIS_Z; реальное ускорение дал явный
+   per-thread 512-slot column cache (v2 19.432->15.251 s,
+   v3 20.534->14.209 s).
+
+10) «100 % совместимость конфигов».
+    copy() терял riverDensity/worldBorder/worldBorderMargin.
+    Исправлено и покрыто тестом. Заявление «FPS > 60» также остаётся
+    UNVERIFIED: клиентской сессии/скриншотов нет.
+
+--------------------------------------------------------------------------------
+12. ТЕСТОВАЯ МАТРИЦА И СБОРКА
+--------------------------------------------------------------------------------
+
+Итог build:
+  97 tests, 0 failures, 0 errors, 2 skipped (assumption-gated).
+
+Per-class (build/test-results/test):
+  DynamicBiomeRegistryTest             1 test  0 fail  0 err  0 skip   2.293 s
+  PreviewTextureSlotTest               2       0       0       0         0.000 s
+  BiomeSourceV2V3RegressionTest        1       0       0       0         0.364 s
+  GoldenV1Test                         3       0       0       1         2.730 s
+  GoldenV2Test                         1       0       0       0         0.927 s
+  IslandDensityFunctionTest            1       0       0       0         0.017 s
+  Phase1CompatibilityTest              8       0       0       0         0.027 s
+  Phase2SdfQualityTest                 5       0       0       0         0.084 s
+  Phase3OceanBathymetryTest            3       0       0       0         0.081 s
+  Phase4InlandReliefTest               5       0       0       0         0.050 s
+  Phase5StructureTest                  4       0       0       0        38.555 s
+  Phase6ClimateTest                    4       0       0       0         0.474 s
+  Phase7EditorTest                     6       0       0       0        16.650 s
+  Phase8StretchTest                    5       0       0       0         0.881 s
+  Phase9AuditTest                     11       0       0       0         1.913 s
+  Phase9ClimateTest                    5       0       0       0         0.460 s
+  Phase9CoastFidelityTest              1       0       0       0         4.988 s
+  Phase9EditorTest                     8       0       0       0         0.350 s
+  Phase9HarnessPacksTest               1       0       0       1         0.001 s
+  Phase9OceanTest                      4       0       0       0         9.220 s
+  Phase9ReliefTest                     2       0       0       0         0.838 s
+  Phase9RiversTest                     2       0       0       0         0.102 s
+  Phase9ShoreTest                      8       0       0       0         3.896 s
+  Phase9StructureTest                  6       0       0       0        23.202 s
+  ИТОГО                               97       0       0       2
+
+Почему 2 skip:
+  - GoldenV1Test.regenerateGoldenIfRequested()
+      Assumption failed: regeneration gate; тест запускается только с
+      -Domniisle.regenerateGolden=... и не должен выполнять работу в обычном build.
+  - Phase9HarnessPacksTest.exportHarnessPacks()
+      Assumption failed: OMNIISLE_HARNESS_DIR not set; экспорт harness packs
+      выполняется только при явно заданной переменной.
+
+Ключевые тестовые классы:
+  v1/v2 golden:       GoldenV1Test, GoldenV2Test, Phase1CompatibilityTest
+  biome cache:        BiomeSourceV2V3RegressionTest
+  density sampling:   IslandDensityFunctionTest
+  shore:              Phase9ShoreTest
+  ocean:              Phase9OceanTest, Phase3OceanBathymetryTest
+  structures/spawn:   Phase9StructureTest, Phase5StructureTest
+  climate:            Phase9ClimateTest, Phase6ClimateTest
+  editor:             Phase9EditorTest, Phase7EditorTest, PreviewTextureSlotTest
+  relief/coast/rivers: Phase9ReliefTest, Phase9CoastFidelityTest,
+                       Phase9RiversTest, Phase4InlandReliefTest, Phase8StretchTest
+  audit:              Phase9AuditTest
+  harness packs:      Phase9HarnessPacksTest
+  dynamic biomes:     DynamicBiomeRegistryTest
+
+Assessment:
+  - v1 golden exact; v2 golden independent from 0.6.0 commit 7a5174d.
+  - 29 282 lookup regression hashes exact.
+  - Phase 9 tests run with -Domniisle.evidence=true for heavy evidence.
+  - Server structure/perf runs are external RCON harnesses, aggregated CSVs
+    committed; see section 14 and READMEs.
+
+--------------------------------------------------------------------------------
+13. ИНВЕНТАРЬ ДОКАЗАТЕЛЬСТВ
+--------------------------------------------------------------------------------
+
+Всего файлов: 103 в docs/evidence/.
+
+phase9_before/ (19 файлов, аудит 0.6.0):
+  README.md
+  stronghold_ring_geometry.csv, stronghold_harness_fix.txt,
+  stronghold_harness_nondeterminism.csv
+  ocean_profile_summary.csv, ocean_radial_profiles.csv,
+  ocean_height_6000_before.png
+  density_sampling_perf.csv
+  parity_before_summary.csv, parity_before_mismatches.csv,
+  parity_before_diff.png, parity_rivers_on_summary.csv,
+  parity_v1_summary.csv
+  golden_audit.txt
+  ancient_city_audit.txt
+  world_border_default.txt
+  climate_family_fractions.csv
+  shore_ribbon_before.csv, biome_before_6000.png
+
+shore/ (17):
+  shore_acceptance_summary.txt, shore_acceptance.csv (30 islands)
+  shore_density_sweep.csv (6 densities)
+  shore_bay_headland.txt
+  shore_straight_border.txt, shore_border_chains.csv
+  shore_continuity.csv
+  shore_parity_summary.txt, shore_parity_mismatches.csv
+  shore_settings_roundtrip.txt
+  shore_mask_4000_101.png
+  shore_before_ROUND.png, shore_after_ROUND.png
+  shore_before_NATURAL.png, shore_after_NATURAL.png
+  shore_before_CRESCENT.png, shore_after_CRESCENT.png
+
+ocean/ (10):
+  README.txt
+  ocean_radial_profiles_v3.csv (23 184 data rows)
+  ocean_profile_summary_v3.csv
+  ocean_band_summary.csv (15 configs)
+  ocean_band_mismatches.csv (0 rows)
+  ocean_islets_v3.csv
+  ocean_monument_locate.csv (10 rows)
+  ocean_monument_band.csv
+  ocean_height_6000_v3.png
+  pack_metadata.txt
+
+structures/ (5):
+  README.md
+  STRUCTURE_REPORT_after_v2.csv (300 data rows, 15 configs)
+  stronghold_validation.csv (45 data rows)
+  stronghold_placement.csv
+  structure_scaling.csv (18 data rows)
+
+spawn/ (2):
+  README.md
+  spawn_evidence_45.csv (45 data rows)
+
+climate/ (5):
+  README.md
+  climate_family_fractions_v3.csv (166 data rows)
+  climate_gradient_summary_v3.csv (12 rows)
+  climate_straight_borders_v3.csv (24 rows)
+  theme_families_6000.png
+
+relief/ (4):
+  relief_round_islands.csv
+  relief_tier3_boost.csv
+  relief_round_4000_seed1.png
+  relief_tier3_4000_seed1.png
+
+coast/ (19):
+  coast_displacement_summary.txt
+  coast_displacement.csv
+  coast_max_ARCHIPELAGO_4000_202.txt
+  coast_max_CRESCENT_4000_202.txt
+  15 x coast_overlay_<PRESET>_4000_<SEED>.png
+
+rivers/ (4):
+  river_legacy_defaults.txt
+  river_mouth_samples.csv (10 000 data rows)
+  river_mouth_summary.txt
+  river_waterline_crossings.csv
+
+dynamic_biome/ (3):
+  custom_beach.json
+  dynamic_biome_list.txt
+  pack.mcmeta
+
+server/ (6):
+  README.md
+  config_omniisle.json
+  server_startup.log
+  rcon_world_info.txt
+  rcon_verify.txt
+  generated_pack_entries.txt
+
+editor/ (5):
+  png_export_mask.png
+  png_export_height.png
+  png_export_biomes.png
+  png_export_hillshade.png
+  png_export_shore.png
+
+perf/ (4):
+  README.md
+  chunkgen_25x25.csv (9 rows)
+  chunkgen_25x25_offshore.csv (9 rows)
+  chunkgen_25x25_diagnostics.csv
+
+Связанные документы:
+  OMNIISLE_AI_SPEC.md
+  CHANGELOG.md
+  README.md
+  PROGRESS.md
+  DECISIONS.md
+  FINDINGS.md
+  UI_CHECKLIST.md
+  docs/screens/README.md
+  PHASE9_NOTES.md
+
+--------------------------------------------------------------------------------
+14. ИЗВЕСТНЫЕ ПРОБЛЕМЫ / ОГРАНИЧЕНИЯ (8)
+--------------------------------------------------------------------------------
+
+1. Structure matrix PARTIAL 15/45.
+   Полный real-server sweep 20 структур выполнен на 15 конфигах (seed 101).
+   Остальные 30 конфигов не проверены по 17 структурам.
+   Действие: прогнать оставшиеся 30 конфигов тем же harness.
+
+2. Editor screenshots NOT DONE / visual UNVERIFIED.
+   Скриншоты GUI scales 1–4 отсутствуют; docs/screens/ содержит только README.
+   Действие: client screenshot harness; проверить все 6 вкладок на 1x–4x,
+   input feel zoom/pan, tooltips, texture count.
+
+3. Spawn: 3/45 конфигов имеют воду в пределах 64 блоков по лучам.
+   LONG_2500_101, NATURAL_2500_101, ROUND_2500_101; сам marker dry,
+   nearest water min 56. Действие: усилить plateau/coast-aware spawn scoring
+   для size 2500.
+
+4. Monument: 14/15 пакетных тегов deep_ocean.
+   Один конфиг выбирает cold_ocean, потому что deep-cold variants отсутствуют
+   в default palette, хотя c ниже deep threshold.
+   Действие: добавить deep-cold variants в palette или явно зафиксировать
+   поведение/тест.
+
+5. Ancient City fallback.
+   Если deep_dark включён, но 16-block sample grid не содержит deep-dark,
+   locate может вернуть non-deep-dark candidate; city привязан к fixed chunk
+   (2,-73). Действие: deep-dark-only locate/test или лучший sampling.
+
+6. Perf — один хост / один inland-участок.
+   Все числа с macOS arm64 и 25x25 inland. Offshore диагностика
+   +22.0 % v2 / +38.7 % v3 выходит за inland-бюджет; generalization
+   не проверена. Действие: второй хост, большая площадь, возможно 1000 chunks.
+
+7. Structure evidence — /locate + StructureStart, не block scan.
+   Harness RCON scripts/logs лежат вне репозитория (/tmp/omniisle-harness/logs);
+   repeatability rerun отменён вместе с сокращением матрицы.
+   Действие: block-level scan выборки структур, повторный прогон, положить
+   harness scripts в repo.
+
+8. Shore surface rules не проверены блочно в мире.
+   Приёмка — biome-source contour sampling + PNG; vanilla surface rules
+   (sand/gravel) и профиль террейна не сканировались на масштабе.
+   Действие: in-world block scan по presets/seeds, проверить песок/гравий
+   и отсутствие ступеней.
+
+Отдельно про доказательную базу:
+  - Perf и structures evidence — aggregated CSV; полные RCON transcripts
+    не коммитились (внешний harness).
+  - Server flow проверен через ./gradlew runServer, не через release jar.
+  - Выводы по визуалу редактора не заменяют клиентскую проверку.
+
+--------------------------------------------------------------------------------
+15. КАК ПРОВЕРИТЬ САМОСТОЯТЕЛЬНО
+--------------------------------------------------------------------------------
+
+Окружение:
+  export JAVA_HOME="$HOME/Library/Application Support/PrismLauncher/java/java-runtime-epsilon"
+  export PATH="$JAVA_HOME/bin:$PATH"
+
+1) Git:
+   cd /Users/reystin/antigravity/igloo/OmniIsle
+   git status --short
+   git log --oneline -13
+   Ожидание: чисто, кроме SUMMARY_0.6.0.md, docs/PHASE9_FINAL_REPORT_RU.txt
+   и .DS_Store (macOS metadata);
+   HEAD 26533a5; 12 Phase 9 коммитов.
+
+2) Сборка:
+   ./gradlew build
+   Ожидание: BUILD SUCCESSFUL; 97 tests, 0 failures, 0 errors, 2 skipped.
+
+3) Быстрый подсчёт тестов:
+   python3 - <<'PY'
+   import glob, xml.etree.ElementTree as ET
+   t=f=e=s=0
+   for p in glob.glob('build/test-results/test/TEST-*.xml'):
+       r=ET.parse(p).getroot()
+       t+=int(r.get('tests',0)); f+=int(r.get('failures',0))
+       e+=int(r.get('errors',0)); s+=int(r.get('skipped',0))
+   print(t,f,e,s)
+   PY
+   Ожидание: 97 0 0 2.
+
+4) JAR и зеркала:
+   shasum -a 256 build/libs/OmniIsle-26.3-Fabric-0.7.0+mc26.3.jar
+   shasum -a 256 "$HOME/Downloads/OmniIsle-26.3-Fabric-0.7.0+mc26.3.jar"
+   shasum -a 256 "$HOME/Library/Application Support/PrismLauncher/instances/26.3/minecraft/mods/OmniIsle-26.3-Fabric-0.7.0+mc26.3.jar"
+   Ожидание: одинаковый SHA 7bee2cf8…a1b6.
+   unzip -p build/libs/OmniIsle-26.3-Fabric-0.7.0+mc26.3.jar fabric.mod.json | grep version
+   Ожидание: "0.7.0+mc26.3".
+
+5) Shore:
+   head -10 docs/evidence/shore/shore_acceptance_summary.txt
+   cat docs/evidence/shore/shore_density_sweep.csv
+   cat docs/evidence/shore/shore_bay_headland.txt
+   cat docs/evidence/shore/shore_straight_border.txt
+   cat docs/evidence/shore/shore_parity_summary.txt
+   Ожидание: 22.6807/4.0625/73.2568; 384.3; 3.976; 56; 18403/18403.
+
+6) Perf:
+   cat docs/evidence/perf/README.md
+   cat docs/evidence/perf/chunkgen_25x25.csv
+   Ожидание: v1 14.891 / v2 14.231 / v3 14.557 median; budget +15 % PASS.
+   Примечание: структуры/perf прогонялись внешним RCON harness; CSV —
+   агрегированное доказательство, не one-command runner.
+
+7) Structures/spawn:
+   head -5 docs/evidence/structures/stronghold_validation.csv
+   python3 - <<'PY'
+   import csv
+   rows=list(csv.DictReader(open('docs/evidence/structures/stronghold_validation.csv')))
+   print(len(rows), sum(r['pass'].lower()=='true' for r in rows))
+   rows=list(csv.DictReader(open('docs/evidence/spawn/spawn_evidence_45.csv')))
+   print(len(rows), sum(r['land'].lower()=='true' and r['dry'].lower()=='true' for r in rows))
+   PY
+   Ожидание: 45 45; 45 45.
+
+8) Ocean:
+   head -5 docs/evidence/ocean/ocean_band_summary.csv
+   python3 - <<'PY'
+   import csv
+   rows=list(csv.DictReader(open('docs/evidence/ocean/ocean_band_summary.csv')))
+   print('violations', sum(int(r['violations']) for r in rows), 'samples', sum(int(r['band_samples']) for r in rows))
+   PY
+   Ожидание: 0 violations, 120856 samples.
+
+9) Climate:
+   cat docs/evidence/climate/climate_gradient_summary_v3.csv
+   cat docs/evidence/climate/climate_straight_borders_v3.csv | head
+   Ожидание: delta_error 0.000; longest straight 230.
+
+10) Dedicated server (по README):
+   ./gradlew runServer --args="--universe /tmp/omniisle-server-flow2 --nogui"
+   Конфиг: docs/evidence/server/config_omniisle.json
+   Проверить в логе: preLaunch export выполняется до world creation;
+   /omniisle info -> Generation Version 3; spawn 14,128,-1062.
+   Полная последовательность: docs/evidence/server/README.md.
+
+11) Golden:
+   ./gradlew test --tests 'com.hack337.omniisle.test.GoldenV1Test' \
+                   --tests 'com.hack337.omniisle.test.GoldenV2Test' \
+                   --tests 'com.hack337.omniisle.test.BiomeSourceV2V3RegressionTest'
+   Ожидание: PASS; v1/v2 exact, 29 282 lookups.
+
+12) Тяжёлые evidence-тесты:
+   ./gradlew test --tests 'com.hack337.omniisle.test.Phase9ShoreTest' \
+                   -Domniisle.evidence=true
+   Остальные Phase9* — аналогично; evidence пишется в docs/evidence/
+   (см. phase9_before/README.md).
+
+--------------------------------------------------------------------------------
+16. КОММИТЫ
+--------------------------------------------------------------------------------
+
+Ветка fabric/26.3:
+
+  9.0  2465187ecc03fd2380c2224500216a2203d5ba74
+  9.1  0400b142ff6a8e2851efbf0d6587135f218b2b5e
+  9.2  1cd63aab49b7827fb1ceddc9500b3881ec092f51
+  9.3  d31a4d743ebd110e143520608c88c6791988c23a
+  9.4  16896b5281ac2a785448c5713fdb39f30accb7e3
+  9.5  4ceeed1997eb87037b3e12afa411aeec6706c6cf
+  9.6  d689c16eaf074cc798e064c6102f8f1b1f1839d6
+  9.7  e3dbd9b943d40421d12ed31c176e0f5a0be4b4e4
+  9.8  c63c0ff05697a0959933189bcfe7987a8794cbcc
+  9.8  b8aba9e1ce440e6bb070e7d5165a44fd5195acc9
+  9.8  8a847dedba7a0149e1d7066173bb3b5d36696ca1
+  9.8  26533a5c4012edc81fc90086b58e9125d4f80b09 (HEAD)
+
+Baseline для независимого v2 golden:
+  7a5174d6bed14602f309efec138b283d10271137 (release 0.6.0)
+
+--------------------------------------------------------------------------------
+17. ИТОГОВАЯ ПРИЁМКА
+--------------------------------------------------------------------------------
+
+  Phase 9 core (9.0–9.8):                  DONE
+  Full real-server structure matrix:       PARTIAL 15/45
+  Stronghold-only validation:              DONE 45/45
+  Shore acceptance:                        DONE
+  Ocean/deep-band acceptance:              DONE
+  Climate acceptance:                      DONE
+  Editor functional implementation:        DONE
+  Editor screenshots GUI scales 1–4:       NOT DONE
+  Editor visual/input verification:        UNVERIFIED
+  Performance budget (+15 %):              DONE (v2 -4.43 %, v3 -2.24 %)
+  Performance generalization:              UNVERIFIED (one host/area)
+  v1/v2 bit compatibility:                 DONE (golden exact)
+  Release jar + mirrors:                   DONE (SHA 7bee2cf8…a1b6)
+  Tests:                                   DONE (97/0/0, 2 skipped)
+  Known issues documented:                 DONE (8)
+
+Конец файла.
+================================================================================

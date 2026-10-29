@@ -1,4 +1,4 @@
-# OmniIsle 0.8.2 — Implementation Progress Tracker
+# OmniIsle 1.0.1 — Implementation Progress Tracker
 
 ## Global Invariants
 - [x] **I1.** Old worlds (0.5.0 / v1) keep generating identically (no seams).
@@ -259,3 +259,95 @@ warm/arid 607, max c 0.2871, component 97.36 %; offshore mushroom 202/812, inlan
 sulfur 259/259 warm shallow columns; 0.8.1 pyramid `c=0.6148` CHERRY_GROVE → 0.8.2
 disabled; server smoke 1.559 s / 1.417 s, no crashes. Evidence:
 `docs/evidence/phase82/`, `FINDINGS.md` §17, `DECISIONS.md` 047–052.
+
+### Phase 10.7 — Mineshield 4 Map preset, 0.8.3 (completed; GUI check NOT DONE)
+- [x] **10.7.1** Bundled the reference map as `assets/omniisle/presets/mineshield_4_map.jpg`; `Mineshield4Map` letterboxes it and derives the land mask (water by blue hue) plus height tiers (cool white → 3, warm brown/orange → 2, other land → 1; no tier 0), with one-time decode and per-resolution cache
+- [x] **10.7.2** Added `Preset.MINESHIELD_4_MAP` at the end of the enum (ordinals preserved), an early `rebuildShape()` path that ignores the shape seed, and en/ru labels “Mineshield 4 Map” / “Карта Mineshield 4”
+- [x] **10.7.3** `Mineshield4MapPresetTest` (5 tests): fixed-mask contract, seed independence, height tiers, share-code round-trip. Phase 7.4 now covers 13 presets × 20 seeds; full suite green
+- [x] **10.7.4** Docs/version: `gradle.properties` 0.8.3, CHANGELOG/README/spec/DECISIONS 053; evidence `docs/evidence/presets/mineshield_4_mask.png`, `mineshield_4_stats.csv`
+
+Measured: 11,232 land pixels (30.47 %), 0 border land, largest component 10,228
+(91.06 %), tiers 3/2/1 = 740 / 1,509 / 8,983, stable across 192/256/384 and shape
+seeds. The preset controls land mask and relief only; biomes stay climate-driven.
+Interactive GUI verification remains **NOT DONE**.
+
+### Phase 11 — Universal v3 climate provinces, rare biomes, strict structures, editor fixes, 0.8.4 (completed; shore specks PARTIAL; GUI/perf UNVERIFIED)
+- [x] **11.1** Captured the 0.8.3 baseline: `docs/evidence/phase11/before/` (five preset overviews, composition CSV, Mineshield tier map), v3 hash `3958321154656118617`, 128 tests / 0 failures / 2 skips
+- [x] **11.2** New side-neutral `continent/ClimateLayout`: warm top 16 % by `-nx + 0.20·(-nz) + 0.10·noise(/900, +1301)`, cold top 12 % of total land (warm excluded) by `nx + 0.35·(-nz) + 0.10·noise(/900, +1307)`, two 5-tap `[1,4,6,4,1]/16` smoothing passes, strength-driven province weight; pale pocket top 3.0 % (`/420`, +1601), ice pocket top 0.6 % (`/260`, +1607), cherry support mask 36 % (`/520`, +1613); water within 10 blocks of land inherits the province; empty/all-water masks return `temperate()`
+- [x] **11.3** `IslandTerrain` APIs: default `heightTierAt`/`surfaceHeight`/`climateLayout`; `ModernTerrainV2` samples the 7-tap height grid, builds a v3 largest-component main-island SDF (`distances().main`), and shares `physicalRidge(x,z,seed) = 1 − 2·|fbm2(/750, seed+801)|` with `IslandClimate`; v2 keeps the all-mask `main`
+- [x] **11.4** Universal v3 family tree: offshore-only mushrooms 16 (`main < 0`, `c < 0.05`, `/650` mask > 0.36), province temperature bias (`WARM +0.16·s`, `COLD −0.22·s`), cold lowlands 0/1, snow 15 only `c > 0.50 && tier ≥ 1.5` outside COLD, foothill meadow/taiga, cherry 6 at `0.34 < c ≤ 0.48` with hum > 0.58 and pocket strength > 0.45, wetlands 8/9 only `c < 0.15 && slope < 0.12 && tier ≤ 1.0 && mountains < 0.35`, pale 17 via pocket + `hum + 0.65·pale > 0.88`, warm desert 12 ≤ 0.32 / badlands 13 / savanna 11 / jungle 10; family-centroid effective climate in `SampleResult` (raw climate kept for ocean subtypes); `ice_spikes` land hint
+- [x] **11.5** Province ocean/shore sectors: WARM → `warm`/`lukewarm_ocean`, COLD → `cold`/`frozen_ocean`, TEMPERATE → legacy; warm coast `beach`, cold coast may be `snowy_beach`; dry shelf never OCEAN at `d ≤ 0 && c ≥ −0.18`
+- [x] **11.6** `ShoreField` uses only coarse ≥130-block fields (no 55-block octave / 17-block jitter); `Phase11ShoreTest` measures 8-connected sand components: median 44–70 blocks, P75 90–132, in-range share 0.44–0.56. Zero ≤3-block components **not achieved**: 14 tiny components of 210 across five presets recorded honestly in `shore_runs.csv` — **PARTIAL**
+- [x] **11.7** Mineshield tier cleanup: 3×3 median, keep one central-north tier-3 range and the western tier-2 mesa band, reassign detached specks to tier 1. Land 11,232 stays; tiers 1/2/3 = 9,189 / 1,431 / 612 (was 8,983 / 1,509 / 740); tier-3 components 16 → 1 (612 cells, bbox 46×52, centroid 0.521,0.398); tier-2 components 48 → 3 (1,108 / 253 / 70 cells, all west of x=0.26); single tier-3 component also at 256 and 384
+- [x] **11.8** Strict structures for v3: `StructurePolicy` gains `province` + `maxSurfaceY`; candidates must match family, province, c, slope and surface Y; score by preferred c + low slope + spawn penalty, never highest c. No valid candidate → set `enabled=false` with no point and no throw. `RelaxedPyramids.allowsSurface` re-checks biome, surface Y, center/±8 relief, c and slope. NATURAL and MINESHIELD packs: 28 placed sites (14 each) and disabled sets (e.g. NATURAL `trail_ruins`)
+- [x] **11.9** Editor fixes: full-width resolution cycle button 192 → 256 → 384 labelled exactly `Разрешение: 192×192` / `Resolution: 192×192` (two-argument key, `×`); dynamic compact layout guarantees no overlap to 341×192; tooltip flips/clamps inside the preview and never covers the center controls; biome rows show the actual preview share with all-100 weights instead of `—`
+- [x] **11.10** Tests/evidence: `Phase11ClimateLayoutTest`, `Phase11BiomeProvinceTest`, `Phase11PresetClimateTest`, `Phase11StructureTest`, `Phase11ShoreTest`, `Phase11EditorLayoutTest`, `Phase11EvidenceTest`; recalibrated `Phase82ReferenceClimateTest`, `Phase10BiomeShareTest`, `BiomeSourceV2V3RegressionTest`; `after/` evidence with province map, five overviews, five close-ups, composition CSVs, shore CSV, structure CSV, tier map/CSV, summary. Full build **150 tests, 0 failures, 2 assumption-gated skips**; v2 hash unchanged `-4990092939012319655`, v3 hash `-6312501814918578635`
+- [x] **11.11** Docs/version: `gradle.properties` 0.8.4, CHANGELOG/README/PROGRESS/FINDINGS/spec/DECISIONS 054–063, migration note; jar `OmniIsle-26.3-Fabric-0.8.4+mc26.3.jar` mirrored to Prism 26.3 and `~/Downloads`
+- [x] **11.14** Continuous province/ocean boundaries (0.8.4 follow-up): `ClimateLayout.sample` now bilinearly samples the smoothed warm/cold strengths and compares them against quantile-calibrated thresholds (`warmThreshold` = smoothed top 16 % of land, `coldThreshold` = smoothed top 12 % of total land excluding warm) plus a 160-block `boundaryNoise` term, instead of nearest-mask-cell lookup. Ocean subtypes gained rim transition bands (WARM strength < 0.55 → lukewarm, COLD strength < 0.55 → cold; frozen only at strength ≥ 0.55). Removes the 18–20-block staircase visible in the editor/in-world; composition unchanged (measured below). New `Phase11ClimateLayoutTest` 11L.6 (`provinceBoundaryIsSmooth`) and 11L.7 (`oceanTransitionBands`) plus `ocean_edge_natural.png` evidence
+- [ ] **11.12** Real editor screenshots at GUI scales 1–4 and 25×25 chunk-generation timing — screenshots **completed in Phase 12** (`docs/screens/1.0.0/after/`); 25×25 chunk-generation timing remains **UNVERIFIED**; Phase 9 structure matrix remains PARTIAL 15/45
+- [ ] **11.13** Shore zero-speck target — **PARTIAL** (14 components ≤3 blocks; achieved distribution recorded)
+
+Measured (controlled, 256², seed 2025, v3 defaults): Mineshield warm 15.15 % / cold 14.43 % /
+green 68.53 % / cherry 1.16 % / mushroom 1.04 % / pale 1.57 %; Natural 16.95 / 13.78 / 68.65 /
+2.78 / 0.15 / 0.93; Round 16.94 / 13.69 / 68.75 / 2.71 / 0.12 / 0.94; Archipelago 13.78 / 13.18 /
+70.51 / 1.43 / 0.87 / 1.46; Crescent 16.01 / 13.18 / 70.55 / 2.16 / 0.25 / 1.21. All 12
+zero-counters (wetland `c > 0.18`, snow below tier 1.4 outside cold, main-island mushroom,
+dry-shelf ocean) are 0 on every preset; `all_targets_met=true`. Evidence:
+`docs/evidence/phase11/after/` (including `ocean_edge_natural.png` for the continuous
+province/ocean boundary), `FINDINGS.md` §18, `DECISIONS.md` 054–063.
+
+## Phase 12 — 1.0.0 flat editor UI, custom widget system (completed; render-cost target PARTIAL; MEDIUM not captured, MINIMAL unreachable)
+- [x] **12.1** New `client/ui` package (22 classes): `OmniTheme`, `OmniUi`, `OmniInteraction`, `OmniMetrics`/`OmniText`, buttons/toggle/segmented/slider/tab bar/section/scroll/list, biome list, tooltip, toast, dropdown, popover, flat text field and `OmniIcons`; 20 icons in a 128×48 atlas generated by `tools/generate_ui_icons.py` (Python stdlib only) with a text fallback
+- [x] **12.2** Pure `EditorLayout` with FULL/MEDIUM/COMPACT/MINI/MINIMAL tiers and the full rectangle API; the editor is now a shell over the widget system; stock `Button`/`CycleButton`/`AbstractSliderButton` code removed; top bar, tool column, framed canvas, 2×3 tabs, scrolling controls and status bar migrated 1:1
+- [x] **12.3** FULL right list with cached filtered rows (swatch, ellipsised name, toggle, −/value/+ stepper, actual share with ✓/!/✕), wheel + drag scroll and keyboard; `BiomeSelectionScreen` and satellite screens restyled without behavior changes; four cached preview modes (Land/Height/Biomes/Shore)
+- [x] **12.4** 400 ms tooltips, toasts, inline Clear confirmation, preset dropdown; fixed focus order, narration, layered Esc; en/ru key parity and worst-case text-fitting tests
+- [x] **12.5** Tests: **181 total** (150 baseline + 31 UI/layout), 0 failures, 2 assumption-gated skips; v2 hash `-4990092939012319655` and v3 hash `-6312501814918578635` unchanged
+- [x] **12.6** Dev-only `OmniIsleClient`/`UiScreenshotHarness`: **200 after PNGs** (6 tabs × 16 window/scale combinations × 2 languages + 8 previews), 200-row `manifest.csv`, validated programmatically. Before evidence: `docs/screens/1.0.0/before/editor_0.8.4_old_ui.png` (user-supplied). Actual tiers FULL/COMPACT/MINI; MEDIUM is not produced by the matrix and MINIMAL is unreachable (OS/MC clamps), both unit-test-only
+- [x] **12.7** Render cost at 960×540 GUI scale 2: median 1.219–2.007 ms, p95 2.214–3.702 ms; 11/12 medians ≤ 2 ms (en_us Climate 2.007 ms) — target **PARTIAL**, recorded honestly
+- [x] **12.8** Docs (`FINDINGS` §19, `UI_CHECKLIST`, `README`, `DECISIONS` 064–069, `OMNIISLE_AI_SPEC`) and version 1.0.0; jar `OmniIsle-26.3-Fabric-1.0.0+mc26.3.jar` mirrored to Prism 26.3 and `~/Downloads`. **No commits.** Phase 9 remains **PARTIAL 15/45**; 25×25 chunk-generation timing remains **UNVERIFIED**
+
+## Phase 13 — v3 natural spawn and real highlands (completed; interactive checks NOT DONE)
+- [x] **13.1** Removed the `omniisle:spawn_plateau` emission for v3 (codec and `final_density_base.json` stay registered for already-generated packs). `OmniIsleMod.findModernSpawn` now accepts the editor marker only when the real column is dry (solid non-fluid ground, air feet/head, no fluid, two blocks of headroom), otherwise scans rings 16–512 (step 16, 32 angles) with the cheap SDF, probing only rings whose deepest sample is positive, and falls back to the best land / marker surface with a warning
+- [x] **13.2** Generated v3 `overworld/offset.json` = `add(mul(static vanilla offset, scale(continents)), lift(continents))`; lift 0→1.0 and scale 1.0→0.20 between c = 0.45 and 0.95 (sentinel knots at ±1.10, derivatives 0). Generated v3 `final_density.json` and `preliminary_surface_level.json` rewrite the vertical fade 240→256 to 300→316 by editing the static JSON recursively; export fails if the single gradient is not found
+- [x] **13.3** `Phase13HighlandWorldgenTest` (2 tests): v3 zip contains the three overrides, fade 300/316, no 240/256 gradient, no `spawn_plateau`/`top_y`; v2 zip contains none of them. The v3 preset is decoded through real worldgen registries and `getBaseHeight` sampled around the painted tier-3 area
+- [x] **13.4** Test-harness fix: `MultiPackResourceManager` gives the **last** pack priority (`getResource` reverse iteration, `listResources` forward overwrite). Both `Phase13HighlandWorldgenTest` and `Phase10PresetDecodeTest` now pass `vanilla, mod, generated`; the old order let the mod's static empty-config `continents.json` shadow the generated pack
+- [x] **13.5** Docs: CHANGELOG (Unreleased), `FINDINGS.md` §20, `DECISIONS.md` 070–072, `OMNIISLE_AI_SPEC.md` §6.3/§7 I1/§8.6/§8.13/§9, `docs/evidence/spawn/README.md` stale banner
+- [ ] **13.6** Interactive verification (new v3 world, no dome at spawn, F3 Y at spawn/peaks, aquifers/caves/snow, preview match) — **NOT DONE**; no screenshots or performance claims
+
+Measured (v3, ROUND 4000, seed 4242, BALANCED, rivers/islets off, tier-3 paint radius 20 px at the
+editor spawn, 1681 columns ±320 blocks at step 16): continent at centre 0.915; surface min 139 /
+median 228 / p90 235 / max 289; 1088 columns ≥ Y 220. Generated pack has no `spawn_plateau`; the
+active SDF equals the draft SDF after the pack-order fix.
+
+Full build: **183 tests, 0 failures, 2 assumption-gated skips** (181 baseline + 2 Phase 13).
+`GoldenV1Test`, `GoldenV2Test` pass; v2 hash `-4990092939012319655` and v3 hash
+`-6312501814918578635` unchanged. Existing v3 worlds are **not** repaired — they need a new world.
+Spawning may move from the old 45/45 marker-match baseline. 25×25 chunk-generation timing remains
+**UNVERIFIED**; Phase 9 remains **PARTIAL 15/45**; no commits.
+
+## Phase 14 — 1.0.1: clean beaches, biome village variants, smooth warm↔cold bands (completed; interactive checks NOT DONE)
+- [x] **14.1** `ShoreField.Ring(bay, minDistance)`: one 8-direction scan at radius 96 returns bayness plus the minimum signed distance. `outcome(...)` now requires `ring.minDistance ≤ −55` (open water), `heightTier ≤ 1.10`, `continentalness ≤ 0.20` and `bay ≥ 0.20` in addition to the patch/beach/width checks; `MAX_INLAND` 34 → 28, `MIN_WIDTH` 8, width base `(4 + 18·noise) × (0.42 + 0.58·patch) × factor × (1 − 0.35·notch)` (max 22, floor 8), water-side `patch ≥ 0.55`. Narrow fjords keep every ring sample near their banks, so `minDistance` rejects the bank
+- [x] **14.2** All six production call sites pass tier + continentalness + ring: `OmniBiomeSource`, `BiomePreview.selectionV3`, editor palette and inspector, `ImageImportExport.exportShore`, `/omniisle debug shore`, and `ModernTerrainV2` shore flattening (now only `d < 52 && tier ≤ 1.05`). Editor preview and generation share one rule
+- [x] **14.3** Villages: v3 exports five vanilla variants (`village_plains` families 2/3/4/5/6 minus grove, `village_desert` 12/13, `village_savanna` 11, `village_snowy` 0 minus ice spikes, `village_taiga` 1) in one weight-1 set, salt 10387312, spacing 54 / separation 12 (was 34/8). Family-scoped `has_structure` tags merge with `replace:false`; empty variants are omitted; a fully unsupported set is exported disabled. `(34/54)² = 0.396` ⇒ **−60.4 %** villages; island-size and density scaling preserved. v1/v2 keep the single 34/8 plains placement
+- [x] **14.4** Climate bands: `ClimateLayout.Sample` exposes raw `warmStrength`/`coldStrength` (7-component record + 5-arg compatibility constructor). `selectLandFamilyV3` selects cold core → cold band → temperate → warm band → warm core by `diff = warm − cold` (`CORE_DIFF 0.35`, `BAND_DIFF 0.12`) instead of the categorical province; the mountain exception (`tier ≥ 1.5 && c > 0.50` → 15/14/5 by effective temperature) is province-independent, so snow peaks are possible in any province while lowlands keep their band. Province still drives ocean subtypes, shores, ice hints and strict structure sectors
+- [x] **14.5** Tests: new `Phase14ShoreInteriorTest` (3), `Phase14VillagePackTest` (4), `Phase14ClimateTransitionTest` (3); recalibrated `Phase9ShoreTest`, `Phase11ShoreTest`, `Phase11BiomeProvinceTest`, `Phase11ClimateLayoutTest`, `Phase9StructureTest` villages spread. See measured block below
+- [x] **14.6** Docs/version: `gradle.properties` 1.0.1, CHANGELOG 1.0.1, `FINDINGS.md` §21, `DECISIONS.md` 073–076, `OMNIISLE_AI_SPEC.md` §3/4.1/4.2/6.3/8.3/8.5/8.6/8.12/9, README, `docs/evidence/phase14/`. Jar `OmniIsle-26.3-Fabric-1.0.1+mc26.3.jar` built. **No jar copy to PrismLauncher requested; no commits**
+- [ ] **14.7** Interactive verification (new v3 world: no interior beach ribbons, matching village types at visible lower density, no taiga touching desert, snow-capped peaks in any province) — **NOT DONE**; no screenshots or performance claims
+
+Measured (`PHASE14` stdout, captured in `docs/evidence/phase14/test_run.log`): shore gates —
+NATURAL coastal 2,597 / shore 136, FJORDS 5,198 / 150, ARCHIPELAGO 7,272 / 224, with
+`beyondBand=0 shallow=0 highTier=0 inlandC=0` on all three; synthetic 20-block channel 198/198
+NONE (minBay 1.0); open coast 76/201 sand; NATURAL coast trace 302 beach points. Climate —
+MINESHIELD adjacent 0 / switches 39 / unbanded 0, NATURAL adjacent 0 / switches 100 / unbanded 0,
+bands {2,4,5} carry every crossing. Shore acceptance 30 islands / 61,440 points: sand 0.1156,
+stony 0.0325, none 0.8519, run failures 0. Component scan: 17–48 components per preset, median
+36–70 blocks, 10 tiny (≤3) of 144 — zero-speck target **PARTIAL**. Composition after the bands
+(256², seed 2025, five presets): warm 14.51–17.52 %, cold 13.86–15.46 %, green 66.59–68.90 %,
+cherry 1.12–2.67 %, mushroom 0.12–1.02 %, pale 0.93–1.42 %, all zero-counters 0,
+`all_targets_met=true` (`docs/evidence/phase11/after/summary_after.txt`).
+
+Full build: **193 tests, 0 failures, 2 assumption-gated skips** (183 baseline + 10 Phase 14).
+`GoldenV1Test`, `GoldenV2Test` pass; v2 hash `-4990092939012319655` and v3 hash
+`-6312501814918578635` unchanged. Existing v3 worlds are **not** repaired — create a new world.
+No performance measurements were made for the ring gates (same 8 SDF calls per eligible column).
+25×25 chunk-generation timing remains **UNVERIFIED**; Phase 9 remains **PARTIAL 15/45**; no commits.

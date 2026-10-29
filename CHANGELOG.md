@@ -4,6 +4,237 @@ All notable changes to OmniIsle are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1+mc26.3-fabric] - 2026-10-28
+
+v3 worldgen release: natural spawn, real highlands, clean beaches, biome-specific villages and
+continuous climate bands. v3 is revised in place; there is no `generation_version = 4`. v1/v2
+resources and generated packs are untouched (`GoldenV1Test`, `GoldenV2Test` pass; the v2/v3
+biome-source regression hashes are unchanged). **Worlds already created with v3 keep their
+generated datapack and are not repaired — create a new world.**
+
+### Fixed
+- **Beaches inside the island.** v3 granted sand to any column with `d ≤ 34` when patch, width
+  and bayness passed, and the 8-point bayness ring could not tell a 10–30-block fjord from open
+  ocean. 1.0.1 adds a single-pass `ShoreField.Ring(bay, minDistance)` scan at radius 96 and
+  requires water at least 55 blocks deep (`ring.minDistance ≤ −55`), `heightTier ≤ 1.10` and
+  `continentalness ≤ 0.20`; the beach band narrows to `MAX_INLAND = 28` with a width of 8–22.
+  `ModernTerrainV2` only carves beach shelves while `d < 52` and tier ≤ 1.05. All six
+  preview/paint call sites pass the same gates, so the editor always matches generation. Measured:
+  0 violations on 15,067 sampled coastal columns across NATURAL/FJORDS/ARCHIPELAGO; a synthetic
+  20-block fjord returned NONE on 198/198 banks while a straight open coast still produced
+  76/201 sand columns.
+- **Circular terraced dome at spawn.** v3 packs no longer emit `omniisle:spawn_plateau` as the
+  final density. The guaranteed-dry spawn is now a real-block search at server start: the editor
+  marker is accepted only when its column is dry, otherwise rings 16–512 blocks are scanned with
+  the cheap SDF and `WORLD_SURFACE_WG` heights and the first dry column becomes the spawn. All-wet
+  islands fall back to the marker surface with a warning instead of crashing. The
+  `omniisle:spawn_plateau` codec stays registered so already-generated v3 packs still load.
+- **Highlands stuck at Y 66–70 despite a ~260 editor preview.** v3 packs now generate
+  `overworld/offset.json` as `add(mul(vanilla_offset, scale), lift)`, both splines driven by
+  `omniisle:overworld/continents`: lift 0 → 1.0 and scale 1.0 → 0.20 between c = 0.45 and 0.95.
+  Surface Y is roughly `(1.5 + offset)·128 − 64`, so painted tier-3 areas now reach the advertised
+  range instead of the vanilla offset spline's ~Y 80 median. The v3 `final_density.json` and
+  `preliminary_surface_level.json` fades move from 240→256 to 300→316 so peaks are not clipped.
+  The editor preview curve is unchanged.
+
+### Changed
+- **Five vanilla village variants at ≈40 % density (v3).** v3 used to override the vanilla village
+  set with plains-only entries while listing every land biome in `has_structure/village_plains`,
+  so villages kept plains architecture in deserts, snow and taiga at vanilla density. 1.0.1 emits
+  one weighted `structure_set/villages.json` with plains/desert/savanna/snowy/taiga (weight 1,
+  salt 10387312) and family-scoped `has_structure/<tag>.json` tags (`replace: false`); empty
+  variants are omitted and no matching family disables the set. Spacing/separation move from
+  34/8 to **54/12** for v3 only — `(34/54)² = 0.3964`, a **−60.4 %** village count — while island
+  size and density scaling still apply. v1/v2 keep the single fixed plains placement.
+- **Continuous warm↔cold climate bands (v3).** `ClimateLayout.Sample` now exposes the raw smoothed
+  `warmStrength`/`coldStrength`, and `selectLandFamilyV3` selects by `diff = warm − cold`: cold
+  core ≤ −0.35 → snowy plains/taiga, cold band ≤ −0.12 → meadow/birch, temperate, warm band
+  ≥ 0.12 → meadow/plains/savanna, warm core ≥ 0.35 → savanna/badlands/desert/jungle. The
+  categorical province now only drives oceans, shores, the ice-spike hint and structure tags, so
+  taiga no longer borders desert. Mountain snow (`tier ≥ 1.5 && c > 0.50` → snowy peaks/stony
+  peaks/meadow) is province-independent, so snow-capped peaks may appear next to warm lowlands.
+  Measured: 0 warm-core↔cold-core adjacencies and 100/100 transects separated by a band family on
+  NATURAL at 192² (39/39 on Mineshield).
+- `Phase13HighlandWorldgenTest` decodes the generated pack through real worldgen registries and
+  samples `NoiseBasedChunkGenerator.getBaseHeight`. ROUND 4000 seed 4242 with a tier-3 paint at
+  the editor spawn measured min 139 / median 228 / p90 235 / max 289 blocks across 1681 columns
+  (±320 blocks, step 16); 1088 columns were at or above Y 220. Previous packs were capped by the
+  240 fade and the un-lifted offset spline.
+- Test-only: the pack harness in `Phase10PresetDecodeTest`/`Phase13HighlandWorldgenTest` now lists
+  packs lowest-priority-first (`vanilla, mod, generated`). `MultiPackResourceManager` gives the
+  **last** pack priority; the old order let the mod's static empty `continents.json` shadow the
+  generated one, so generated density overrides were not actually exercised.
+
+### Verified / not verified
+- Automated: `./gradlew test` **193 tests, 0 failures, 2 assumption-gated skips** (183 baseline +
+  10 Phase 14). `GoldenV1Test`, `GoldenV2Test`, `BiomeSourceV2V3RegressionTest` and the Phase
+  9/10/11/14 shore, province, preset and reference-climate suites pass. v2 hash
+  `−4990092939012319655` and v3 hash `−6312501814918578635` are unchanged.
+- Measured 1.0.1: zero beach-gate violations and 136/150/224 shore columns on
+  NATURAL/FJORDS/ARCHIPELAGO (3,000–7,272 coastal samples each); 198/198 fjord banks stay bare;
+  0 warm↔cold core adjacencies on 39/39 and 100/100 transects; village density ratio
+  `(34/54)² = 0.3964`; Phase 11 sand arcs (2-block raster, five presets) have median 36–70 blocks,
+  P75 58–124 and 10 components ≤3 blocks of 144 (zero-speck remains **PARTIAL**).
+- Interactive checks (beaches gone inside fjords, village biome match, warm→cold transect, F3
+  heights, spawn, preview match) were **NOT** performed and are not claimed. 25×25
+  chunk-generation timing remains **UNVERIFIED**, and Phase 9 remains **PARTIAL 15/45**.
+
+## [1.0.0+mc26.3-fabric] - 2026-10-26
+
+Presentation-only release: the island editor is rebuilt on a flat dark widget system. Worldgen,
+`IslandDraft` data, share codes, datapacks and structure policies are unchanged; v1/v2/v3 output
+stays bit-identical (`GoldenV1Test`, `GoldenV2Test`, v2/v3 regression hashes).
+
+### Added
+- **Custom editor UI (`client/ui`, 22 classes).** `OmniTheme` (8 measured WCAG pairs >= 4.5:1),
+  `OmniUi` primitives, `OmniInteraction` with an 80 ms ease, `OmniButton`/`OmniIconButton`,
+  `OmniToggle`, `OmniSegmented`, `OmniSlider` (wheel, arrows, Shift fine step, double-click reset),
+  `OmniTabBar`, `OmniSection`, `OmniScrollArea`, `OmniListView`, `OmniBiomeList`, `OmniTooltip`
+  (400 ms delay, screen-clamped), `OmniToast`, `OmniDropdown`, `OmniPopover`, `OmniTextField`
+  (flat frame around a vanilla `EditBox`) and cached `OmniMetrics`/`OmniText`.
+- **Density tiers.** FULL (list + labelled tools), MEDIUM (icon tools, list in a modal), COMPACT
+  (scrolling controls), MINI (16-px tools, icon tabs, abbreviated status), MINIMAL (size notice with
+  Cancel/Done only). Every rectangle comes from the pure `EditorLayout`; tests cover 13 window sizes
+  at GUI scales 1-4 plus a 4-size × 4-scale matrix.
+- **Icon atlas.** 20 icons in a 128×48 8×3 PNG generated by `tools/generate_ui_icons.py`
+  (Python stdlib only); buttons fall back to text if the texture is missing.
+- **Four preview modes** (Land, Height, Biomes, Shore) with cached palettes; switching modes never
+  changes generation.
+- **Editor shell:** top bar (brand, undo/redo with Ctrl chips, preset menu, share code, PNG tools,
+  advanced), tool column with tooltips, six labelled/icon tabs, scrollable controls, FULL-only biome
+  list with swatch, name, toggle, weight stepper and measured preview share, status bar with
+  coordinates, biome, zoom, tool and symmetry, and primary Done / secondary Cancel.
+- **Feedback and access:** toasts for copy/import/export/calibration results, inline confirmation
+  before clearing a layer, keyboard focus order and narration on every custom widget, Esc closing
+  overlays in order, and en/ru labels proven to fit or ellipsise under worst-case font metrics.
+- **Dev-only screenshot and render-cost harness** (`OmniIsleClient` + `UiScreenshotHarness`),
+  a no-op unless `-Domniisle.uiScreenshot=<dir>` is set; it writes `manifest.csv`,
+  `render_cost.csv` and the captured PNGs.
+
+### Changed
+- `BiomeSelectionScreen`, `ShareCodeScreen`, `PngToolsScreen` and `AdvancedSettingsScreen` now use
+  the same panels, buttons, toggles, sliders and text fields; their file/draft behaviour is
+  unchanged. The Create World button injected by the mixin stays vanilla-styled.
+- Top-bar preset and share labels no longer clip: the preset button shows the preset name in FULL
+  and an icon elsewhere, the share button is 108 px, and tabs use two columns so "Structures" keeps
+  its label at 1280×720. MINI action buttons are 56 px wide.
+
+### Verification
+- Full build **181 tests, 0 failures, 0 errors, 2 assumption-gated skips** (150 baseline tests
+  unchanged, 31 new UI tests). v2 hash `-4990092939012319655` and v3 hash
+  `-6312501814918578635` unchanged. Jar `OmniIsle-26.3-Fabric-1.0.0+mc26.3.jar`, SHA-256
+  `5b2da1a4207507638820e2af9f4592e77794749ce9df150a0b52ba5f5ad7a050`.
+- Real-client captures: **200 PNGs** in `docs/screens/1.0.0/after/` (6 tabs × 16 window/scale
+  combinations × en_us/ru_ru plus 4 preview modes per language) with a 200-row `manifest.csv`,
+  validated 200/200 for presence and dimensions. Before evidence is
+  `docs/screens/1.0.0/before/editor_0.8.4_old_ui.png`. Reached tiers: FULL, COMPACT, MINI;
+  macOS enforces a 640×480 framebuffer and Minecraft clamps the GUI scale to keep at least
+  320×240 logical pixels, so MEDIUM is not produced by the matrix and MINIMAL is covered by unit
+  tests only.
+- Render cost at 1920×1080 GUI scale 2 (960×540), 300 frames after warm-up: medians
+  1.219–2.007 ms, p95 2.214–3.702 ms; 11 of 12 medians meet the 2 ms target (en_us Climate
+  2.007 ms). The target is **PARTIAL**, recorded in `render_cost.csv` and `FINDINGS.md` §19.6.
+- Visual inspection is sampled (all six tabs and four preview modes at en_us 1280×720 scale 1 plus
+  representative FULL/COMPACT/MINI and ru_ru captures); the remaining images are
+  programmatically validated only. Interactive input feel, tooltips, toasts, dropdowns and the
+  satellite screens remain **UNVERIFIED** visually; Phase 9 stays **PARTIAL 15/45** and 25×25
+  chunk-generation timing remains **UNVERIFIED**.
+
+## [0.8.4+mc26.3-fabric] - 2026-10-26
+
+### Added
+- **Universal v3 climate provinces.** `ClimateLayout` derives a warm sector (top 16 % of
+  land by `-nx + 0.20·-nz + noise`), a disjoint cold sector (12 % of total land, warm
+  excluded, by `nx + 0.35·-nz + noise`) and a ~70 % temperate heartland from the mask and biome seed
+  alone, so every shape preset — not just the reference continent — receives the same
+  coherent province system. Strength rasters are smoothed twice with `[1,4,6,4,1]/16`;
+  coastal water inherits the nearest sector. Rare pale (top 3 % of temperate land) and ice
+  (0.6 % of cold land) pockets are derived from low-frequency masks. The layout is created lazily for v3 and sampled
+  through one bilinear grid by preview and worldgen (Invariant I3).
+- **Largest-component main-island SDF for v3.** `ModernTerrainV2` now builds a second
+  padded EDT for the largest 4-connected land component. `distances().main()` uses it, so
+  offshore mushrooms cannot appear on the main island or on the Mineshield SW bay island;
+  `signed` keeps the all-mask SDF and satellite islets. v2 keeps the old all-mask `main`.
+- **Terrain APIs:** `IslandTerrain.heightTierAt`, `surfaceHeight`, `climateLayout` and the
+  shared `physicalRidge(x,z,seed)` (`1 - 2·|fbm2(/750, seed+801, 3) |`) used by both terrain
+  and climate; the mountain bias and physical spine can no longer drift apart.
+- **Rare-biome control:** family hints (`ice_spikes` in the cold ice pocket), a 1.5–3 %
+  cherry-grove band (`0.34 < c ≤ 0.48`, humidity > 0.58, low-frequency mask), and
+  pale-garden pockets with `hum + 0.65·paleStrength > 0.88`. Hints apply only when the
+  family has no non-neutral explicit weight, so user weights stay authoritative.
+- **Strict v3 structure sectors and surface ceilings.** Fixed structures now require the
+  requested family, province, continentalness range, slope and `surfaceHeight ≤ maxY`
+  (desert pyramid WARM/desert, c ≤ 0.32, slope < 0.22, Y ≤ 88; jungle ≤ 0.36/Y96;
+  swamp hut ≤ 0.16/Y88; igloo COLD/Y92; camp Y96; outpost/trail/portal any land Y100).
+  Narrow tags contain only accepted families plus the actual point biome. No candidate
+  writes `enabled=false`; there is no fallback. `RelaxedPyramids.allowsSurface` re-validates
+  the chunk-center biome, ±8-block surface heights, relief, c, slope and province at runtime.
+- **Editor fixes:** the resolution control is a full-width row that cycles 192→256→384 and
+  reads exactly `Разрешение: 192×192` / `Resolution: 192×192` (the old half-width button
+  rendered a fragment). Compact layouts scale their row height with the window so the
+  controls never overlap the Done/Cancel panel at GUI scales 1–4; the inspector tooltip is
+  clamped/flipped inside the preview canvas. Biome rows now show the actual preview share
+  whenever land samples exist, even with neutral (all-100) weights; `—` appears only for
+  disabled rows or an empty preview. The biome list is hidden in compact layouts instead of
+  overflowing.
+
+### Changed
+- **v3 family tree is province-aware and ordered:** offshore mushroom (main island < 0),
+  temperature bias (`WARM +0.16·strength`, `COLD -0.22·strength`), cold lowland priority
+  (`COLD, c ≤ 0.36, tier < 1.5 → snowy_plains/taiga, with ice_spikes hint`), physical peaks
+  (family 15 only at `c > 0.50 && tier ≥ 1.5` outside COLD), foothills, cherry, coastal
+  wetlands (`c < 0.15, slope < 0.12, tier ≤ 1.0, mountains < 0.35`), temperate heartland,
+  then warm desert/badlands/savanna/jungle. Family 15 can no longer appear as a low-tier
+  snow blob, and no desert or badlands is adjacent to a cold-province column.
+- **Family-centroid effective climate.** After selecting a family, the weighted picker
+  receives that family's centroid temperature/humidity, so affinity favors the intended
+  family while explicit 0–400 % weights still work. Ocean subtypes keep the raw climate.
+- **Ocean sectors and shores follow the province:** warm/frozen/lukewarm/cold ocean
+  variants, `snowy_beach` on cold coasts, and `stony_shore` only on steep/dry coasts. The
+  0.8.2 dry-shelf rule is unchanged.
+- **Continuous province and ocean contours.** `ClimateLayout` now samples the smoothed
+  warm/cold strength rasters bilinearly and compares them against quantile-calibrated
+  thresholds plus a 160-block boundary-noise term, instead of looking up the nearest mask
+  cell. This removes the visible 18–20-block staircase at province edges while the
+  quantiles keep the measured sector shares. Ocean subtypes gained rim transition bands
+  (`lukewarm_ocean`/`deep_lukewarm_ocean` before `warm_ocean`, `cold_ocean` before
+  `frozen_ocean`). Evidence: `docs/evidence/phase11/after/ocean_edge_natural.png`;
+  tests 11L.6/11L.7 in `Phase11ClimateLayoutTest`.
+- **Mineshield 4 height tiers cleaned:** a 3×3 majority/median filter removes isolated
+  pixels; the curved central-north tier-3 range is one component (16 → 1) and the western
+  mesa tier-2 band keeps 3 components (48 → 3, no specks). Tiers after cleanup:
+  3/2/1 = 612 / 1,431 / 9,189; the land mask is unchanged (11,232 cells, 30.47 %).
+- **v3 biome-source regression hash changes by design** to `-6312501814918578635`
+  (`BiomeSourceV2V3RegressionTest`); the v2 hash stays `-4990092939012319655`.
+
+### Compatibility
+- No `generation_version` change. v1 and v2 output is **100 % bit-identical**; `GoldenV1Test`
+  and `GoldenV2Test` pass unmodified. v3 **new chunks** change intentionally in 0.8.4
+  (provinces, family tree, structures, Mineshield relief); existing v3 chunks keep their
+  generated biomes. The Mineshield preset ordinal, share codes and saved drafts are
+  unchanged. Re-export a world pack to pick up the new structure policies.
+- Full suite: **150 tests, 0 failures, 2 assumption-gated skips**. Performance of the new
+  v3 sampling is **UNVERIFIED**; GUI screenshots remain **NOT DONE**.
+
+## [0.8.3+mc26.3-fabric] - 2026-10-26
+
+### Added
+- **Mineshield 4 Map preset.** The bundled reference map (`карта рефернс.jpg`) is now a
+  fixed shape preset in the editor. The image is letterboxed to the canvas and classified
+  into a land mask (blue/teal water by hue) and three relief tiers: blue-white snow → 3,
+  brown/orange highlands → 2, all other land → 1. At the default 192 resolution the mask
+  has 11,232 land pixels (30.47 %), zero border land, and a 91.06 % largest connected
+  component; it is identical at 192/256/384 and ignores the shape seed, so the coastline
+  is stable. The preset controls only the land mask and relief — biomes still follow the
+  selected theme and v3 climate. Evidence: `docs/evidence/presets/mineshield_4_mask.png`,
+  `mineshield_4_stats.csv`; tests: `Mineshield4MapPresetTest` (5 tests), Phase 7.4 now
+  covers **13 presets × 20 seeds**.
+- English and Russian labels for the preset: "Mineshield 4 Map" / "Карта Mineshield 4".
+
+### Compatibility
+- No `generation_version` change and no worldgen change. The preset only writes a fixed
+  mask/height layer into new drafts; existing drafts, share codes and worlds are unaffected.
+
 ## [0.8.2+mc26.3-fabric] - 2026-10-26
 
 ### Fixed
