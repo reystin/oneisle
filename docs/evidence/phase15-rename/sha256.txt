@@ -1,0 +1,2 @@
+45a1cf04aa4deda5ae039f6b213542615046b3539a092bc7cd4177702cb9db22  build/libs/OneIsle-26.3-Fabric-1.0.0+mc26.3.jar
+ff85609f097a42fe3cfb9f595fab66a2b7b3c4dae1301c8ab8f9b5cc72fe3b4c  build/libs/OneIsle-26.3-Fabric-1.0.0+mc26.3-sources.jar

@@ -1,0 +1,20 @@
+# OneIsle namespace gates (Phase 15)
+date: 2026-10-29T17:37:17Z
+
+## lowercase omniisle in src/main (expect none)
+(no matches)
+
+## Omni class prefixes in src/main/java (expect none)
+(no matches)
+
+## old registry IDs in src/main/resources (expect none)
+(no matches)
+
+## lowercase omniisle in extracted jar (expect none)
+(no matches)
+
+## allowed attribution mentions in runtime metadata
+6:  "description": "Build a configurable island with every Overworld biome, selectable structures, living rivers and a deep surrounding ocean. Independent continuation of OmniIsle 0.5.0 by Hack337.",
+
+## new namespace occurrences (src/main/resources)
+files=16 matches=648

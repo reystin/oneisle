@@ -1,0 +1,5 @@
+path,lang,tab,scale,requested,actual_logical
+en_1280x720_scale1_shape.png,en_us,shape,1,1280x720,1280x720
+en_1280x720_scale4_shape.png,en_us,shape,4,1280x720,427x240
+en_640x480_scale1_shape.png,en_us,shape,1,640x480,640x480
+en_640x480_scale2_shape.png,en_us,shape,2,640x480,320x240

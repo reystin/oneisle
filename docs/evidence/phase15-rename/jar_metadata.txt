@@ -1,0 +1,78 @@
+# OneIsle 1.0.0 jar metadata
+date: 2026-10-29T17:37:22Z
+
+## fabric.mod.json
+{
+  "schemaVersion": 1,
+  "id": "oneisle",
+  "version": "1.0.0+mc26.3",
+  "name": "OneIsle — All Biomes & Structures on One Island",
+  "description": "Build a configurable island with every Overworld biome, selectable structures, living rivers and a deep surrounding ocean. Independent continuation of OmniIsle 0.5.0 by Hack337.",
+  "authors": [
+    "reystin"
+  ],
+  "contributors": [
+    "Hack337"
+  ],
+  "contact": {
+    "homepage": "https://github.com/reystin/oneisle",
+    "sources": "https://github.com/reystin/oneisle",
+    "issues": "https://github.com/reystin/oneisle/issues"
+  },
+  "license": "GPL-3.0-only",
+  "icon": "assets/oneisle/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "preLaunch": [
+      "com.reystin.oneisle.OneIslePreLaunch"
+    ],
+    "main": [
+      "com.reystin.oneisle.OneIsleMod"
+    ],
+    "client": [
+      "com.reystin.oneisle.client.OneIsleClient"
+    ]
+  },
+  "mixins": [
+    {
+      "config": "oneisle.client.mixins.json",
+      "environment": "client"
+    }
+  ],
+  "depends": {
+    "fabricloader": ">=0.19.3",
+    "fabric-api": ">=0.165.0",
+    "minecraft": "=26.3",
+    "java": ">=25"
+  }
+}
+
+## oneisle.client.mixins.json
+{
+  "required": true,
+  "package": "com.reystin.oneisle.mixin.client",
+  "compatibilityLevel": "JAVA_25",
+  "client": [
+    "CreateWorldBridge",
+    "WorldTypeEditorMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
+
+## packaged namespaces
+assets/
+assets/oneisle
+data/
+data/minecraft
+data/oneisle
+
+## root classes (expect no Omni prefix)
+com/reystin/oneisle/OneIsleIds.class
+com/reystin/oneisle/OneIsleMod.class
+com/reystin/oneisle/OneIslePreLaunch.class
+
+## license entries
+    35825  02-01-1980 00:00   LICENSE_OneIsle
+    35825  02-01-1980 00:00   LICENSE_OneIsle_OneIsle

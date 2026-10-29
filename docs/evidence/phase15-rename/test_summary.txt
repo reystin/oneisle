@@ -1,0 +1,5 @@
+OneIsle 1.0.0 test summary
+tests=197 failures=0 errors=0 skipped=2 classes=48
+skipped:
+  com.reystin.oneisle.test.GoldenV1Test#regenerateGoldenIfRequested()
+  com.reystin.oneisle.test.Phase9HarnessPacksTest#exportHarnessPacks()
